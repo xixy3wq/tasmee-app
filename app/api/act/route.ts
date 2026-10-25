@@ -5,6 +5,11 @@ import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } 
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
+import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone } from "@/lib/wa";
+import { SN } from "@/lib/quran";
+const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
+const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
 import crypto from "node:crypto";
 export const dynamic = "force-dynamic";
 
@@ -310,11 +315,29 @@ const A: Record<string, H> = {
     const studs = new Set((await prisma.user.findMany({ where: { halqaId: l.halqaId, role: "student" }, select: { id: true } })).map((s) => s.id));
     const att: Record<string, string> = { ...((l.att as any) || {}) };
     const changes = b.map && typeof b.map === "object" ? b.map : { [str(b.uid)]: b.v };
+    const changed: [string, string | null][] = [];
     for (const [k, v] of Object.entries(changes)) {
       if (!studs.has(k)) continue;
-      if (v && ATT.includes(String(v))) att[k] = String(v); else delete att[k];
+      const nv = v && ATT.includes(String(v)) ? String(v) : null;
+      if ((att[k] || null) !== nv) changed.push([k, nv]);
+      if (nv) att[k] = nv; else delete att[k];
     }
     await prisma.lesson.update({ where: { id: l.id }, data: { att } });
+    // رسائل الواتساب التلقائية لولي الأمر (تُرسل بعد مهلة، وتنلغي إذا تغيّر التحضير)
+    if (changed.length) {
+      const cfg = await waCfg();
+      if (cfg.enabled) {
+        const st = await getSettings(); const h = await prisma.halqa.findUnique({ where: { id: l.halqaId } });
+        const us = await prisma.user.findMany({ where: { id: { in: changed.map((c) => c[0]) } } });
+        for (const [uid, v] of changed) {
+          const usr = us.find((x) => x.id === uid); const phone = String(((usr?.info as any) || {}).parentPhone || "");
+          const key = `att-${l.id}-${uid}`; const vars = { student: usr?.name || "", halqa: h?.name || "", date: fmtD(l.date) };
+          const want = v === "a" && cfg.autoAbsent ? ["absent", st.tpl.absent] : v === "p" && cfg.autoPresent ? ["present", cfg.tplPresent] : v === "l" && cfg.autoLate ? ["late", cfg.tplLate] : null;
+          if (!want || !phone) { await cancelMsg(key); continue; }
+          await queueMsg(key, want[0], phone, fillVars(want[1], vars), cfg.delayMin, { userId: uid, lessonId: l.id });
+        }
+      }
+    }
   },
   async "lesson.queue"(u, b) {
     const l = await lessonFor(u, str(b.id));
@@ -388,6 +411,14 @@ const A: Record<string, H> = {
       rows.push({ userId: st.id, lessonId: lesson?.id ?? null, halqaId: st.halqaId, date, type, surah, fromA: from, toA: to, mistakes, alerts, grade: g.t, pass: g.pass, full, quick, note: str(b.note ?? it.note, 300), secs: rows.length ? null : secs, byId: u.id });
     }
     await prisma.rec.createMany({ data: rows });
+    const wcfg = await waCfg();
+    if (wcfg.enabled && wcfg.autoRec) {
+      const phone = String(((st.info as any) || {}).parentPhone || "");
+      const all = await prisma.rec.findMany({ where: { userId: st.id, ...(lesson ? { lessonId: lesson.id } : { date }) }, orderBy: { at: "asc" } });
+      const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null;
+      const lines = all.map((r) => `- ${TYPE_AR[r.type]}: ${SN[r.surah - 1]} ${r.fromA}-${r.toA} (${r.grade}${r.quick ? "" : "، أخطاء " + r.mistakes}${r.note ? "، " + r.note : ""})`).join("\n");
+      if (phone) await queueMsg(`rec-${lesson ? lesson.id : date}-${st.id}`, "rec", phone, fillVars(wcfg.tplRec, { student: st.name, halqa: h?.name || "", date: fmtD(date), rec: lines }), wcfg.delayMin, { userId: st.id, lessonId: lesson?.id });
+    }
     // تقدّم الخطة التلقائية بعد النجاح فقط
     const p = planOf(st); let moved = false;
     if (p.mode === "auto") {
@@ -527,6 +558,56 @@ const A: Record<string, H> = {
     await prisma.annRead.upsert({ where: { annId_userId: { annId: a!.id, userId: u.id } }, create: { annId: a!.id, userId: u.id }, update: {} });
   },
 
+  // ---------- الواتساب (الواتس الذكي) ----------
+  async "wa.get"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cfg = await waCfg();
+    const log = await prisma.outMsg.findMany({ orderBy: { at: "desc" }, take: 60 });
+    const users = await prisma.user.findMany({ where: { id: { in: [...new Set(log.map((m) => m.userId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } });
+    const counts = await prisma.outMsg.groupBy({ by: ["status"], _count: true });
+    return { cfg, counts: Object.fromEntries(counts.map((c: any) => [c.status, c._count])), log: log.map((m) => ({ id: m.id, kind: m.kind, name: users.find((x) => x.id === m.userId)?.name || "", phone: m.toPhone, text: m.text, status: m.status, at: +m.at, sendAfter: +m.sendAfter, sentAt: m.sentAt ? +m.sentAt : null, resp: m.resp, tries: m.tries })) };
+  },
+  async "wa.save"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const d = b.data || {};
+    const value = {
+      enabled: !!d.enabled, method: ["GET", "POST_FORM", "POST_JSON"].includes(d.method) ? d.method : "GET",
+      url: str(d.url, 1500), body: str(d.body, 2000), okWord: str(d.okWord, 60),
+      autoAbsent: !!d.autoAbsent, autoPresent: !!d.autoPresent, autoLate: !!d.autoLate, autoRec: !!d.autoRec,
+      delayMin: Math.min(240, Math.max(0, int(d.delayMin, 10))),
+      tplPresent: str(d.tplPresent, 800) || WA_DEF.tplPresent, tplLate: str(d.tplLate, 800) || WA_DEF.tplLate, tplRec: str(d.tplRec, 800) || WA_DEF.tplRec,
+    };
+    if (value.url && !/^https:\/\//i.test(value.url)) fail("رابط الإرسال لازم يبدأ بـ https://");
+    if (value.enabled && !value.url.includes("{message}") && !value.body.includes("{message}")) fail("لازم يحتوي الرابط أو نص الطلب على {message}");
+    if (value.enabled && !(value.url + value.body).match(/\{phone0?\}/)) fail("لازم يحتوي الرابط أو نص الطلب على {phone}");
+    await prisma.setting.upsert({ where: { key: "wa" }, create: { key: "wa", value }, update: { value } });
+    await audit(u, "wa.save", null, `إعدادات الواتساب: ${value.enabled ? "مفعّل" : "متوقف"}`);
+  },
+  async "wa.test"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cfg = { ...(await waCfg()), ...(b.data || {}) };
+    if (!intlPhone(str(b.phone))) fail("اكتب رقم جوال صحيح");
+    return await waSend(cfg as any, str(b.phone), str(b.text, 500) || "رسالة تجريبية من حلقات ارتق");
+  },
+  async "wa.retry"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    await prisma.outMsg.updateMany({ where: { id: str(b.id), status: { in: ["failed", "pending", "cancelled"] } }, data: { status: "pending", sendAfter: new Date(), tries: 0 } });
+  },
+  async "wa.cancel"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    await prisma.outMsg.updateMany({ where: { id: str(b.id), status: "pending" }, data: { status: "cancelled" } });
+  },
+  async "wa.sendNow"(u, b) {
+    const l = await lessonFor(u, str(b.lessonId));
+    const r = await prisma.outMsg.updateMany({ where: { lessonId: l.id, status: "pending" }, data: { sendAfter: new Date() } });
+    return { n: r.count };
+  },
+  async "wa.pending"(u, b) {
+    const l = await lessonFor(u, str(b.lessonId));
+    const rows = await prisma.outMsg.findMany({ where: { lessonId: l.id }, orderBy: { at: "asc" } });
+    return { rows: rows.map((m) => ({ id: m.id, kind: m.kind, userId: m.userId, status: m.status, sendAfter: +m.sendAfter, sentAt: m.sentAt ? +m.sentAt : null })) };
+  },
+
   // ---------- غرفة المعلمين ----------
   async "msg.send"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
@@ -572,6 +653,8 @@ export async function POST(req: Request) {
     const b = await req.json().catch(() => ({}));
     const h = A[String(b.t)];
     if (!h) fail("إجراء غير معروف");
-    return (await h(u!, b)) ?? { ok: true };
+    const out = (await h(u!, b)) ?? { ok: true };
+    await processQueue(6);
+    return out;
   });
 }

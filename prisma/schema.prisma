@@ -195,3 +195,22 @@ model Backup {
   size Int      @default(0)
   data Json
 }
+
+/// طابور رسائل الواتساب التلقائية (الواتس الذكي أو أي مزوّد)
+model OutMsg {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  kind      String
+  userId    String?
+  lessonId  String?
+  toPhone   String
+  text      String
+  status    String    @default("pending")
+  sendAfter DateTime
+  tries     Int       @default(0)
+  resp      String    @default("")
+  at        DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([status, sendAfter])
+}

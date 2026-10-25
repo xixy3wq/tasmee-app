@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { APP_V } from "@/lib/version";
+import { processQueue, waCfg } from "@/lib/wa";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -112,6 +113,7 @@ export async function GET() {
   const wirds = await prisma.wird.findMany({ where: { userId: { in: wUsers }, date: { gte: localDate(-14) } } });
 
   const staff = me.role !== "student";
+  if (staff) await processQueue(6);
   const msgs = staff ? await prisma.msg.findMany({ orderBy: { at: "desc" }, take: 100 }) : [];
   const full = me.role === "admin" && !me.perms;
   const backups = full ? await prisma.backup.findMany({ orderBy: { at: "desc" }, select: { id: true, at: true, size: true } }) : [];
@@ -129,6 +131,7 @@ export async function GET() {
     msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at })),
     backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    waOn: staff ? (await waCfg()).enabled : false,
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),
     board,

@@ -85,7 +85,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push;
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn;
       READY = true; scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -535,6 +535,7 @@ function sessionV(u) {
   const presentFirst = [...studs].sort((a, b) => ((att[b.id] === 'p' || att[b.id] === 'l') - (att[a.id] === 'p' || att[a.id] === 'l')));
   return head + `
   ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول:</b><div class="list">${issues.map(([id, x]) => `<div class="item"><div class="grow"><b>${esc(S.users[id].name)}</b>: ${esc(x.msg)} <span class="small muted">${clock(x.at)}</span></div><button class="btn sm" data-act="issue-clear" data-id="${id}">تم الحل</button></div>`).join('')}</div></div>` : ''}
+  ${waSessionHtml(s)}
   <div class="grid2">
   <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>طابور التسميع</h2><div class="row"><button class="btn ghost sm" data-act="q-sort" data-k="join">حسب الدخول</button><button class="btn ghost sm" data-act="q-sort" data-k="least">الأقل تسميعًا أولًا</button></div></div>
     ${recHere ? recPanelHtml() : (cur ? `<div class="now"><div style="flex:1 1 160px;min-width:0"><div class="lbl">يسمّع الآن</div><div class="name">${esc(cur.name)}</div></div><button class="btn pri" data-act="rec-start" data-id="${cur.id}">سجّل التسميع</button><button class="btn" data-act="q-next">التالي</button></div>` : (queue.length ? `<button class="btn pri" data-act="q-next">ابدأ بأول الطابور</button>` : ''))}
@@ -683,6 +684,7 @@ function settingsV() {
     </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div><span class="small muted" style="font-weight:400">تطلع الفصول كفترات في التقارير، وفي تحديد أهداف الطلاب.</span></div>
     <div><button class="btn pri" type="submit">حفظ الإعدادات</button></div>
   </form>
+  ${isFullAdmin(me()) ? waSettingsHtml() : ''}
   ${isFullAdmin(me()) ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
     ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
   <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
@@ -1027,6 +1029,48 @@ function homeEn(u) {
   <section class="card"><h2>Recitation record</h2>${rs.length ? `<div class="tbl-wrap"><table dir="ltr"><thead><tr><th>Date</th><th>Type</th><th>Portion</th><th class="num">Mistakes</th><th>Grade</th><th>Note</th></tr></thead><tbody>${rs.slice(0, 40).map(r => `<tr><td>${fmtDateEn(r.date)}</td><td>${EN.type[r.type]}</td><td>${segEn(r.surah, r.from, r.to)}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${EN.grade[r.grade] || r.grade}</span></td><td dir="auto" style="white-space:normal">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">No recitations yet.</div>'}</section>`;
 }
 
+/* ---------------- الواتساب التلقائي (الواتس الذكي) ---------------- */
+const WA_STATUS = { pending: ['warn', 'بانتظار الإرسال'], sending: ['info', 'يُرسل الآن'], sent: ['ok', 'أُرسلت'], failed: ['bad', 'فشلت'], cancelled: ['', 'أُلغيت'] };
+const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع' };
+function waSettingsHtml() {
+  if (!ST.wa && !ST.waLoading) { ST.waLoading = true; act('wa.get', {}).then(r => { ST.waLoading = false; ST.wa = r || { cfg: {}, log: [], counts: {} }; render(); }); }
+  if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
+  const c = ST.wa.cfg || {}; const cnt = ST.wa.counts || {};
+  return `<form class="card" data-form="wa" style="gap:12px"><div class="sec-head"><h2>ربط الواتساب (الواتس الذكي)</h2><span class="chip ${c.enabled ? 'ok' : ''}">${c.enabled ? 'مفعّل' : 'متوقف'}</span></div>
+    ${tip('الموقع يرسل من رقمك المربوط في الواتس الذكي مباشرة لولي الأمر. انسخ رابط الإرسال من حسابك هناك (من صفحة API)، وحط مكان الرقم <b dir="ltr">{phone}</b> ومكان نص الرسالة <b dir="ltr">{message}</b>.')}
+    <label class="check"><input type="checkbox" id="wa-enabled" name="enabled" ${c.enabled ? 'checked' : ''}> تفعيل الإرسال التلقائي</label>
+    <label class="fld" style="max-width:320px"><span>طريقة الطلب</span><select id="wa-method" name="method"><option value="GET" ${c.method === 'GET' ? 'selected' : ''}>رابط مباشر (GET)</option><option value="POST_FORM" ${c.method === 'POST_FORM' ? 'selected' : ''}>POST نموذج</option><option value="POST_JSON" ${c.method === 'POST_JSON' ? 'selected' : ''}>POST JSON</option></select></label>
+    <label class="fld"><span>رابط الإرسال</span><textarea id="wa-url" name="url" rows="3" dir="ltr" placeholder="https://.../send?token=XXXX&phone={phone}&message={message}">${esc(c.url || '')}</textarea><span class="hint">{phone} = الرقم بصيغة 9665xxxxxxxx · {phone0} = بصيغة 05xxxxxxxx · {message} = نص الرسالة</span></label>
+    <label class="fld"><span>نص الطلب (لطريقة POST فقط)</span><textarea id="wa-body" name="body" rows="3" dir="ltr" placeholder='{"phone":"{phone}","message":"{message}"}'>${esc(c.body || '')}</textarea></label>
+    <label class="fld" style="max-width:320px"><span>كلمة تدل على النجاح في الرد (اختياري)</span><input id="wa-okWord" name="okWord" dir="ltr" value="${esc(c.okWord || '')}" placeholder="success"></label>
+    <div class="fld"><span>متى يرسل تلقائيًا</span><div class="days">
+      <label><input type="checkbox" id="wa-autoAbsent" name="autoAbsent" ${c.autoAbsent ? 'checked' : ''}> عند الغياب</label>
+      <label><input type="checkbox" id="wa-autoLate" name="autoLate" ${c.autoLate ? 'checked' : ''}> عند التأخر</label>
+      <label><input type="checkbox" id="wa-autoPresent" name="autoPresent" ${c.autoPresent ? 'checked' : ''}> عند الحضور</label>
+      <label><input type="checkbox" id="wa-autoRec" name="autoRec" ${c.autoRec ? 'checked' : ''}> نتيجة التسميع</label></div></div>
+    <label class="fld" style="max-width:320px"><span>يرسل بعد كم دقيقة من التحضير</span><input id="wa-delayMin" name="delayMin" type="number" min="0" max="240" value="${c.delayMin ?? 10}"><span class="hint">المهلة تعطي المعلم وقت يصحح التحضير. إذا غيّره خلالها تنلغي الرسالة.</span></label>
+    <details><summary>نصوص الرسائل</summary><div style="display:grid;gap:10px;margin-top:8px">
+      <div class="small muted">رسالة الغياب تاخذها من «رسائل واتساب لولي الأمر» فوق. استخدم {الطالب} و{الحلقة} و{التاريخ}، وفي رسالة التسميع {التسميع}.</div>
+      <label class="fld"><span>رسالة الحضور</span><textarea id="wa-tplPresent" name="tplPresent" rows="2">${esc(c.tplPresent || '')}</textarea></label>
+      <label class="fld"><span>رسالة التأخر</span><textarea id="wa-tplLate" name="tplLate" rows="2">${esc(c.tplLate || '')}</textarea></label>
+      <label class="fld"><span>رسالة نتيجة التسميع</span><textarea id="wa-tplRec" name="tplRec" rows="3">${esc(c.tplRec || '')}</textarea></label></div></details>
+    <div class="row"><button class="btn pri" type="submit">حفظ ربط الواتساب</button></div>
+    <div class="test-box"><b>تجربة الإرسال</b><div class="row"><input id="wa-test-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" style="flex:1 1 160px"><button type="button" class="btn" data-act="wa-test">أرسل رسالة تجريبية</button></div><div id="wa-test-out" class="small ${ST.waTest ? (ST.waTest.ok ? 'c-ok' : 'c-bad') : 'muted'}" dir="auto">${ST.waTest ? esc(ST.waTest.msg) : ''}</div></div>
+  </form>
+  <section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>سجل رسائل الواتساب</h2><button class="btn ghost sm" data-act="wa-refresh">تحديث</button></div>
+    <div class="row">${Object.entries(WA_STATUS).map(([k, [c2, l]]) => cnt[k] ? `<span class="chip ${c2}">${l}: ${cnt[k]}</span>` : '').join('')}</div>
+    ${(ST.wa.log || []).length ? `<div class="list">${ST.wa.log.map(m => { const [c2, l] = WA_STATUS[m.status] || ['', m.status]; return `<div class="item"><div class="grow"><b>${esc(m.name || m.phone)}</b> <span class="chip">${WA_KIND[m.kind] || m.kind}</span> <span class="chip ${c2}">${l}</span><div class="small muted">${m.sentAt ? 'أُرسلت ' + fmtDate(isoDate(new Date(m.sentAt))) + ' ' + clock(m.sentAt) : m.status === 'pending' ? 'موعد الإرسال ' + clock(m.sendAfter) : fmtDate(isoDate(new Date(m.at)))}</div>${m.status === 'failed' ? `<div class="small" style="color:var(--bad)" dir="auto">${esc(m.resp)}</div>` : ''}<details><summary class="small">نص الرسالة</summary><div class="small ann-body">${esc(m.text)}</div></details></div>${m.status === 'failed' || m.status === 'cancelled' ? `<button class="btn sm" data-act="wa-retry" data-id="${m.id}">إعادة</button>` : ''}${m.status === 'pending' ? `<button class="btn ghost sm" data-act="wa-cancel" data-id="${m.id}">إلغاء</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty small">ما فيه رسائل بعد.</div>'}
+  </section>`;
+}
+function waSessionHtml(s) {
+  if (!S.waOn) return '';
+  const key = s.id; const st = (ST.waP || {})[key];
+  if (!st || Date.now() - st.t > 20000) { if (!(ST.waPL || {})[key]) { ST.waPL = { ...(ST.waPL || {}), [key]: 1 }; act('wa.pending', { lessonId: s.id }).then(r => { ST.waPL[key] = 0; ST.waP = { ...(ST.waP || {}), [key]: { t: Date.now(), rows: (r && r.rows) || [] } }; if (ST.view === 'session' && ST.sid === key) render(); }); } }
+  const rows = (st && st.rows) || []; const pend = rows.filter(r => r.status === 'pending'); const sent = rows.filter(r => r.status === 'sent').length; const fail = rows.filter(r => r.status === 'failed').length;
+  const nextAt = pend.length ? Math.min(...pend.map(r => r.sendAfter)) : 0;
+  return `<div class="wa-bar"><b>واتساب تلقائي لأولياء الأمور</b>${pend.length ? `<span class="chip warn">${pend.length} بانتظار الإرسال${nextAt > Date.now() ? ' · بعد ' + Math.max(1, Math.round((nextAt - Date.now()) / 60000)) + ' د' : ''}</span><button class="btn sm" data-act="wa-now" data-id="${s.id}">أرسل الآن</button>` : ''}${sent ? `<span class="chip ok">أُرسل ${sent}</span>` : ''}${fail ? `<span class="chip bad">فشل ${fail}</span>` : ''}${!rows.length ? '<span class="small muted">ترسل تلقائيًا بعد التحضير.</span>' : ''}</div>`;
+}
+
 /* ---------------- «وش عليك بكرة» للطالب ---------------- */
 /* موعد الحصة القادمة اللي يتجهز لها الطالب */
 function nextLessonFor(u) {
@@ -1357,6 +1401,11 @@ const ACT = {
   'pw-eye': el => { const i = el.parentElement.querySelector('input'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'إخفاء' : 'إظهار'; },
   'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
   'tour': () => showTour(0),
+  'wa-refresh': () => { ST.wa = null; render(); },
+  'wa-retry': el => act('wa.retry', { id: el.dataset.id }, 'تمت إعادة الجدولة').then(() => { ST.wa = null; render(); }),
+  'wa-cancel': el => act('wa.cancel', { id: el.dataset.id }, 'أُلغيت').then(() => { ST.wa = null; render(); }),
+  'wa-now': el => act('wa.sendNow', { lessonId: el.dataset.id }, r => 'جاري إرسال ' + (r.n || 0) + ' رسالة').then(() => { (ST.waP || {})[el.dataset.id] = null; render(); }),
+  'wa-test': async () => { const ph = ($('#wa-test-phone') || {}).value; const f = document.querySelector('form[data-form=wa]'); const out = $('#wa-test-out'); if (!ph) return toast('اكتب رقم الجوال'); out.textContent = 'جاري الإرسال…'; const r = await act('wa.test', { phone: ph, data: waFormData(f) }); ST.waTest = r ? { ok: r.ok, msg: (r.ok ? 'وصلت للمزوّد بنجاح، شيك على جوالك. ' : 'ما نجحت: ') + (r.resp || '') } : null; render(); },
   'kids': () => kidsModal(),
   'switch': el => switchTo(el.dataset.id),
   'acc-rm': el => { saveAccounts(accounts().filter(x => x.id !== el.dataset.id)); if (!$('#modal').hidden) kidsModal(); else render(); },
@@ -1507,6 +1556,10 @@ document.addEventListener('change', e => { const el = e.target; if (recInput(el)
 document.addEventListener('toggle', e => { if (e.target.dataset && e.target.dataset.actToggle === 'prep') ST.prepOpen = e.target.open; }, true);
 document.addEventListener('input', e => { const el = e.target.closest('[data-input]'); if (el && INP[el.dataset.input]) INP[el.dataset.input](el, e); });
 
+function waFormData(f) {
+  const d = new FormData(f); const b = k => !!d.get(k);
+  return { enabled: b('enabled'), method: d.get('method'), url: (d.get('url') || '').trim(), body: (d.get('body') || '').trim(), okWord: (d.get('okWord') || '').trim(), autoAbsent: b('autoAbsent'), autoLate: b('autoLate'), autoPresent: b('autoPresent'), autoRec: b('autoRec'), delayMin: +d.get('delayMin') || 0, tplPresent: d.get('tplPresent'), tplLate: d.get('tplLate'), tplRec: d.get('tplRec') };
+}
 function settingsData(f) {
   const d = new FormData(f); const st = SET();
   const fields = st.fields.map(x => ({ ...x, label: (d.get('lb-' + x.k) || x.label).trim() || x.label, on: !!d.get('on-' + x.k), req: !!d.get('req-' + x.k) && !!d.get('on-' + x.k),
@@ -1635,6 +1688,7 @@ const FORMS = {
     try { const r = await api('/api/login', { username: d.get('username'), password: d.get('password'), remember: true }); if (!r.account) return toast('هذا الحساب ليس حساب طالب'); saveAccount(r.account); closeModal(); ST.view = null; ST.tourShown = true; await load(); toast('أُضيف حساب ' + r.account.name); }
     catch (e) { toast(e.message); }
   },
+  async wa(f, d) { if (await act('wa.save', { data: waFormData(f) }, 'حُفظ ربط الواتساب')) { ST.wa = null; clean(); render(); } },
   async msg(f, d) { if (await act('msg.send', { text: d.get('text') })) { f.reset(); clean(); } },
   async mypw(f, d) { if (await act('me.password', { old: d.get('old'), pw: d.get('pw') }, 'تم تغيير كلمة المرور')) closeModal(); },
 };

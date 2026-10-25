@@ -276,3 +276,5 @@ main.wrap:has(~ * .sticky-join), .wrap:has(.sticky-join){padding-bottom:110px}
 .t-tath .due-tag{background:var(--gold-soft);color:var(--gold)}
 .t-retry .due-tag{background:var(--bad-soft);color:var(--bad)}
 .t-retry{background:var(--bad-soft)}
+.wa-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--ok-soft);border-radius:var(--r);padding:10px 14px}
+.test-box{display:grid;gap:6px;padding:10px;border-radius:8px;background:var(--sunk)}

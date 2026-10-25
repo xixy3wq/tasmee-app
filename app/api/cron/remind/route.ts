@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/push";
+import { processQueue } from "@/lib/wa";
 import { localDate } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 // تذكير قبل الحصة بـ 15 دقيقة تقريبًا. يُستدعى كل 5 دقائق من خدمة مجانية مثل cron-job.org:
@@ -24,5 +25,6 @@ export async function GET(req: Request) {
     sent += await notify(ids, { title: "تذكير بالحصة", body: `${halqa?.name || "الحلقة"} تبدأ ${diff > 0 ? "بعد " + diff + " دقيقة" : "الآن"}`, url: "/", tag: "remind-" + l.id });
     await prisma.lesson.update({ where: { id: l.id }, data: { reminded: true } });
   }
-  return NextResponse.json({ ok: true, sent });
+  const wa = await processQueue(30);
+  return NextResponse.json({ ok: true, sent, wa });
 }
