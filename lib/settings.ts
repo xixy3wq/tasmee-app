@@ -41,6 +41,8 @@ export type Settings = typeof DEF;
 export async function getSettings(): Promise<Settings> {
   const row = await prisma.setting.findUnique({ where: { key: "main" } });
   const m = ((row?.value as any) || {}) as Partial<Settings>;
+  // الاسم القديم المحفوظ قبل تغيير الاسم يتحول للاسم الجديد
+  if (!m.center || m.center === "حلقات التسميع") m.center = DEF.center;
   return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, points: { ...DEF.points, ...(m.points || {}) }, tpl: { ...DEF.tpl, ...(m.tpl || {}) }, fields: (m.fields as Field[]) || DEF_FIELDS };
 }
 export function gradeOf(s: Settings, m: number, al: number) {

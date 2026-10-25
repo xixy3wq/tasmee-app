@@ -1,6 +1,6 @@
 // حلقات ارتق: العمل بدون إنترنت + الإشعارات
-const V = 'irtaq-v1';
-const SHELL = ['/', '/app.js?v=5', '/manifest.webmanifest', '/icon-192.png'];
+const V = 'irtaq-v2';
+const SHELL = ['/', '/app.js?v=6', '/manifest.webmanifest', '/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 async function netFirst(req, key) {

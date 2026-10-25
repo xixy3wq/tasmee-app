@@ -378,7 +378,7 @@ function shellV(u) {
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
   return `${banner()}<header class="top"><div class="top-in">
     <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
-      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm" data-act="theme">${({ light: 'فاتح', dark: 'داكن' })[THEME] || 'تلقائي'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
+      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
     ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
   </div></header><main class="wrap">${body}</main>`;
 }
@@ -1157,7 +1157,7 @@ const ACT = {
   'export-key': () => confirmBox('تولّد مفتاح تصدير جديد؟ الروابط القديمة في Google Sheets تتوقف.', 'توليد', () => act('exportKey.rotate', {}, 'تم توليد المفتاح')),
   'term-add': () => saveSettingsWith(d => d.terms.push({ id: 'tm' + Date.now().toString(36), name: 'فصل جديد', from: today(), to: addDays(today(), 90) }), 'أُضيف فصل، عدّل تواريخه واحفظ'),
   'term-del': el => saveSettingsWith(d => d.terms.splice(+el.dataset.i, 1), 'حُذف الفصل'),
-  'theme': () => { THEME = THEME === '' ? 'dark' : THEME === 'dark' ? 'light' : ''; applyTheme(); render(); },
+  'theme': () => { THEME = isDarkNow() ? 'light' : 'dark'; applyTheme(); render(); toast(THEME === 'dark' ? 'صار المظهر داكن' : 'صار المظهر فاتح'); },
   'search': () => searchModal(),
   'gs-open': el => { closeModal(); go('student', { uid: el.dataset.id }); },
   'gs-halqa': el => { closeModal(); go('students', { halqa: el.dataset.id }); },
@@ -1397,6 +1397,7 @@ window.addEventListener('hashchange', () => render());
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
+function isDarkNow() { if (THEME) return THEME === 'dark'; try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; } }
 function applyTheme() { if (THEME) document.documentElement.setAttribute('data-theme', THEME); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('irtaq-theme', THEME); } catch {} }
 applyTheme();
 /* ---------------- PWA: تثبيت، بدون إنترنت، إشعارات ---------------- */
