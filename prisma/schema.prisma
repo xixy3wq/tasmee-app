@@ -27,6 +27,8 @@ model User {
   plan         Json?
   /// هدف الطالب: { pages, from, by, note }
   goal         Json?
+  /// صلاحيات المدير المساعد (null = مدير كامل)
+  perms        Json?
   createdAt    DateTime  @default(now())
   approvedAt   DateTime?
 }
@@ -58,6 +60,13 @@ model Lesson {
   /// للحصص المنشأة تلقائيًا: halqaId_date
   autoKey   String?  @unique
   cancelled Boolean  @default(false)
+  /// معلم احتياط لهذه الحصة
+  subId     String?
+  /// وقت فتح المعلم للحصة (حضور المعلم)
+  teacherAt DateTime?
+  teacherBy String?
+  /// أُرسل تذكير الحصة
+  reminded  Boolean  @default(false)
   /// مشاكل الدخول: { uid: { at, msg } }
   issues    Json     @default("{}")
   createdBy String?
@@ -155,4 +164,34 @@ model Wird {
   at     DateTime @default(now())
 
   @@unique([userId, date])
+}
+
+/// غرفة المعلمين
+model Msg {
+  id     String   @id @default(cuid())
+  byId   String
+  byName String
+  text   String
+  at     DateTime @default(now())
+
+  @@index([at])
+}
+
+/// اشتراكات الإشعارات
+model PushSub {
+  id       String   @id @default(cuid())
+  userId   String
+  endpoint String   @unique
+  keys     Json
+  at       DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// النسخ الاحتياطية الأسبوعية
+model Backup {
+  id   String   @id @default(cuid())
+  at   DateTime @default(now())
+  size Int      @default(0)
+  data Json
 }

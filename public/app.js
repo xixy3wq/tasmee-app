@@ -55,7 +55,7 @@ const waLink = (phone, text) => { const p = normPhone(phone); return p ? 'https:
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
 
 /* ---------------- server ---------------- */
-const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings', 'anns', 'wirds'];
+const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings', 'anns', 'wirds', 'msgs'];
 const S = {}; COLS.forEach(c => S[c] = {});
 let READY = false, OFFLINE = false;
 const ST = { meId: null, view: null, sid: null, uid: null, halqa: '', range: 30, reg: false, regDone: false, q: '', regInfo: null };
@@ -71,11 +71,13 @@ async function load() {
   if (loading) return loading;
   loading = (async () => {
     try {
-      const d = await api('/api/data');
-      OFFLINE = false;
+      const r0 = await fetch('/api/data', { cache: 'no-store' });
+      if (!r0.ok && r0.status !== 200) throw new Error('net');
+      const d = await r0.json();
+      OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null;
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push;
       READY = true; scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -171,15 +173,16 @@ function posText(dir, np) { if (np >= TOTAL) return 'أتمّ'; const g = ORD[di
 
 /* ---------------- state helpers ---------------- */
 const me = () => { const u = ST.meId && S.users[ST.meId]; return u ? { ...u, id: ST.meId } : null; };
-const myHalaqat = u => L('halaqat').filter(h => u.role === 'admin' || h.teacherId === u.id).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+const myHalaqat = u => L('halaqat').filter(h => u.role === 'admin' || h.teacherId === u.id || h.sub).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const halqaName = id => (S.halaqat[id] && S.halaqat[id].name) || '—';
 const studentsOf = hid => L('users').filter(u => u.role === 'student' && u.status === 'active' && u.halqaId === hid).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const canPlan = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
 const canAutoU = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canAuto);
 const halqaDays = hid => { const h = S.halaqat[hid]; return (h && h.days && h.days.length) ? h.days : SET().days; };
 const recsOf = uid => L('recs').filter(r => r.uid === uid).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
+function rangeFrom(days) { if (typeof days === 'string' && days[0] === 'T') { const tm = (SET().terms || []).find(x => 'T' + x.id === days); return tm ? tm.from : ''; } return days ? addDays(today(), -days) : ''; }
 function attStats(st, days) {
-  const from = days ? addDays(today(), -days) : '';
+  const from = rangeFrom(days);
   const ss = L('sessions').filter(s => s.halqaId === st.halqaId && !s.cancelled && s.date <= today() && (!from || s.date >= from));
   const c = { p: 0, l: 0, a: 0, e: 0, n: 0, total: ss.length };
   ss.forEach(s => { const v = (s.att || {})[st.id]; if (v) c[v]++; else c.n++; });
@@ -312,7 +315,7 @@ function view() {
   if (!u) return loginV();
   return shellV(u);
 }
-const banner = () => OFFLINE ? `<div class="banner">تعذّر الاتصال بالخادم. تأكد من الإنترنت، وتتحدث الصفحة تلقائيًا.</div>` : '';
+const banner = () => OFFLINE ? `<div class="banner">ما فيه اتصال، تعرض آخر نسخة محفوظة. التعديلات تحتاج إنترنت.</div>` : '';
 function fieldHtml(f, val, pre, opt = {}) {
   const t = f.type || 'text'; const req = opt.forceReq ?? f.req;
   return `<label class="fld"><span>${esc(f.label)}${req ? ' <i>*</i>' : ''}</span><input id="${pre}${f.k}" name="${f.k}" type="${t}" ${t === 'tel' ? 'inputmode="tel" dir="ltr"' : ''} ${t === 'number' ? 'inputmode="numeric" min="0"' : ''} value="${esc(val ?? '')}" placeholder="${esc(f.ph || '')}" ${req ? 'required' : ''}></label>`;
@@ -360,21 +363,22 @@ function regDoneV() {
 }
 
 const TABS = {
-  admin: () => [['req', 'الطلبات', L('users').filter(u => u.role === 'student' && u.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['anns', 'الإعلانات'], ['reports', 'التقارير'], ['settings', 'الإعدادات']],
-  teacher: () => [['sessions', 'الحصص'], ['students', 'طلابي'], ['anns', 'الإعلانات'], ['reports', 'التقارير']],
-  student: () => [['home', 'صفحتي']]
+  admin: u => [['dash', 'الرئيسية'], ['req', 'الطلبات', L('users').filter(x => x.role === 'student' && x.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['logs', 'السجل'], ['settings', 'الإعدادات'], ['help', 'الدليل']].filter(([k]) => !TAB_PERM[k] || can(u, TAB_PERM[k])),
+  teacher: u => [['sessions', 'الحصص'], ['students', 'طلابي'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['help', 'الدليل']],
+  student: () => [['home', LANG === 'en' ? 'My page' : 'صفحتي'], ['help', LANG === 'en' ? 'Help' : 'الدليل']]
 };
 const ROLE = { admin: 'المدير', teacher: 'معلم', student: 'طالب' };
 const PARENT_TAB = { session: 'sessions', student: 'students' };
 function shellV(u) {
-  const tabs = TABS[u.role]();
+  const tabs = TABS[u.role](u);
   const keys = tabs.map(t => t[0]);
   if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && ST.view !== 'home')) ST.view = keys[0];
   const activeTab = PARENT_TAB[ST.view] || ST.view;
-  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: homeV, anns: annsV })[ST.view](u);
+  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV })[ST.view](u);
+  document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
   return `${banner()}<header class="top"><div class="top-in">
     <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
-      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : ''}<button class="btn ghost sm" data-act="theme">${({ light: 'فاتح', dark: 'داكن' })[THEME] || 'تلقائي'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
+      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm" data-act="theme">${({ light: 'فاتح', dark: 'داكن' })[THEME] || 'تلقائي'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
     ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
   </div></header><main class="wrap">${body}</main>`;
 }
@@ -416,13 +420,13 @@ function sessionsV(u) {
   const past = all.filter(s => s.date < t).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 25);
   const row = s => { const n = studentsOf(s.halqaId).length; const att = s.att || {}; const pres = Object.values(att).filter(v => v === 'p' || v === 'l').length; const recs = L('recs').filter(r => r.sid === s.id).length; const iss = Object.keys(s.issues || {}).length;
     return `<div class="item click ${s.cancelled ? 'dim' : ''}" data-act="open-session" data-id="${s.id}"><div class="grow"><div class="name">${fmtDateH(s.date)} <span class="muted small">${fmtTime(s.time)}</span></div><div class="small muted">${esc(halqaName(s.halqaId))}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
-      ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
-  return `<div class="sec-head"><h1>الحصص</h1><button class="btn pri" data-act="new-session">حصة إضافية</button></div>
+      ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.subId ? `<span class="chip info">احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
+  return `<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
   ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
   ${absentAlertsHtml(ids)}
-  <section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
+  ${ST.cal ? calendarHtml(ids) : `<section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
   ${up.length ? `<div class="list">${up.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
-  ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`;
+  ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`}`;
 }
 function joinText(j, s) {
   if (!j) return 'لم يضغط دخول';
@@ -449,8 +453,9 @@ function sessionV(u) {
   const dd = new Date(s.date + 'T00:00');
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="session-hero"><div class="datebox"><b>${dd.getDate()}</b><span>${DAYN[dd.getDay()]}</span></div>
-    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div></div>
+    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
     <div class="row">${link && !s.cancelled ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener">افتح الحصة</a><button class="btn" data-act="copy" data-text="${esc(link)}">نسخ الرابط</button>` : (s.cancelled ? '' : `<span class="chip warn">ما فيه رابط</span>`)}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>`;
+  if (u.role === 'teacher' && s.date === today() && !s.teacherAt && !(ST.opened || {})[s.id]) { ST.opened = { ...(ST.opened || {}), [s.id]: 1 }; act('lesson.open', { id: s.id }); }
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}. ما تنحسب في الحضور ولا تظهر للطلاب كحصة قادمة.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
   const issues = Object.entries(s.issues || {}).filter(([id]) => S.users[id]);
   const attRow = st => { const v = att[st.id]; const wA = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.absent, vars(st))); const wE = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.excellent, vars(st))); const streak = absentStreak(st);
@@ -508,7 +513,7 @@ function profileV(u) {
   const st = S.users[ST.uid] && { ...S.users[ST.uid], id: ST.uid };
   if (!st) return `<button class="back" data-act="tab" data-v="students">→ الطلاب</button><div class="empty">الطالب غير موجود.</div>`;
   const a = attStats(st, ST.range); const rs = recsOf(st.id); const fields = SET().fields;
-  const inRange = rs.filter(r => !ST.range || r.date >= addDays(today(), -ST.range));
+  const rf = rangeFrom(ST.range); const inRange = rs.filter(r => !rf || r.date >= rf);
   const scored = inRange.filter(r => !r.quick);
   const avg = scored.length ? (scored.reduce((x, r) => x + (+r.mistakes || 0), 0) / scored.length).toFixed(1) : '—';
   const pg = pagesSum(inRange); const streak = absentStreak(st);
@@ -536,7 +541,9 @@ function historyTable(rs, editable, noDate) {
 /* ---- admin: teachers ---- */
 function teachersV() {
   const ts = L('users').filter(u => u.role === 'teacher').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const m = me(); const admins = L('users').filter(x => x.role === 'admin' && x.perms);
   return `<div class="sec-head"><h1>المعلمون</h1><button class="btn pri" data-act="add-teacher">إضافة معلم</button></div>
+  ${isFullAdmin(m) ? `<section class="card" style="display:grid;gap:8px"><div class="sec-head"><h2>المشرفون الإداريون</h2><button class="btn sm" data-act="add-admin">إضافة مشرف إداري</button></div>${admins.length ? `<div class="list">${admins.map(a => `<div class="item"><div class="grow"><b>${esc(a.name)}</b><div class="small muted"><span dir="ltr">${esc(a.username)}</span> · ${(a.perms || []).map(p => PERM_LABEL[p]).join('، ')}</div></div>${a.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}<button class="btn sm" data-act="edit-admin" data-id="${a.id}">تعديل</button></div>`).join('')}</div>` : '<div class="small muted">مدراء مساعدين بصلاحيات محددة، مثل مشرف تعليمي أو مسؤول تسجيل.</div>'}</section>` : ''}
   <div class="note info">صلاحية <b>إعداد الخطط</b> تسمح للمعلم ينشئ ويعدّل خطط طلابه. صلاحية <b>الخطة التلقائية</b> تسمح له يحوّل الخطة لتلقائية، بشرط إن الطالب نفسه مسموح له من صفحته.</div>
   <section class="card">${ts.length ? `<div class="list">${ts.map(t => { const hs = L('halaqat').filter(h => h.teacherId === t.id); return `<div class="item"><div class="grow"><div class="name">${esc(t.name)}</div><div class="small muted"><span dir="ltr">${esc(t.username)}</span> · ${hs.length ? hs.map(h => esc(h.name)).join('، ') : 'بدون حلقة'}</div></div>
     ${t.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}
@@ -548,12 +555,12 @@ function teachersV() {
 /* ---- admin: halaqat ---- */
 function halaqatV() {
   const hs = L('halaqat').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
-  return `<div class="sec-head"><h1>الحلقات</h1><button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div>
+  return `<div class="sec-head"><h1>الحلقات</h1><div class="row">${can(me(), 'students') ? '<button class="btn" data-act="assign">توزيع الطلاب</button>' : ''}<button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div></div>
   ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; return `<section class="card" style="display:grid;gap:10px">
     <div class="sec-head"><h2>${esc(h.name)}</h2><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
     <dl class="kv"><dt>المعلم</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
     <dt>الجدول</dt><dd>${h.auto ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
-    <button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل لهذه الحلقة</button></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
+    <div class="row"><button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل</button><button class="btn sm" data-act="handover" data-h="${h.id}">ملخص التسليم</button><button class="btn ghost sm" data-act="copy" data-text="https://${location.host}/api/ics/${h.id}.ics">رابط التقويم</button></div></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
 }
 
 /* ---- reports ---- */
@@ -561,17 +568,18 @@ function reportsV(u) {
   const hs = myHalaqat(u);
   if (!hs.length) return `<h1>التقارير</h1><div class="empty">ما فيه حلقات.</div>`;
   const hid = hs.some(h => h.id === ST.halqa) ? ST.halqa : hs[0].id;
-  const studs = studentsOf(hid); const from = ST.range ? addDays(today(), -ST.range) : '';
+  const studs = studentsOf(hid); const from = rangeFrom(ST.range);
   const nSess = L('sessions').filter(s => s.halqaId === hid && !s.cancelled && s.date <= today() && (!from || s.date >= from)).length;
   const rows = studs.map(st => { const a = attStats(st, ST.range); const rs = recsOf(st.id).filter(r => !from || r.date >= from); const rep = rs.filter(r => r.pass === false).length; const sc = rs.filter(r => !r.quick); const avg = sc.length ? (sc.reduce((x, r) => x + (+r.mistakes || 0), 0) / sc.length).toFixed(1) : '—'; return { st, a, n: rs.length, rep, avg, pg: pagesSum(rs) }; });
   const tot = rows.reduce((x, r) => ({ p: x.p + r.a.p + r.a.l, m: x.m + r.a.p + r.a.l + r.a.a + r.a.e, n: x.n + r.n, pn: x.pn + r.pg.new, pr: x.pr + r.pg.review + r.pg.tath }), { p: 0, m: 0, n: 0, pn: 0, pr: 0 });
   const wk = weekStartC(today()); const board = studs.map(st => ({ st, p: ptsOf(st, wk, today()) })).sort((a, b) => b.p - a.p).slice(0, 5);
   return `<div class="sec-head"><h1>التقارير</h1><button class="btn wa" data-act="wa-week" data-h="${hid}">التقرير الأسبوعي لأولياء الأمور</button></div>
   <div class="row"><select id="rp-h" data-change="filter-h" style="flex:0 1 220px">${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>
-  ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}</div>
+  ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}${(SET().terms || []).map(tm => `<button class="btn sm ${ST.range === 'T' + tm.id ? 'pri' : ''}" data-act="range" data-d="T${tm.id}">${esc(tm.name)}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${nSess}</b><span>حصة</span></div><div class="stat"><b>${tot.m ? Math.round(tot.p / tot.m * 100) + '٪' : '—'}</b><span>نسبة حضور الحلقة</span></div><div class="stat"><b>${tot.n}</b><span>تسميع مسجّل</span></div><div class="stat"><b>${fmtPages(tot.pn)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(tot.pr)}</b><span>أوجه مراجعة</span></div></div>
   <section class="card">${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th class="num">حضور</th><th class="num">تأخر</th><th class="num">غياب</th><th class="num">استئذان</th><th class="num">النسبة</th><th class="num">تسميع</th><th class="num">أوجه حفظ</th><th class="num">أوجه مراجعة</th><th class="num">أعاد</th><th class="num">متوسط الأخطاء</th><th class="num">النقاط</th></tr></thead><tbody>
   ${rows.map(r => `<tr class="click" style="cursor:pointer" data-act="open-student" data-id="${r.st.id}"><td>${esc(r.st.name)}</td><td class="num">${r.a.p}</td><td class="num">${r.a.l}</td><td class="num">${r.a.a}</td><td class="num">${r.a.e}</td><td class="num"><span class="chip ${r.a.rate == null ? '' : r.a.rate >= 85 ? 'ok' : r.a.rate >= 65 ? 'warn' : 'bad'}">${r.a.rate == null ? '—' : r.a.rate + '٪'}</span></td><td class="num">${r.n}</td><td class="num">${fmtPages(r.pg.new)}</td><td class="num">${fmtPages(r.pg.review + r.pg.tath)}</td><td class="num">${r.rep}</td><td class="num">${r.avg}</td><td class="num">${ptsOf(r.st, from || '0000', today())}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ما فيه طلاب في هذه الحلقة.</div>'}</section>
+  ${u.role === 'admin' ? teachersReport(typeof ST.range === 'number' ? ST.range : 0) : ''}
   ${board.length ? `<section class="card"><h2>لوحة الشرف هالأسبوع</h2><ol class="board">${board.map(x => `<li><span>${esc(x.st.name)}</span><b class="num">${x.p}</b></li>`).join('')}</ol></section>` : ''}`;
 }
 
@@ -600,8 +608,14 @@ function settingsV() {
       <label class="fld"><span>رسالة التميّز</span><textarea id="sg-tE" name="excellent" rows="3">${esc(st.tpl.excellent)}</textarea></label>
       ${(st.tpls || []).map((t, i) => `<div class="tpl-ed"><div class="row"><input id="tp-n-${i}" name="tpn-${i}" value="${esc(t.name)}" style="flex:0 1 200px" aria-label="اسم الرسالة"><button type="button" class="btn ghost sm" data-act="tpl-del" data-i="${i}">حذف</button></div><textarea id="tp-t-${i}" name="tpt-${i}" rows="2" aria-label="نص الرسالة">${esc(t.text)}</textarea></div>`).join('')}
       <div><button type="button" class="btn sm" data-act="tpl-add">إضافة رسالة جاهزة</button></div></div>
+    <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
+      ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
+    </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div><span class="small muted" style="font-weight:400">تطلع الفصول كفترات في التقارير، وفي تحديد أهداف الطلاب.</span></div>
     <div><button class="btn pri" type="submit">حفظ الإعدادات</button></div>
   </form>
+  ${isFullAdmin(me()) ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
+    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
+  <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
   <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الإجازات</h2><span class="small muted">ما تنشأ فيها حصص، والحصص التلقائية فيها تُلغى</span></div>
     ${hol.length ? `<div class="list">${hol.map((h, i) => `<div class="item"><div class="grow"><b>${esc(h.name)}</b> <span class="small muted">${fmtDateH(h.from)}${h.to !== h.from ? ' إلى ' + fmtDateH(h.to) : ''}</span></div>${h.to < today() ? '<span class="chip">انتهت</span>' : ''}<button class="btn ghost sm" data-act="hol-del" data-from="${h.from}" data-to="${h.to}">حذف</button></div>`).join('')}</div>` : '<div class="empty small">ما فيه إجازات مسجلة.</div>'}
     <form data-form="hol-add" class="fgrid" style="align-items:end"><label class="fld"><span>اسم الإجازة</span><input id="hl-name" name="name" required placeholder="مثال: إجازة عيد الفطر"></label><label class="fld"><span>من</span><input id="hl-from" name="from" type="date" required></label><label class="fld"><span>إلى</span><input id="hl-to" name="to" type="date"></label><button class="btn" type="submit">إضافة إجازة</button></form>
@@ -737,6 +751,7 @@ function goalModal(st) {
     <div class="fgrid"><label class="fld"><span>عدد أوجه الحفظ</span><input name="pages" type="number" min="0.25" step="0.25" value="${g.pages || ''}" required></label>
     <label class="fld"><span>يبدأ الحساب من</span><input name="from" type="date" value="${g.from || today()}"></label>
     <label class="fld"><span>قبل تاريخ (اختياري)</span><input name="by" type="date" value="${g.by || ''}"></label></div>
+    ${(SET().terms || []).length ? `<label class="fld"><span>أو اختر فصل</span><select data-change="goal-term"><option value="">—</option>${SET().terms.map(t => `<option value="${t.from}|${t.to}">${esc(t.name)}</option>`).join('')}</select></label>` : ''}
     <label class="fld"><span>ملاحظة (اختياري)</span><input name="note" maxlength="120" value="${esc(g.note || '')}" placeholder="مثال: ختم جزء عمّ قبل رمضان"></label>
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ الهدف</button>${st.goal ? '<button type="button" class="btn danger" data-act="goal-del" data-id="' + st.id + '">حذف الهدف</button>' : ''}</div></form>`);
 }
@@ -750,6 +765,184 @@ function searchResults(q) {
   const hs = myHalaqat(u).filter(h => (h.name || '').toLowerCase().includes(q)).slice(0, 5);
   return st.map(x => `<div class="item click" data-act="gs-open" data-id="${x.id}"><div class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(halqaName(x.halqaId))}${x.status === 'archived' ? ' · مؤرشف' : ''}</div></div></div>`).join('')
     + hs.map(h => `<div class="item click" data-act="gs-halqa" data-id="${h.id}"><div class="grow"><b>${esc(h.name)}</b><div class="small muted">حلقة</div></div></div>`).join('') || '<div class="small muted" style="padding:8px">ما فيه نتائج.</div>';
+}
+
+/* ---------------- phase 3 ---------------- */
+const PERM_LABEL = { req: 'طلبات التسجيل', students: 'الطلاب', teachers: 'المعلمون', halaqat: 'الحلقات', anns: 'الإعلانات', reports: 'التقارير', settings: 'الإعدادات', logs: 'سجل العمليات' };
+const PRESETS = { 'مشرف تعليمي': ['students', 'anns', 'reports', 'halaqat'], 'مسؤول تسجيل': ['req', 'students'], 'مشرف عام': ['req', 'students', 'teachers', 'halaqat', 'anns', 'reports', 'logs'] };
+const isFullAdmin = u => u.role === 'admin' && !u.perms;
+const can = (u, perm) => u.role === 'admin' && (!u.perms || u.perms.includes(perm));
+const TAB_PERM = { req: 'req', students: 'students', teachers: 'teachers', halaqat: 'halaqat', anns: 'anns', reports: 'reports', settings: 'settings', logs: 'logs' };
+const subName = id => (S.users[id] || {}).name || '';
+function msgsUnread(u) { let seen = 0; try { seen = +localStorage.getItem('irtaq-room-' + u.id) || 0; } catch {} return L('msgs').filter(m => m.at > seen && m.by !== u.id).length; }
+
+/* ---- لوحة المدير ---- */
+function dashV(u) {
+  const t = today(); const hs = L('halaqat'); const studs = L('users').filter(x => x.role === 'student' && x.status === 'active');
+  const todayL = L('sessions').filter(s => s.date === t && !s.cancelled);
+  const wk = weekStartC(t); const recsW = L('recs').filter(r => r.date >= wk);
+  const pend = L('users').filter(x => x.role === 'student' && x.status === 'pending').length;
+  const marked = todayL.flatMap(s => Object.values(s.att || {})); const pres = marked.filter(v => v === 'p' || v === 'l').length;
+  const stuck = studs.filter(st => { const rs = recsOf(st.id).filter(r => r.date >= addDays(t, -14)); return rs.length ? rs.filter(r => r.pass === false).length >= 2 : (st.approvedAt && st.approvedAt < Date.now() - 14 * 864e5); });
+  const issues = todayL.flatMap(s => Object.entries(s.issues || {}).map(([id, x]) => ({ s, id, x })));
+  const pg = pagesSum(recsW);
+  return `<h1>لوحة المدير</h1><div class="muted">${fmtDateH(t)}</div>
+  <div class="stats"><div class="stat"><b>${studs.length}</b><span>طالب نشط</span></div><div class="stat"><b>${hs.length}</b><span>حلقة</span></div><div class="stat"><b>${todayL.length}</b><span>حصص اليوم</span></div><div class="stat"><b>${marked.length ? Math.round(pres / marked.length * 100) + '٪' : '—'}</b><span>حضور اليوم</span></div><div class="stat"><b>${recsW.length}</b><span>تسميع هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div></div>
+  ${pend ? `<div class="note"><b>${pend}</b> طلب تسجيل ينتظر الاعتماد. <button class="btn sm" data-act="tab" data-v="req">اعرضها</button></div>` : ''}
+  ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول الآن:</b> ${issues.map(o => esc(subName(o.id)) + ' (' + esc(halqaName(o.s.halqaId)) + ')').join('، ')}</div>` : ''}
+  <section class="card"><h2>حصص اليوم</h2>${todayL.length ? `<div class="list">${todayL.sort((a, b) => a.time.localeCompare(b.time)).map(s => { const n = studentsOf(s.halqaId).length; const att = Object.values(s.att || {}); const p = att.filter(v => v === 'p' || v === 'l').length; const h = S.halaqat[s.halqaId] || {}; const late = s.teacherAt && s.time ? Math.round((s.teacherAt - lessonTs(s)) / 60000) : null;
+    return `<div class="item click" data-act="open-session" data-id="${s.id}"><div class="grow"><b>${esc(h.name || '')}</b><div class="small muted">${fmtTime(s.time)} · ${esc(subName(s.subId || h.teacherId) || 'بدون معلم')}${s.subId ? ' (احتياط)' : ''}</div></div>
+      ${s.teacherAt ? `<span class="chip ${late > 10 ? 'warn' : 'ok'}">المعلم دخل ${clock(s.teacherAt)}</span>` : (lessonTs(s) < Date.now() ? '<span class="chip bad">المعلم ما فتح الحصة</span>' : '<span class="chip">لم تبدأ</span>')}<span class="chip num">حضور ${p}/${n}</span><span class="chip num">تسميع ${L('recs').filter(r => r.sid === s.id).length}</span></div>`; }).join('')}</div>` : '<div class="empty small">ما فيه حصص اليوم.</div>'}</section>
+  <div class="grid2">${absentAlertsHtml(hs.map(h => h.id)) || '<section class="card"><h2>تنبيه الغياب المتكرر</h2><div class="empty small">ما فيه أحد.</div></section>'}
+  <section class="card"><h2>يحتاجون متابعة</h2><div class="small muted">أعادوا مرتين أو أكثر آخر أسبوعين، أو ما سمّعوا من أسبوعين</div>${stuck.length ? `<div class="list">${stuck.slice(0, 15).map(x => `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(halqaName(x.halqaId))}</div></div></div>`).join('')}</div>` : '<div class="empty small">ما فيه أحد.</div>'}</section></div>
+  ${teachersReport(30)}`;
+}
+function teachersReport(days) {
+  const from = days ? addDays(today(), -days) : '0000';
+  const ts = L('users').filter(x => x.role === 'teacher');
+  if (!ts.length) return '';
+  const rows = ts.map(t => {
+    const own = L('sessions').filter(s => !s.cancelled && s.date >= from && s.date <= today() && lessonTs(s) < Date.now() && ((S.halaqat[s.halqaId] || {}).teacherId === t.id && !s.subId || s.subId === t.id));
+    const opened = own.filter(s => s.teacherAt && s.teacherBy === t.id); const late = opened.filter(s => s.time && s.teacherAt - lessonTs(s) > 10 * 60000).length;
+    const recs = L('recs').filter(r => r.by === t.id && r.date >= from);
+    const studs = L('users').filter(x => x.role === 'student' && x.status === 'active' && (S.halaqat[x.halqaId] || {}).teacherId === t.id);
+    const pg = pagesSum(recs);
+    return { t, n: own.length, op: opened.length, late, recs: recs.length, studs: studs.length, pg };
+  });
+  return `<section class="card"><h2>تقرير المعلمين${days ? ' · آخر ' + days + ' يوم' : ''}</h2><div class="tbl-wrap"><table><thead><tr><th>المعلم</th><th class="num">طلابه</th><th class="num">حصص مرّت</th><th class="num">فتحها</th><th class="num">تأخر +10د</th><th class="num">تسميع سجّله</th><th class="num">أوجه حفظ</th><th class="num">أوجه مراجعة</th></tr></thead><tbody>
+  ${rows.map(r => `<tr><td>${esc(r.t.name)}${r.t.status === 'disabled' ? ' <span class="chip bad">موقوف</span>' : ''}</td><td class="num">${r.studs}</td><td class="num">${r.n}</td><td class="num"><span class="chip ${r.n && r.op < r.n ? 'warn' : 'ok'}">${r.op}</span></td><td class="num">${r.late}</td><td class="num">${r.recs}</td><td class="num">${fmtPages(r.pg.new)}</td><td class="num">${fmtPages(r.pg.review + r.pg.tath)}</td></tr>`).join('')}</tbody></table></div>
+  <div class="small muted">«فتحها» يعني المعلم دخل صفحة الحصة يومها من حسابه، وهذا حضوره.</div></section>`;
+}
+
+/* ---- غرفة المعلمين ---- */
+function roomV(u) {
+  const ms = L('msgs').sort((a, b) => a.at - b.at);
+  try { localStorage.setItem('irtaq-room-' + u.id, String(Date.now())); } catch {}
+  return `<h1>غرفة المعلمين</h1><div class="small muted">للمعلمين والإدارة فقط، الطلاب ما يشوفونها.</div>
+  <section class="card room">${ms.length ? ms.map(m => `<div class="msg ${m.by === u.id ? 'mine' : ''}"><div class="small muted">${esc(m.byName)} · ${fmtDate(isoDate(new Date(m.at)))} ${clock(m.at)}${m.by === u.id || u.role === 'admin' ? ` <button class="linkbtn" data-act="msg-del" data-id="${m.id}">حذف</button>` : ''}</div><div class="ann-body">${esc(m.text)}</div></div>`).join('') : '<div class="empty small">ما فيه رسائل بعد.</div>'}</section>
+  <form class="card" data-form="msg" style="gap:8px"><textarea id="rm-text" name="text" rows="2" maxlength="1000" placeholder="اكتب رسالة…" required></textarea><div><button class="btn pri" type="submit">إرسال</button></div></form>`;
+}
+
+/* ---- سجل العمليات ---- */
+function logsV() {
+  if (!ST.logs && !ST.logsLoading) { ST.logsLoading = true; act('log.list', {}).then(r => { ST.logsLoading = false; ST.logs = (r && r.rows) || []; render(); }); }
+  const q = (ST.logQ || '').trim();
+  const rows = (ST.logs || []).filter(x => !q || x.text.includes(q) || (x.by || '').includes(q));
+  return `<div class="sec-head"><h1>سجل العمليات</h1><button class="btn sm" data-act="logs-refresh">تحديث</button></div>
+  <input id="lg-q" data-input="logq" placeholder="ابحث في السجل" value="${esc(q)}">
+  <section class="card">${!ST.logs ? '<div class="row"><div class="spin"></div></div>' : rows.length ? `<div class="list">${rows.map(x => `<div class="item"><div class="grow">${esc(x.text)}<div class="small muted">${esc(x.by || '—')} · ${fmtDate(isoDate(new Date(x.at)))} ${clock(x.at)}</div></div></div>`).join('')}</div>` : '<div class="empty small">ما فيه عمليات.</div>'}</section>`;
+}
+
+/* ---- تقويم الحصص ---- */
+function calendarHtml(ids) {
+  const base = ST.calMonth || today().slice(0, 7); const [y, m] = base.split('-').map(Number);
+  const first = new Date(y, m - 1, 1); const days = new Date(y, m, 0).getDate(); const lead = first.getDay();
+  const ss = L('sessions').filter(s => ids.includes(s.halqaId) && s.date.startsWith(base));
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<div class="cal-c empty"></div>');
+  for (let d = 1; d <= days; d++) {
+    const ds = base + '-' + pad(d); const dl = ss.filter(s => s.date === ds).sort((a, b) => a.time.localeCompare(b.time)); const hol = (SET().holidays || []).find(h => ds >= h.from && ds <= h.to);
+    cells.push(`<div class="cal-c ${ds === today() ? 'today' : ''} ${hol ? 'hol' : ''}"><div class="cal-d"><b>${d}</b><span>${hijri(ds).split(' ')[0] || ''}</span></div>${hol ? `<div class="cal-h">${esc(hol.name)}</div>` : ''}${dl.map(s => `<button class="cal-e ${s.cancelled ? 'x' : ''}" data-act="open-session" data-id="${s.id}">${fmtTime(s.time)} ${ids.length > 1 ? esc(halqaName(s.halqaId)) : ''}</button>`).join('')}</div>`);
+  }
+  const prev = isoDate(new Date(y, m - 2, 1)).slice(0, 7), next = isoDate(new Date(y, m, 1)).slice(0, 7);
+  return `<section class="card" style="display:grid;gap:10px"><div class="sec-head"><button class="btn sm" data-act="cal-m" data-v="${prev}">→ السابق</button><h2>${new Intl.DateTimeFormat('ar', { month: 'long', year: 'numeric' }).format(first)}</h2><button class="btn sm" data-act="cal-m" data-v="${next}">التالي ←</button></div>
+  <div class="tbl-wrap"><div class="cal">${DAYN.map(d => `<div class="cal-hd">${d}</div>`).join('')}${cells.join('')}</div></div></section>`;
+}
+
+/* ---- ملخص تسليم الحلقة ---- */
+function handoverText(hid) {
+  const h = S.halaqat[hid] || {}; const t = today();
+  const lines = [`ملخص حلقة ${h.name} · ${fmtDate(t)}`, `أيام الدوام: ${halqaDays(hid).map(d => DAYN[d]).join('، ')} · الوقت: ${fmtTime(h.time) || '—'}`, `الرابط: ${h.link || '—'}`, ''];
+  studentsOf(hid).forEach((st, i) => {
+    const items = planItems(st); const rs = recsOf(st.id).slice(0, 3); const a = attStats(st, 30);
+    lines.push(`${i + 1}. ${st.name}${st.parentPhone ? ' · ولي الأمر: ' + st.parentPhone : ''}`);
+    lines.push(`   الخطة: ${isAuto(st) ? 'تلقائية' : 'يدوية'}${isPaused(st) ? ' (موقوفة)' : ''} · المطلوب: ${items.length ? items.map(itemLabel).join('، ') : 'ما حُدّد'}`);
+    lines.push(`   الحضور آخر 30 يوم: ${a.rate == null ? '—' : a.rate + '٪'} · آخر تسميع: ${rs.length ? rs.map(r => `${fmtDate(r.date)} ${SN[r.surah - 1]} ${r.from}-${r.to} (${r.grade})`).join(' | ') : '—'}`);
+    const g = goalProgress(st); if (g) lines.push(`   الهدف: ${fmtPages(g.done)} من ${fmtPages(g.pages)} وجه`);
+  });
+  return lines.join('\n');
+}
+
+/* ---- الدليل ---- */
+function helpV(u) {
+  const host = location.host; const hid = u.halqaId || (myHalaqat(u)[0] || {}).id;
+  const sec = (t, body) => `<section class="card help"><h2>${t}</h2>${body}</section>`;
+  const ol = arr => `<ol>${arr.map(x => `<li>${x}</li>`).join('')}</ol>`;
+  const install = sec('ثبّت الموقع كتطبيق', `${INSTALL_EVT ? '<button class="btn pri" data-act="install">تثبيت الآن</button>' : ''}${ol(['<b>آيفون:</b> افتح الموقع في Safari، اضغط زر المشاركة، ثم «إضافة إلى الشاشة الرئيسية».', '<b>أندرويد:</b> من قائمة Chrome (⋮) اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».'])}`);
+  const notif = S.push ? sec('الإشعارات', `${ol(['اضغط «الإشعارات» فوق، ووافق على السماح.', 'في الآيفون: لازم تثبت الموقع على الشاشة الرئيسية أول، وبعدها تفعّل الإشعارات من داخله.', 'توصلك: تذكير قبل الحصة، و«دورك قرب» و«دورك الآن» في الطابور، والإعلانات.'])}`) : '';
+  const cal = hid ? sec('مواعيد الحلقة في تقويم جوالك', `<p>يضيف حصص الحلقة لتقويم الجوال مع تنبيه قبلها بربع ساعة، ويتحدث لحاله.</p><div class="row"><a class="btn" href="webcal://${host}/api/ics/${hid}.ics">إضافة للتقويم</a><button class="btn ghost" data-act="copy" data-text="https://${host}/api/ics/${hid}.ics">نسخ الرابط</button></div>`) : '';
+  if (u.role === 'student') return `<h1>الدليل</h1>${sec('صفحتك', ol(['قبل الحصة يطلع لك عدّاد، وإذا بدأت اضغط «ادخل الحصة».', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع» وتشوف ترتيبك.', 'إذا ما قدرت تدخل اضغط «عندي مشكلة في الدخول» وتوصل للمعلم.', 'في «مهام اليوم» علّم على اللي خلصته في البيت واكتب كم وجه قرأت، واضغط حفظ.', 'ولي الأمر يدخل بنفس الحساب ويشوف الحضور والتسميع والإعلانات.']))}${cal}${install}${notif}`;
+  const teacher = sec('للمعلم', ol(['الحصص تنشأ لحالها إذا كانت الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'في التحضير: «الكل حاضر» ثم عدّل الغائبين، أو «من دخل» يحضّر اللي ضغطوا دخول.', 'الطابور: الطلاب يدخلونه بأنفسهم، أو أضفهم. «التالي» ينقل للطالب اللي بعده ويوصله إشعار.', 'لوحة التسجيل: اضغط «+ خطأ» و«+ تنبيه» وأنت تسمع، والتقدير يطلع لحاله. «حفظ والتالي» يوفر عليك.', '«المطلوب اليوم» يعرض خطة كل طالب وهل راجع في البيت.', 'من صفحة الطالب: الخطة والهدف ورسائل واتساب لولي الأمر.']));
+  const admin = u.role === 'admin' ? sec('للمدير', ol(['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين وحدد صلاحياتهم، وأضف مشرفين إداريين بصلاحيات محددة من صفحة المعلمين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإجازات والفصول والنقاط والرسائل الجاهزة من «الإعدادات».', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.'])) +
+    (isFullAdmin(u) ? sec('Google Sheets', `<p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع. الجدول يتحدث لحاله كل ساعة تقريبًا.</p>`) +
+      sec('الرابط المختصر', ol(['من Vercel افتح المشروع ← Settings ← Domains.', 'اكتب اسم مثل irtaq.vercel.app واضغط Add (إذا كان متاح)، أو اربط دومين اشتريته.'])) +
+      sec('تذكير الحصة والنسخ الاحتياطي', ol(['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على الرابط: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY (أرسلتها لك في المحادثة).'])) : '') : '';
+  return `<h1>الدليل</h1>${admin}${teacher}${cal}${install}${notif}`;
+}
+
+/* ---- مودالات المرحلة 3 ---- */
+function adminModal(a) {
+  const perms = a ? a.perms || [] : PRESETS['مشرف تعليمي'];
+  openModal(`${dlgHead(a ? 'تعديل مشرف إداري' : 'مشرف إداري جديد')}<form data-form="admin" data-id="${a ? a.id : ''}">
+    <label class="fld"><span>الاسم</span><input name="name" value="${esc(a ? a.name : '')}" required></label>
+    <div class="fgrid"><label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" autocapitalize="none" value="${esc(a ? a.username : '')}" required pattern="[A-Za-z0-9_.]{3,30}"></label>
+    <label class="fld"><span>${a ? 'كلمة مرور جديدة (اتركها فاضية)' : 'كلمة المرور'}</span><input name="password" type="password" ${a ? '' : 'required minlength="6"'} autocomplete="new-password"></label></div>
+    <div class="fld"><span>قالب جاهز</span><div class="row">${Object.keys(PRESETS).map(k => `<button type="button" class="btn sm" data-act="preset" data-k="${k}">${k}</button>`).join('')}</div></div>
+    <div class="fld"><span>الصلاحيات</span><div class="days">${Object.entries(PERM_LABEL).map(([k, l]) => `<label><input type="checkbox" name="perm" value="${k}" ${perms.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div><span class="small muted" style="font-weight:400">الحصص ولوحة المدير متاحة للكل. إضافة المدراء والنسخ الاحتياطي للمدير الكامل فقط.</span></div>
+    ${a ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${a.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${a.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${a ? `<button type="button" class="btn danger" data-act="del-user" data-id="${a.id}">حذف</button>` : ''}</div></form>`);
+}
+function assignModal() {
+  const hs = L('halaqat').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const st = L('users').filter(x => x.role === 'student' && x.status === 'active').sort((a, b) => (halqaName(a.halqaId) + a.name).localeCompare(halqaName(b.halqaId) + b.name, 'ar'));
+  openModal(`${dlgHead('توزيع الطلاب على الحلقات')}<form data-form="assign"><div class="small muted">غيّر حلقة أي طالب، وبعدها احفظ مرة وحدة. كل حلقة لها معلمها.</div>
+    <div class="tbl-wrap chk-list"><table><thead><tr><th>الطالب</th><th>الحلقة</th></tr></thead><tbody>${st.map(x => `<tr><td>${esc(x.name)}</td><td><select name="h-${x.id}">${hs.map(h => `<option value="${h.id}" ${h.id === x.halqaId ? 'selected' : ''}>${esc(h.name)}${h.teacherId ? ' · ' + esc(subName(h.teacherId)) : ''}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ التوزيع</button></div></form>`);
+}
+
+/* ---- صفحة الطالب بالإنجليزي (لأولياء الأمور غير الناطقين بالعربية) ---- */
+let LANG = 'ar'; try { LANG = localStorage.getItem('irtaq-lang') || 'ar'; } catch {}
+const EN = {
+  type: { new: 'New memorization', review: 'Review', tath: 'Consolidation' },
+  att: { p: 'Present', l: 'Late', a: 'Absent', e: 'Excused' },
+  grade: { 'ممتاز': 'Excellent', 'جيد جدًا': 'Very good', 'جيد': 'Good', 'يعاد': 'Repeat' },
+  day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+};
+const fmtDateEn = ds => { const d = new Date(ds + 'T00:00'); return EN.day[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
+const fmtTimeEn = t => { if (!t) return ''; let [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return h + ':' + pad(m) + ' ' + ap; };
+function cdTextEn(ts) {
+  const d = ts - Date.now();
+  if (d > 0) { const s = Math.floor(d / 1000); const dd = Math.floor(s / 86400); const hh = Math.floor(s % 86400 / 3600); const mm = Math.floor(s % 3600 / 60); const ss = s % 60; return 'Starts in ' + (dd ? dd + 'd ' : '') + (hh ? hh + ':' + pad(mm) + ':' + pad(ss) : mm + ':' + pad(ss)); }
+  if (d > -3 * 3600000) return 'Started ' + Math.max(1, Math.round(-d / 60000)) + ' min ago';
+  return '';
+}
+const segEn = (surah, from, to) => `Surah ${surah} <span dir="rtl">(${esc(SN[surah - 1])})</span>, ayah ${from === to ? from : from + '–' + to}`;
+function homeEn(u) {
+  const t = today(); const hs = S.halaqat[u.halqaId] || {};
+  const sess = L('sessions').filter(s => s.halqaId === u.halqaId);
+  const next = sess.filter(s => s.date >= t && !s.cancelled).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  const a = attStats(u, 30); const rs = recsOf(u.id); const pg = pagesSum(rs.filter(r => r.date >= addDays(t, -7)));
+  const items = planItems(u); const B = S.board || {}; const vd = verseOfDay(t);
+  const unread = L('anns').filter(x => (!x.halqaId || x.halqaId === u.halqaId) && !(x.reads || []).some(r => r.uid === u.id));
+  let card = '<div class="empty">No upcoming class right now.</div>';
+  if (next) {
+    const link = effLink(next); const j = S.joins[next.id + '_' + u.id]; const isToday = next.date === t;
+    const inQ = (next.queue || []).includes(u.id); const pos = (next.queue || []).indexOf(u.id) + 1; const isCur = next.current === u.id; const issue = (next.issues || {})[u.id];
+    card = `<div class="join-card"><div class="grow"><div class="small muted">${isToday ? "Today's class" : 'Next class'}</div><h2>${fmtDateEn(next.date)} · ${fmtTimeEn(next.time)}</h2><div class="cd" data-cd="${lessonTs(next)}" data-en="1">${cdTextEn(lessonTs(next))}</div>${(next.att || {})[u.id] ? `<span class="chip ${ATTC[next.att[u.id]]}">${EN.att[next.att[u.id]]}</span>` : ''}</div>
+      <div class="join-actions">${link ? `<a class="btn pri big" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${next.id}">Join class</a>` : '<span class="chip warn">Link will be posted before class</span>'}${j && !j.left && isToday ? `<button class="btn" data-act="leave" data-id="${next.id}">I left the class</button>` : ''}</div></div>
+    ${isToday ? `<section class="card" style="display:grid;gap:10px"><h2>Recitation queue</h2>${isCur ? '<div class="now"><div class="name">It is your turn now</div></div>' : inQ ? `<div class="row"><span>${pos === 1 ? 'You are next.' : 'Your position: ' + pos}</span><button class="btn sm" data-act="ready" data-id="${next.id}" data-v="0">Leave queue</button></div>` : `<button class="btn pri" data-act="ready" data-id="${next.id}" data-v="1">Ready to recite</button>`}
+      <div class="row">${issue ? `<span class="chip warn">Your teacher was notified</span><button class="btn ghost sm" data-act="issue-cancel" data-id="${next.id}">Solved</button>` : `<button class="btn ghost sm" data-act="issue-open" data-id="${next.id}">I can't join the class</button>`}</div></section>` : ''}`;
+  }
+  return `<div><h1>Assalamu alaikum, ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${esc(hs.name || '')} · ${fmtDateEn(t)}</div></div>
+  <div class="verse"><span class="small muted">Verse of the day</span><p dir="rtl">﴿${vd[0]}﴾</p><span class="small muted" dir="rtl">${vd[1]}</span></div>
+  ${unread.map(x => `<div class="ann-new"><div class="grow"><div class="small muted">Announcement</div><b dir="auto">${esc(x.title)}</b>${x.body ? `<div class="ann-body" dir="auto">${esc(x.body)}</div>` : ''}</div><button class="btn pri sm" data-act="ann-read" data-id="${x.id}">Mark as read</button></div>`).join('')}
+  ${card}
+  <div class="grid2">
+    <section class="card" style="display:grid;gap:10px"><h2>Assigned to you</h2>${isPaused(u) ? '<div class="note">The plan is paused.</div>' : items.length ? items.map(x => `<div class="plan-row ${x.retry ? 'retry' : ''}"><span class="lbl">${x.retry ? 'Repeat · ' : ''}${EN.type[x.type]}</span><div>${segEn(x.surah, x.from, x.to)}</div></div>`).join('') : '<div class="small muted">Nothing assigned yet.</div>'}
+      ${(g => g ? `<div class="goal"><b>Goal: ${fmtPages(g.pages)} pages</b><div class="bar-track"><div class="bar-fill" style="width:${g.pct}%"></div></div><span class="small muted">${fmtPages(g.done)} / ${fmtPages(g.pages)}</span></div>` : '')(goalProgress(u))}</section>
+    <section class="card" style="display:grid;gap:10px"><h2>Progress</h2><div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '%'}</b><span>Attendance (30 days)</span></div><div class="stat"><b>${a.a}</b><span>Absences</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>Pages memorized this week</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>Pages reviewed this week</span></div><div class="stat"><b>${B.pts ?? 0}</b><span>Points this week${B.rank ? ' · rank ' + B.rank : ''}</span></div><div class="stat"><b>${attendStreak(u)}</b><span>Classes in a row</span></div></div></section>
+  </div>
+  <section class="card"><h2>Recitation record</h2>${rs.length ? `<div class="tbl-wrap"><table dir="ltr"><thead><tr><th>Date</th><th>Type</th><th>Portion</th><th class="num">Mistakes</th><th>Grade</th><th>Note</th></tr></thead><tbody>${rs.slice(0, 40).map(r => `<tr><td>${fmtDateEn(r.date)}</td><td>${EN.type[r.type]}</td><td>${segEn(r.surah, r.from, r.to)}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${EN.grade[r.grade] || r.grade}</span></td><td dir="auto" style="white-space:normal">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">No recitations yet.</div>'}</section>`;
 }
 
 /* ---------------- modals ---------------- */
@@ -772,6 +965,7 @@ function sessionModal(s) {
     <div class="fgrid"><label class="fld"><span>التاريخ</span><input type="date" name="date" value="${s ? s.date : today()}" required></label><label class="fld"><span>الوقت</span><input type="time" name="time" value="${s ? s.time : lastTime}" required></label></div>
     <label class="fld"><span>رابط الحصة</span><input name="link" type="url" dir="ltr" value="${esc(s ? s.link : '')}" placeholder="اتركه فاضي لاستخدام رابط الحلقة الثابت"></label>
     <label class="fld"><span>ملاحظة (اختياري)</span><input name="note" value="${esc(s ? s.note : '')}" placeholder="مثال: مراجعة جزء عمّ"></label>
+    ${u.role === 'admin' ? `<label class="fld"><span>معلم احتياط (اختياري)</span><select name="subId"><option value="">بدون، المعلم الأساسي</option>${L('users').filter(x => x.role === 'teacher' && x.status === 'active').map(x => `<option value="${x.id}" ${s && s.subId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">${isNew ? 'إنشاء الحصة' : 'حفظ'}</button>${s ? `<button type="button" class="btn danger" data-act="del-session" data-id="${s.id}">${s.auto ? 'إلغاء الحصة' : 'حذف الحصة'}</button>` : ''}</div>
   </form>`);
 }
@@ -948,6 +1142,21 @@ const curSession = () => ({ ...S.sessions[ST.sid], id: ST.sid });
 const setQueue = (s, queue, current) => act('lesson.queue', current === undefined ? { id: s.id, queue } : { id: s.id, queue, current });
 const ACT = {
   'tab': el => go(el.dataset.v),
+  'lang': () => { LANG = LANG === 'en' ? 'ar' : 'en'; try { localStorage.setItem('irtaq-lang', LANG); } catch {} render(); },
+  'push': () => enablePush(),
+  'install': async () => { if (!INSTALL_EVT) return toast('من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية»'); INSTALL_EVT.prompt(); try { await INSTALL_EVT.userChoice; } catch {} INSTALL_EVT = null; render(); },
+  'cal': () => { ST.cal = !ST.cal; render(); },
+  'cal-m': el => { ST.calMonth = el.dataset.v; render(); },
+  'add-admin': () => adminModal(null),
+  'edit-admin': el => adminModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
+  'preset': el => { const ps = PRESETS[el.dataset.k] || []; document.querySelectorAll('#modal input[name=perm]').forEach(c => c.checked = ps.includes(c.value)); },
+  'assign': () => assignModal(),
+  'handover': el => { const txt = handoverText(el.dataset.h); openModal(`${dlgHead('ملخص تسليم الحلقة')}<div class="small muted">انسخه وأرسله للمعلم الجديد.</div><textarea id="ho-t" rows="14" readonly dir="rtl">${esc(txt)}</textarea><div class="dlg-foot"><button class="btn pri" data-act="copy" data-text="${esc(txt)}">نسخ</button></div>`); },
+  'msg-del': el => act('msg.delete', { id: el.dataset.id }),
+  'logs-refresh': () => { ST.logs = null; render(); },
+  'export-key': () => confirmBox('تولّد مفتاح تصدير جديد؟ الروابط القديمة في Google Sheets تتوقف.', 'توليد', () => act('exportKey.rotate', {}, 'تم توليد المفتاح')),
+  'term-add': () => saveSettingsWith(d => d.terms.push({ id: 'tm' + Date.now().toString(36), name: 'فصل جديد', from: today(), to: addDays(today(), 90) }), 'أُضيف فصل، عدّل تواريخه واحفظ'),
+  'term-del': el => saveSettingsWith(d => d.terms.splice(+el.dataset.i, 1), 'حُذف الفصل'),
   'theme': () => { THEME = THEME === '' ? 'dark' : THEME === 'dark' ? 'light' : ''; applyTheme(); render(); },
   'search': () => searchModal(),
   'gs-open': el => { closeModal(); go('student', { uid: el.dataset.id }); },
@@ -977,7 +1186,7 @@ const ACT = {
   'confirm-yes': async () => { const f = CONFIRM; CONFIRM = null; closeModal(); if (f) await f(); },
   'my-pw': () => pwModal(),
   'filter-h': el => { ST.halqa = el.dataset.h; render(); },
-  'range': el => { ST.range = +el.dataset.d; render(); },
+  'range': el => { ST.range = el.dataset.d[0] === 'T' ? el.dataset.d : +el.dataset.d; render(); },
   'open-session': el => go('session', { sid: el.dataset.id }),
   'open-student': el => go('student', { uid: el.dataset.id }),
   'new-session': () => sessionModal(null),
@@ -1049,11 +1258,13 @@ const CHG = {
   'student-auto': el => { delete el.dataset.dirty; act('user.flag', { id: el.dataset.id, k: 'autoAllowed', v: el.checked }, el.checked ? 'سُمح بالخطة التلقائية' : 'أُلغي السماح بالخطة التلقائية'); },
   't-perm': el => { delete el.dataset.dirty; act('user.flag', { id: el.dataset.id, k: el.dataset.k, v: el.checked }, 'تم تحديث الصلاحية'); },
   'ptpl-fill': el => { const t = (SET().planTpls || []).find(x => x.id === el.value); if (!t) return; const f = el.closest('form'); [['newAmt', t.newAmt], ['revAmt', t.revAmt], ['tathAmt', t.tathAmt]].forEach(([n, v]) => { const sel = f.querySelector(`[name=${n}]`); if (!sel) return; if (![...sel.options].some(o => +o.value === +v)) sel.add(new Option(fmtAmt(v), v)); sel.value = String(v); [...sel.options].forEach(o => { if (+o.value === +v) o.selected = true; }); }); },
+  'goal-term': el => { if (!el.value) return; const [a, b] = el.value.split('|'); const f = el.closest('form'); f.querySelector('[name=from]').value = a; f.querySelector('[name=by]').value = b; },
   'plan-mode': el => { const auto = el.value === 'auto' && el.checked; $('#pm-auto').hidden = !auto; $('#pm-manual').hidden = auto; },
 };
 document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (el && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
 let searchT = 0;
 const INP = {
+  'logq': el => { ST.logQ = el.value; clearTimeout(searchT); searchT = setTimeout(render, 250); },
   'gsearch': el => { const r = document.getElementById('gs-res'); if (r) r.innerHTML = searchResults(el.value); },
   'search': el => { ST.q = el.value; clearTimeout(searchT); searchT = setTimeout(render, 200); },
 };
@@ -1074,7 +1285,8 @@ function settingsData(f) {
   const tpls = (st.tpls || []).map((t, i) => ({ id: t.id, name: (d.get('tpn-' + i) ?? t.name), text: (d.get('tpt-' + i) ?? t.text) }));
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
-  return { center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3,
+  const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
+  return { center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3,
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {
@@ -1097,6 +1309,7 @@ const FORMS = {
   async session(f, d) {
     const id = f.dataset.id;
     const data = { halqaId: d.get('halqaId'), date: d.get('date'), time: d.get('time'), link: (d.get('link') || '').trim(), note: (d.get('note') || '').trim() };
+    if (d.has('subId')) data.subId = d.get('subId') || '';
     const r = await act('lesson.save', { id, data }, id ? 'حُفظت الحصة' : 'أُنشئت الحصة');
     if (r) { closeModal(); if (!id && r.id) go('session', { sid: r.id }); }
   },
@@ -1163,6 +1376,16 @@ const FORMS = {
   async goal(f, d) {
     if (await act('goal.save', { id: f.dataset.id, goal: { pages: +d.get('pages'), from: d.get('from'), by: d.get('by'), note: d.get('note') } }, 'حُفظ الهدف')) closeModal();
   },
+  async admin(f, d) {
+    const r = await act('admin.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), perms: d.getAll('perm'), status: d.get('status') } }, 'حُفظ');
+    if (r) closeModal();
+  },
+  async assign(f, d) {
+    const map = {}; for (const [k, v] of d.entries()) if (k.startsWith('h-')) { const id = k.slice(2); if ((S.users[id] || {}).halqaId !== v) map[id] = v; }
+    if (!Object.keys(map).length) return closeModal();
+    if (await act('students.assign', { map }, r => 'نُقل ' + r.n + ' طالب')) closeModal();
+  },
+  async msg(f, d) { if (await act('msg.send', { text: d.get('text') })) { f.reset(); clean(); } },
   async mypw(f, d) { if (await act('me.password', { old: d.get('old'), pw: d.get('pw') }, 'تم تغيير كلمة المرور')) closeModal(); },
 };
 document.addEventListener('submit', e => {
@@ -1176,6 +1399,23 @@ window.addEventListener('hashchange', () => render());
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
 function applyTheme() { if (THEME) document.documentElement.setAttribute('data-theme', THEME); else document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('irtaq-theme', THEME); } catch {} }
 applyTheme();
+/* ---------------- PWA: تثبيت، بدون إنترنت، إشعارات ---------------- */
+let INSTALL_EVT = null, PUSH_ON = false, SW_REG = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL_EVT = e; scheduleRender(); });
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(async reg => { SW_REG = reg; try { const sub = reg.pushManager && await reg.pushManager.getSubscription(); PUSH_ON = !!sub; scheduleRender(); } catch {} }).catch(() => {});
+}
+const b64u = s => { const p = '='.repeat((4 - s.length % 4) % 4); const raw = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...raw].map(c => c.charCodeAt(0))); };
+async function enablePush() {
+  try {
+    if (!SW_REG) return toast('المتصفح ما يدعم الإشعارات. في الآيفون ثبّت الموقع على الشاشة الرئيسية أول.');
+    if (PUSH_ON) { const sub = await SW_REG.pushManager.getSubscription(); if (sub) { await api('/api/push', { off: true, endpoint: sub.endpoint }); await sub.unsubscribe(); } PUSH_ON = false; render(); return toast('أُوقفت الإشعارات على هذا الجهاز'); }
+    const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('ما تم السماح بالإشعارات من المتصفح');
+    const { key } = await api('/api/push'); if (!key) return toast('الإشعارات غير مفعّلة في الموقع بعد');
+    const sub = await SW_REG.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(key) });
+    await api('/api/push', { sub: sub.toJSON(), test: true }); PUSH_ON = true; render(); toast('تم تفعيل الإشعارات');
+  } catch (e) { toast('تعذّر تفعيل الإشعارات: ' + (e.message || '')); }
+}
 /* ---------------- boot ---------------- */
 load();
 loadPages();
@@ -1191,7 +1431,7 @@ async function pollLoop() {
 }
 setTimeout(pollLoop, 8000);
 setInterval(() => {
-  document.querySelectorAll('[data-cd]').forEach(el => { el.textContent = cdText(+el.dataset.cd); });
+  document.querySelectorAll('[data-cd]').forEach(el => { el.textContent = el.dataset.en ? cdTextEn(+el.dataset.cd) : cdText(+el.dataset.cd); });
   if (ST.rec && ST.rec.run) document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtDur(recSecs()); });
 }, 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ST.meId) load(); });

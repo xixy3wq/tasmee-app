@@ -9,13 +9,13 @@ export const dynamic = "force-dynamic";
 const userOut = (u: any) => ({
   role: u.role, status: u.status, name: u.name, username: u.username, halqaId: u.halqaId, reqHalqa: u.reqHalqaId || "",
   canPlan: u.canPlan, canAuto: u.canAuto, autoAllowed: u.autoAllowed, plan: u.plan || null,
-  goal: u.goal || null, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, ...((u.info as object) || {}),
+  goal: u.goal || null, perms: u.role === "admin" ? (u.perms ?? null) : undefined, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, ...((u.info as object) || {}),
 });
 const lessonOut = (l: any) => ({
   halqaId: l.halqaId, date: l.date, time: l.time, link: l.link, note: l.note, att: l.att || {}, queue: l.queue || [], current: l.currentId || null,
-  auto: !!l.autoKey, cancelled: !!l.cancelled, issues: l.issues || {}, ...(l.qnames ? { qnames: l.qnames, cname: l.cname } : {}),
+  auto: !!l.autoKey, cancelled: !!l.cancelled, issues: l.issues || {}, subId: l.subId || "", teacherAt: l.teacherAt ? +l.teacherAt : null, teacherBy: l.teacherBy || "", ...(l.qnames ? { qnames: l.qnames, cname: l.cname } : {}),
 });
-const recOut = (r: any) => ({ uid: r.userId, sid: r.lessonId, halqaId: r.halqaId, date: r.date, type: r.type, surah: r.surah, from: r.fromA, to: r.toA, mistakes: r.mistakes, alerts: r.alerts, grade: r.grade, pass: r.pass, note: r.note, secs: r.secs ?? null, full: !!r.full, quick: !!r.quick, at: +r.at });
+const recOut = (r: any) => ({ uid: r.userId, sid: r.lessonId, halqaId: r.halqaId, date: r.date, type: r.type, surah: r.surah, from: r.fromA, to: r.toA, mistakes: r.mistakes, alerts: r.alerts, grade: r.grade, pass: r.pass, note: r.note, by: r.byId || "", secs: r.secs ?? null, full: !!r.full, quick: !!r.quick, at: +r.at });
 const map = <T,>(rows: any[], f: (r: any) => T) => Object.fromEntries(rows.map((r) => [r.id, f(r)]));
 
 // إنشاء حصص الأيام القادمة للحلقات ذات الجدول الثابت (مرة كل 10 دقائق لكل نسخة خادم)
@@ -54,10 +54,16 @@ export async function GET() {
   } else if (me.role === "teacher") {
     halaqat = await prisma.halqa.findMany({ where: { teacherId: me.id } });
     await ensureLessons(halaqat, settings);
+    const own = halaqat.map((h) => h.id);
+    // حصص الاحتياط: يشوف الحصة وطلاب حلقتها فقط
+    const subLessons = await prisma.lesson.findMany({ where: { subId: me.id, date: { gte: localDate(-1) } } });
+    const subH = [...new Set(subLessons.map((l) => l.halqaId))].filter((x) => !own.includes(x));
+    if (subH.length) halaqat = [...halaqat, ...(await prisma.halqa.findMany({ where: { id: { in: subH } } })).map((h) => ({ ...h, sub: true }))];
     const hids = halaqat.map((h) => h.id);
     const studs = await prisma.user.findMany({ where: { role: "student", halqaId: { in: hids }, status: { not: "pending" } } });
-    users = [me, ...studs];
-    lessons = await prisma.lesson.findMany({ where: { halqaId: { in: hids } } });
+    const teachersOfSub = await prisma.user.findMany({ where: { id: { in: halaqat.map((h) => h.teacherId).filter((x): x is string => !!x && x !== me.id) } } });
+    users = [me, ...studs, ...teachersOfSub.map((t) => ({ ...t, info: {}, plan: null }))];
+    lessons = [...(await prisma.lesson.findMany({ where: { halqaId: { in: own } } })), ...subLessons.filter((l) => !own.includes(l.halqaId))];
     recs = await prisma.rec.findMany({ where: { userId: { in: studs.map((s) => s.id) } } });
     joins = await prisma.join.findMany({ where: { lessonId: { in: lessons.map((l) => l.id) } } });
   } else {
@@ -104,15 +110,23 @@ export async function GET() {
   const wUsers = me.role === "student" ? [me.id] : users.filter((x) => x.role === "student").map((x) => x.id);
   const wirds = await prisma.wird.findMany({ where: { userId: { in: wUsers }, date: { gte: localDate(-14) } } });
 
+  const staff = me.role !== "student";
+  const msgs = staff ? await prisma.msg.findMany({ orderBy: { at: "desc" }, take: 100 }) : [];
+  const full = me.role === "admin" && !me.perms;
+  const backups = full ? await prisma.backup.findMany({ orderBy: { at: "desc" }, select: { id: true, at: true, size: true } }) : [];
+  const { exportKey, ...pubSettings } = settings as any;
   const out = {
     me: me.id,
     today: localDate(),
     users: map(users, userOut),
-    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto })),
+    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub })),
     sessions: map(lessons, lessonOut),
     recs: map(recs, recOut),
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
-    settings: { main: settings },
+    settings: { main: full ? settings : pubSettings },
+    msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at })),
+    backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
+    push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),
     board,

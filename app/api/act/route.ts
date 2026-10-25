@@ -4,6 +4,7 @@ import { currentUser, handle, fail, cleanUsername, USERNAME_RE, str, int, type M
 import { getSettings, gradeOf, GRADES, localDate, type Field } from "@/lib/settings";
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
+import { notify } from "@/lib/push";
 import crypto from "node:crypto";
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,12 @@ const AMT = (v: unknown, max = 40) => { const n = Number(v); return Number.isFin
 const defPlan = () => ({ mode: "manual", manual: {}, auto: { dir: "bwd", newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
 const planOf = (u: any) => { const p: any = u.plan || {}; const d = defPlan(); return { ...d, ...p, manual: p.manual || {}, auto: { ...d.auto, ...(p.auto || {}) } }; };
 
-const needAdmin = (u: Me) => { if (!isAdmin(u)) fail("هذا الإجراء للمدير فقط", 403); };
+const PERMS = ["req", "students", "teachers", "halaqat", "anns", "reports", "settings", "logs"];
+const isFull = (u: Me) => isAdmin(u) && !u.perms;
+const needAdmin = (u: Me, perm?: string) => {
+  if (!isAdmin(u)) fail("هذا الإجراء للمدير فقط", 403);
+  if (perm && u.perms && !(u.perms as string[]).includes(perm)) fail("ما عندك صلاحية لهذا القسم", 403);
+};
 async function halqaFor(u: Me, halqaId: string) {
   const h = await prisma.halqa.findUnique({ where: { id: halqaId } });
   if (!h) fail("الحلقة غير موجودة", 404);
@@ -23,12 +29,14 @@ async function halqaFor(u: Me, halqaId: string) {
 async function lessonFor(u: Me, id: string) {
   const l = await prisma.lesson.findUnique({ where: { id } });
   if (!l) fail("الحصة غير موجودة", 404);
+  if (l!.subId && l!.subId === u.id) return l!; // المعلم الاحتياط
   await halqaFor(u, l!.halqaId);
   return l!;
 }
-async function studentFor(u: Me, id: string) {
+async function studentFor(u: Me, id: string, lesson?: any) {
   const s = await prisma.user.findUnique({ where: { id } });
   if (!s || s.role !== "student") fail("الطالب غير موجود", 404);
+  if (lesson && lesson.subId === u.id && s!.halqaId === lesson.halqaId) return s!;
   if (!isAdmin(u)) {
     if (!s!.halqaId) fail("الطالب ليس في حلقتك", 403);
     await halqaFor(u, s!.halqaId!);
@@ -52,7 +60,7 @@ type H = (u: Me, b: any) => Promise<unknown>;
 const A: Record<string, H> = {
   // ---------- الإعدادات ----------
   async "settings.save"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "settings");
     const d = b.data || {};
     const days = (Array.isArray(d.days) ? d.days : []).map(Number).filter((x: number) => x >= 0 && x <= 6);
     if (!days.length) fail("اختر يوم دوام واحد على الأقل");
@@ -68,12 +76,21 @@ const A: Record<string, H> = {
     const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
     const pp = d.points || {}; const points = { present: AMT(pp.present ?? cur.points.present, 100), late: AMT(pp.late ?? cur.points.late, 100), ex: AMT(pp.ex ?? cur.points.ex, 100), vg: AMT(pp.vg ?? cur.points.vg, 100), gd: AMT(pp.gd ?? cur.points.gd, 100), page: AMT(pp.page ?? cur.points.page, 100) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, terms, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
+    await audit(u, "settings", null, "تعديل الإعدادات");
+  },
+  async "exportKey.rotate"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cur = await getSettings(); const value = { ...cur, exportKey: crypto.randomBytes(12).toString("hex") };
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
+    await audit(u, "settings", null, "توليد مفتاح تصدير جديد");
+    return { key: value.exportKey };
   },
 
   async "holidays.save"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "settings");
     const list = (Array.isArray(b.list) ? b.list : []).slice(0, 60).map((h: any) => ({ from: str(h.from, 10), to: str(h.to, 10) || str(h.from, 10), name: str(h.name, 60) || "إجازة" }))
       .filter((h: any) => validDate(h.from) && validDate(h.to) && h.to >= h.from);
     const cur = await getSettings();
@@ -89,11 +106,12 @@ const A: Record<string, H> = {
 
   // ---------- المستخدمون ----------
   async "user.approve"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "req");
     const s = await prisma.user.findUnique({ where: { id: str(b.id) } });
     if (!s || s.status !== "pending") fail("الطلب غير موجود");
     if (!(await prisma.halqa.findUnique({ where: { id: str(b.halqaId) } }))) fail("اختر الحلقة");
     await prisma.user.update({ where: { id: s!.id }, data: { status: "active", halqaId: str(b.halqaId), approvedAt: new Date(), plan: s!.plan ?? defPlan() } });
+    await audit(u, "approve", s!.id, `اعتماد ${s!.name}`);
   },
   async "user.delete"(u, b) {
     needAdmin(u);
@@ -101,7 +119,10 @@ const A: Record<string, H> = {
     if (id === u.id) fail("ما تقدر تحذف حسابك");
     const t = await prisma.user.findUnique({ where: { id } });
     if (!t) return;
-    if (t.role === "admin") fail("ما يمكن حذف حساب مدير من هنا");
+    if (t.role === "admin" && !isFull(u)) fail("حذف المدراء للمدير الكامل فقط", 403);
+    if (t.role === "admin" && !t.perms) fail("ما يمكن حذف مدير كامل من هنا");
+    needAdmin(u, t.role === "teacher" ? "teachers" : t.status === "pending" ? "req" : t.role === "student" ? "students" : undefined);
+    await audit(u, "user.delete", id, `حذف ${t.name}`);
     await prisma.$transaction([
       prisma.rec.deleteMany({ where: { userId: id } }),
       prisma.join.deleteMany({ where: { userId: id } }),
@@ -112,8 +133,8 @@ const A: Record<string, H> = {
     ]);
   },
   async "user.flag"(u, b) {
-    needAdmin(u);
     const k = str(b.k);
+    needAdmin(u, k === "autoAllowed" ? "students" : "teachers");
     const t = await prisma.user.findUnique({ where: { id: str(b.id) } });
     if (!t) fail("الحساب غير موجود", 404);
     if (k === "autoAllowed" && t!.role === "student") await prisma.user.update({ where: { id: t!.id }, data: { autoAllowed: !!b.v } });
@@ -121,7 +142,7 @@ const A: Record<string, H> = {
     else fail("طلب غير صحيح");
   },
   async "student.save"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "students");
     const d = b.data || {}; const id = str(b.id) || undefined;
     const username = cleanUsername(d.username); await uniqueUsername(username, id);
     const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
@@ -145,7 +166,7 @@ const A: Record<string, H> = {
     }
   },
   async "teacher.save"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "teachers");
     const d = b.data || {}; const id = str(b.id) || undefined;
     const username = cleanUsername(d.username); await uniqueUsername(username, id);
     const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
@@ -161,6 +182,41 @@ const A: Record<string, H> = {
       if (!pw) fail("اكتب كلمة المرور");
       await prisma.user.create({ data: { ...data, role: "teacher", status: "active" } });
     }
+    await audit(u, "teacher.save", id || null, (id ? "تعديل المعلم " : "إضافة المعلم ") + name);
+  },
+  async "admin.save"(u, b) {
+    if (!isFull(u)) fail("إضافة المدراء للمدير الكامل فقط", 403);
+    const d = b.data || {}; const id = str(b.id) || undefined;
+    const username = cleanUsername(d.username); await uniqueUsername(username, id);
+    const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
+    const perms = (Array.isArray(d.perms) ? d.perms : []).filter((x: string) => PERMS.includes(x));
+    if (!perms.length) fail("اختر صلاحية واحدة على الأقل");
+    const data: any = { name, username, perms, status: d.status === "disabled" ? "disabled" : "active" };
+    const pw = String(d.password ?? "");
+    if (pw) { if (pw.length < 6) fail("كلمة مرور المدراء 6 أحرف على الأقل"); data.passwordHash = await bcrypt.hash(pw, 10); }
+    if (id) {
+      const ex = await prisma.user.findUnique({ where: { id } });
+      if (!ex || ex.role !== "admin" || !ex.perms) fail("الحساب غير موجود", 404);
+      await prisma.user.update({ where: { id }, data });
+    } else {
+      if (!pw) fail("اكتب كلمة المرور");
+      await prisma.user.create({ data: { ...data, role: "admin" } });
+    }
+    await audit(u, "admin.save", id || null, (id ? "تعديل صلاحيات " : "إضافة مشرف إداري ") + name + ": " + perms.join("، "));
+  },
+  async "students.assign"(u, b) {
+    needAdmin(u, "students");
+    const map = b.map && typeof b.map === "object" ? b.map : {};
+    const hs = new Set((await prisma.halqa.findMany({ select: { id: true } })).map((h) => h.id));
+    let n = 0;
+    for (const [uid, hid] of Object.entries(map)) {
+      if (!hs.has(String(hid))) continue;
+      const st = await prisma.user.findUnique({ where: { id: uid } });
+      if (!st || st.role !== "student" || st.halqaId === hid) continue;
+      await prisma.user.update({ where: { id: uid }, data: { halqaId: String(hid) } }); n++;
+    }
+    await audit(u, "students.assign", null, `توزيع الطلاب: نقل ${n} طالب`);
+    return { n };
   },
   async "me.password"(u, b) {
     if (!(await bcrypt.compare(String(b.old ?? ""), u.passwordHash))) fail("كلمة المرور الحالية غير صحيحة");
@@ -170,7 +226,7 @@ const A: Record<string, H> = {
 
   // ---------- الحلقات ----------
   async "halqa.save"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "halaqat");
     const d = b.data || {}; const id = str(b.id);
     const name = str(d.name, 80); if (!name) fail("اكتب اسم الحلقة");
     const days = (Array.isArray(d.days) ? d.days : []).map(Number).filter((x: number) => x >= 0 && x <= 6);
@@ -179,11 +235,15 @@ const A: Record<string, H> = {
     if (teacherId) { const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t || t.role !== "teacher") teacherId = null; }
     const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
     const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "" };
-    if (id) await prisma.halqa.update({ where: { id }, data });
-    else await prisma.halqa.create({ data });
+    if (id) {
+      const old = await prisma.halqa.findUnique({ where: { id } });
+      await prisma.halqa.update({ where: { id }, data });
+      if (old && old.teacherId !== teacherId) await audit(u, "halqa.teacher", id, `${name}: تغيير المعلم`);
+    } else await prisma.halqa.create({ data });
+    await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name);
   },
   async "halqa.delete"(u, b) {
-    needAdmin(u);
+    needAdmin(u, "halaqat");
     const id = str(b.id);
     const n = await prisma.user.count({ where: { halqaId: id, role: "student", status: { not: "pending" } } });
     if (n) fail(`انقل طلاب الحلقة (${n}) لحلقة ثانية قبل حذفها`);
@@ -196,21 +256,39 @@ const A: Record<string, H> = {
     const date = str(d.date), time = str(d.time), link = str(d.link, 600), note = str(d.note, 200);
     if (!validDate(date)) fail("اختر التاريخ");
     if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
+    let subId: string | null | undefined = undefined;
+    if ("subId" in d) {
+      subId = str(d.subId) || null;
+      if (subId) { const t = await prisma.user.findUnique({ where: { id: subId } }); if (!t || t.role !== "teacher") subId = null; }
+    }
     if (id) {
-      await lessonFor(u, id);
-      await prisma.lesson.update({ where: { id }, data: { date, time, link, note } });
+      const l = await lessonFor(u, id);
+      if (subId !== undefined && l.subId === u.id && !isAdmin(u)) subId = undefined;
+      await prisma.lesson.update({ where: { id }, data: { date, time, link, note, ...(subId !== undefined ? { subId } : {}) } });
+      if (subId !== undefined && subId !== l.subId) {
+        await audit(u, "lesson.sub", id, subId ? `تكليف معلم احتياط لحصة ${date}` : `إلغاء المعلم الاحتياط لحصة ${date}`);
+        if (subId) await notify([subId], { title: "تكليف بحصة احتياط", body: `عندك حصة احتياط يوم ${date} الساعة ${time}`, url: "/" });
+      }
       return { id };
     }
     await halqaFor(u, str(d.halqaId));
-    const l = await prisma.lesson.create({ data: { halqaId: str(d.halqaId), date, time, link, note, createdBy: u.id } });
+    const l = await prisma.lesson.create({ data: { halqaId: str(d.halqaId), date, time, link, note, createdBy: u.id, subId: subId || null } });
     return { id: l.id };
+  },
+  async "lesson.open"(u, b) {
+    if (u.role !== "teacher") return;
+    const l = await lessonFor(u, str(b.id));
+    if (l.teacherAt || l.date !== localDate()) return;
+    await prisma.lesson.update({ where: { id: l.id }, data: { teacherAt: new Date(), teacherBy: u.id } });
   },
   async "lesson.cancel"(u, b) {
     const l = await lessonFor(u, str(b.id));
+    await audit(u, "lesson.cancel", l.id, (b.v ? "إلغاء" : "استرجاع") + ` حصة ${l.date}`);
     await prisma.lesson.update({ where: { id: l.id }, data: { cancelled: !!b.v, ...(b.v && b.note ? { note: str(b.note, 200) } : {}) } });
   },
   async "lesson.delete"(u, b) {
     const l = await lessonFor(u, str(b.id));
+    await audit(u, "lesson.delete", l.id, (l.autoKey ? "إلغاء" : "حذف") + ` حصة ${l.date}`);
     if (l.autoKey) { await prisma.lesson.update({ where: { id: l.id }, data: { cancelled: true } }); return; }
     await prisma.$transaction([prisma.join.deleteMany({ where: { lessonId: l.id } }), prisma.lesson.delete({ where: { id: l.id } })]);
   },
@@ -232,6 +310,10 @@ const A: Record<string, H> = {
     const data: any = { queue };
     if ("current" in b) data.currentId = b.current && studs.has(String(b.current)) ? String(b.current) : null;
     await prisma.lesson.update({ where: { id: l.id }, data });
+    const cur = "current" in b ? data.currentId : l.currentId;
+    const oldQ = ((l.queue as string[]) || []);
+    if (cur && cur !== l.currentId) await notify([cur], { title: "دورك الآن", body: "المعلم ينتظرك للتسميع", url: "/", tag: "q-" + l.id });
+    if (queue[0] && queue[0] !== oldQ[0] && queue[0] !== cur) await notify([queue[0]], { title: "دورك قرب", body: "أنت التالي في طابور التسميع، استعد", url: "/", tag: "q-" + l.id });
   },
   async "join"(u, b) {
     if (u.role !== "student") return;
@@ -272,9 +354,10 @@ const A: Record<string, H> = {
   },
   async "rec.addMany"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
-    const st = await studentFor(u, str(b.uid));
     let lesson: any = null;
-    if (b.lessonId) { lesson = await lessonFor(u, str(b.lessonId)); if (lesson.halqaId !== st.halqaId) fail("الطالب ليس في حلقة هذه الحصة"); }
+    if (b.lessonId) lesson = await lessonFor(u, str(b.lessonId));
+    const st = await studentFor(u, str(b.uid), lesson);
+    if (lesson && lesson.halqaId !== st.halqaId) fail("الطالب ليس في حلقة هذه الحصة");
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 10);
     if (!items.length) fail("أضف مقطع واحد على الأقل");
     const settings = await getSettings();
@@ -311,6 +394,7 @@ const A: Record<string, H> = {
     const r = await prisma.rec.findUnique({ where: { id: str(b.id) } });
     if (!r) fail("التسميع غير موجود", 404);
     await studentFor(u, r!.userId);
+    await audit(u, "rec.update", r!.userId, `تعديل تسميع ${r!.date}`);
     const d = b.data || {};
     const type = ["new", "review", "tath"].includes(d.type) ? d.type : r!.type;
     const surah = int(d.surah) || r!.surah, from = int(d.from) || r!.fromA, to = int(d.to) || r!.toA;
@@ -326,6 +410,7 @@ const A: Record<string, H> = {
     if (!r) return;
     await studentFor(u, r.userId);
     await prisma.rec.delete({ where: { id: r.id } });
+    await audit(u, "rec.delete", r.userId, `حذف تسميع ${r.date} (${r.grade})`);
   },
 
   // ---------- الخطة ----------
@@ -382,7 +467,7 @@ const A: Record<string, H> = {
   },
   async "log.list"(u, b) {
     const target = str(b.target);
-    if (target) await studentFor(u, target); else needAdmin(u);
+    if (target) await studentFor(u, target); else needAdmin(u, "logs");
     const rows = await prisma.auditLog.findMany({ where: target ? { targetId: target } : {}, orderBy: { at: "desc" }, take: target ? 50 : 200 });
     return { rows: rows.map((r) => ({ at: +r.at, by: r.byName, action: r.action, text: r.text })) };
   },
@@ -392,13 +477,18 @@ const A: Record<string, H> = {
     if (u.role === "student") fail("غير مصرح", 403);
     const halqaId = str(b.halqaId) || null;
     if (halqaId) await halqaFor(u, halqaId); else if (!isAdmin(u)) fail("المعلم ينشر لحلقته فقط");
+    if (isAdmin(u)) needAdmin(u, "anns");
     const title = str(b.title, 120); if (!title) fail("اكتب عنوان الإعلان");
     const data = { halqaId, title, body: str(b.body, 2000), byId: u.id, byName: u.name };
     if (b.id) {
       const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
       if (!a || (!isAdmin(u) && a.byId !== u.id)) fail("الإعلان غير موجود", 404);
       await prisma.ann.update({ where: { id: a!.id }, data });
-    } else await prisma.ann.create({ data });
+    } else {
+      await prisma.ann.create({ data });
+      const ids = (await prisma.user.findMany({ where: { role: "student", status: "active", ...(halqaId ? { halqaId } : {}) }, select: { id: true } })).map((x) => x.id);
+      await notify(ids, { title: "إعلان: " + title, body: data.body.slice(0, 120), url: "/", tag: "ann" });
+    }
   },
   async "ann.delete"(u, b) {
     const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
@@ -410,6 +500,21 @@ const A: Record<string, H> = {
     const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
     if (!a || (a.halqaId && a.halqaId !== u.halqaId && u.role === "student")) fail("الإعلان غير موجود", 404);
     await prisma.annRead.upsert({ where: { annId_userId: { annId: a!.id, userId: u.id } }, create: { annId: a!.id, userId: u.id }, update: {} });
+  },
+
+  // ---------- غرفة المعلمين ----------
+  async "msg.send"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const text = str(b.text, 1000); if (!text) fail("اكتب الرسالة");
+    await prisma.msg.create({ data: { byId: u.id, byName: u.name, text } });
+    const old = await prisma.msg.findMany({ orderBy: { at: "desc" }, skip: 500, select: { id: true } });
+    if (old.length) await prisma.msg.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
+  },
+  async "msg.delete"(u, b) {
+    const m = await prisma.msg.findUnique({ where: { id: str(b.id) } });
+    if (!m) return;
+    if (m.byId !== u.id && !isAdmin(u)) fail("غير مصرح", 403);
+    await prisma.msg.delete({ where: { id: m.id } });
   },
 
   // ---------- الورد اليومي ----------
@@ -427,6 +532,7 @@ const A: Record<string, H> = {
     needAdmin(u);
     const t = await prisma.user.findUnique({ where: { id: str(b.id) } });
     if (!t || t.role === "admin") fail("الحساب غير موجود", 404);
+    needAdmin(u, t!.role === "teacher" ? "teachers" : "students");
     const pw = String(crypto.randomInt(100000, 1000000));
     await prisma.user.update({ where: { id: t!.id }, data: { passwordHash: await bcrypt.hash(pw, 10) } });
     await audit(u, "user.resetpw", t!.id, `كلمة مرور مؤقتة لـ ${t!.name}`);

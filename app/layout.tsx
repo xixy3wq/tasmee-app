@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "حلقات ارتق",
   description: "منصة حلقات ارتق عن بُعد: الحصص والتحضير والتسميع والخطط ومتابعة ولي الأمر",
   manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon-192.png", apple: "/apple-180.png" },
   appleWebApp: { capable: true, title: "ارتق", statusBarStyle: "default" },
 };
 export const viewport: Viewport = { themeColor: "#1c6a5a", width: "device-width", initialScale: 1, viewportFit: "cover" };
