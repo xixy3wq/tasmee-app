@@ -45,7 +45,7 @@ export async function waSend(cfg: WaCfg, phone: string, text: string): Promise<{
     else r = await fetch(sub(cfg.url, "url"), { method: "POST", headers: { "Content-Type": "application/json" }, body: sub(cfg.body, "json"), signal: ctl.signal });
     clearTimeout(tm);
     const body = (await r.text()).slice(0, 400);
-    const ok = r.ok && (!cfg.okWord || body.toLowerCase().includes(cfg.okWord.toLowerCase()));
+    const ok = r.ok && !/"(success|status|ok)"\s*:\s*(false|"(error|fail|failed)")/i.test(body) && (!cfg.okWord || body.toLowerCase().includes(cfg.okWord.toLowerCase()));
     return { ok, resp: `${r.status} ${body}` };
   } catch (e: any) { return { ok: false, resp: "تعذّر الاتصال: " + (e?.name === "AbortError" ? "انتهت المهلة" : String(e?.message || e)) }; }
 }

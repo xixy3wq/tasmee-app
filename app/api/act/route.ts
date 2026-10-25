@@ -589,6 +589,38 @@ const A: Record<string, H> = {
     if (!intlPhone(str(b.phone))) fail("اكتب رقم جوال صحيح");
     return await waSend(cfg as any, str(b.phone), str(b.text, 500) || "رسالة تجريبية من حلقات ارتق");
   },
+  // ربط سريع مع الواتس الذكي: يدخل بحساب المدير هناك ويجيب رمز jwt والأجهزة (كلمة المرور ما تنحفظ)
+  async "wa.smartLogin"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const phone = intlPhone(str(b.phone)); const password = str(b.password, 200);
+    if (!phone || !password) fail("اكتب رقم الجوال وكلمة المرور حق حسابك في الواتس الذكي");
+    const post = async (path: string, data: Record<string, string>) => {
+      try {
+        const r = await fetch("https://server.smart-whats.com" + path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams(data).toString(), signal: AbortSignal.timeout(15000) });
+        const hdr = [r.headers.get("authorization"), r.headers.get("set-cookie"), r.headers.get("x-auth-token")].filter(Boolean).join(" ");
+        return { status: r.status, t: await r.text(), hdr };
+      } catch (e: any) { return { status: 0, t: "تعذّر الاتصال بالواتس الذكي: " + String(e?.message || e), hdr: "" }; }
+    };
+    const JWT = /eyJ[\w-]+\.[\w-]+\.[\w-]+/;
+    let l = await post("/user/auth/login", { phone, password });
+    let jwt = ((l.t + " " + l.hdr).match(JWT) || [])[0];
+    if (!jwt && phone.startsWith("966")) { l = await post("/user/auth/login", { phone: "0" + phone.slice(3), password }); jwt = ((l.t + " " + l.hdr).match(JWT) || [])[0]; }
+    if (!jwt) fail("ما قدرت أدخل حسابك في الواتس الذكي. تأكد من الرقم وكلمة المرور. الرد: " + l.status + " " + l.t.slice(0, 200));
+    const d = await post("/user/devices/api/list", { jwt });
+    let devices: { id: string; name: string; status: string }[] = [];
+    try {
+      const walk = (x: any) => {
+        if (Array.isArray(x)) x.forEach(walk);
+        else if (x && typeof x === "object") {
+          if (typeof x._id === "string" && /^[a-f0-9]{24}$/i.test(x._id) && (x.name || x.phone || x.number || x.status !== undefined || x.connected !== undefined)) devices.push({ id: x._id, name: String(x.name || x.title || x.phone || x.number || ""), status: String(x.status ?? x.connected ?? "") });
+          else Object.values(x).forEach(walk);
+        }
+      };
+      walk(JSON.parse(d.t));
+    } catch {}
+    if (!devices.length) devices = [...new Set(d.t.match(/\b[a-f0-9]{24}\b/gi) || [])].map((id) => ({ id, name: "", status: "" }));
+    return { jwt, devices, raw: devices.length ? "" : (d.status + " " + d.t.slice(0, 300)) };
+  },
   async "wa.retry"(u, b) {
     if (!isFull(u)) fail("للمدير الكامل فقط", 403);
     await prisma.outMsg.updateMany({ where: { id: str(b.id), status: { in: ["failed", "pending", "cancelled"] } }, data: { status: "pending", sendAfter: new Date(), tries: 0 } });

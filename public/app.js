@@ -1037,12 +1037,15 @@ function waSettingsHtml() {
   if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
   const c = ST.wa.cfg || {}; const cnt = ST.wa.counts || {};
   return `<form class="card" data-form="wa" style="gap:12px"><div class="sec-head"><h2>ربط الواتساب (الواتس الذكي)</h2><span class="chip ${c.enabled ? 'ok' : ''}">${c.enabled ? 'مفعّل' : 'متوقف'}</span></div>
-    ${tip('الموقع يرسل من رقمك المربوط في الواتس الذكي مباشرة لولي الأمر. انسخ رابط الإرسال من حسابك هناك (من صفحة API)، وحط مكان الرقم <b dir="ltr">{phone}</b> ومكان نص الرسالة <b dir="ltr">{message}</b>.')}
+    ${tip('الموقع يرسل من رقمك المربوط في الواتس الذكي مباشرة لولي الأمر. اربط بخطوتين: ادخل بحسابك تحت واضغط «اربط»، بعدين «حفظ ربط الواتساب». تأكد قبلها إن جوالك مربوط في الواتس الذكي (مسحت الباركود).')}
+    <div class="test-box"><b>الربط السريع: ادخل بحسابك في الواتس الذكي</b><div class="small muted">نفس الرقم وكلمة المرور اللي تدخل فيها موقع الواتس الذكي. الموقع يجيب رمز الربط ورقمك المربوط ويعبي الإعدادات تحت بنفسه، وكلمة المرور ما تنحفظ.</div>
+      <div class="row"><input id="wa-sl-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="off" style="flex:1 1 150px"><input id="wa-sl-pw" type="password" dir="ltr" placeholder="كلمة المرور" autocomplete="new-password" style="flex:1 1 150px"><button type="button" class="btn pri" data-act="wa-smart">اربط</button></div><div id="wa-sl-out" class="small muted" dir="auto"></div></div>
     <label class="check"><input type="checkbox" id="wa-enabled" name="enabled" ${c.enabled ? 'checked' : ''}> تفعيل الإرسال التلقائي</label>
+    <details><summary class="small">إعدادات متقدمة (تتعبى تلقائيًا بعد الربط)</summary><div style="display:grid;gap:12px;margin-top:8px">
     <label class="fld" style="max-width:320px"><span>طريقة الطلب</span><select id="wa-method" name="method"><option value="GET" ${c.method === 'GET' ? 'selected' : ''}>رابط مباشر (GET)</option><option value="POST_FORM" ${c.method === 'POST_FORM' ? 'selected' : ''}>POST نموذج</option><option value="POST_JSON" ${c.method === 'POST_JSON' ? 'selected' : ''}>POST JSON</option></select></label>
     <label class="fld"><span>رابط الإرسال</span><textarea id="wa-url" name="url" rows="3" dir="ltr" placeholder="https://.../send?token=XXXX&phone={phone}&message={message}">${esc(c.url || '')}</textarea><span class="hint">{phone} = الرقم بصيغة 9665xxxxxxxx · {phone0} = بصيغة 05xxxxxxxx · {message} = نص الرسالة</span></label>
     <label class="fld"><span>نص الطلب (لطريقة POST فقط)</span><textarea id="wa-body" name="body" rows="3" dir="ltr" placeholder='{"phone":"{phone}","message":"{message}"}'>${esc(c.body || '')}</textarea></label>
-    <label class="fld" style="max-width:320px"><span>كلمة تدل على النجاح في الرد (اختياري)</span><input id="wa-okWord" name="okWord" dir="ltr" value="${esc(c.okWord || '')}" placeholder="success"></label>
+    <label class="fld" style="max-width:320px"><span>كلمة تدل على النجاح في الرد (اختياري)</span><input id="wa-okWord" name="okWord" dir="ltr" value="${esc(c.okWord || '')}" placeholder="success"></label></div></details>
     <div class="fld"><span>متى يرسل تلقائيًا</span><div class="days">
       <label><input type="checkbox" id="wa-autoAbsent" name="autoAbsent" ${c.autoAbsent ? 'checked' : ''}> عند الغياب</label>
       <label><input type="checkbox" id="wa-autoLate" name="autoLate" ${c.autoLate ? 'checked' : ''}> عند التأخر</label>
@@ -1402,6 +1405,19 @@ const ACT = {
   'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
   'tour': () => showTour(0),
   'wa-refresh': () => { ST.wa = null; render(); },
+  'wa-smart': async () => {
+    const ph = ($('#wa-sl-phone') || {}).value, pw = ($('#wa-sl-pw') || {}).value; const out = $('#wa-sl-out');
+    if (!ph || !pw) return toast('اكتب الرقم وكلمة المرور');
+    out.className = 'small muted'; out.textContent = 'جاري الربط…';
+    const r = await act('wa.smartLogin', { phone: ph, password: pw });
+    const pwEl = $('#wa-sl-pw'); if (pwEl) { pwEl.value = ''; delete pwEl.dataset.dirty; }
+    if (!r) { out.textContent = ''; return; }
+    ST.waSmart = r;
+    if (!r.devices.length) { out.className = 'small c-bad'; out.textContent = 'دخلنا حسابك بس ما لقينا رقم واتساب مربوط فيه. اربط جوالك من موقع الواتس الذكي (امسح الباركود) وارجع اضغط «اربط». ' + (r.raw || ''); return; }
+    if (r.devices.length === 1) return waSmartFill(r.devices[0].id);
+    openModal(`${dlgHead('اختر رقم الواتساب')}<p class="small muted">حسابك فيه أكثر من رقم مربوط. اختر الرقم اللي ترسل منه الحلقة.</p><div class="list">${r.devices.map((d, i) => `<div class="item"><div class="grow"><b dir="auto">${esc(d.name || 'رقم ' + (i + 1))}</b>${d.status ? ` <span class="chip">${esc(d.status)}</span>` : ''}</div><button class="btn pri sm" data-act="wa-smart-pick" data-id="${esc(d.id)}">اختر</button></div>`).join('')}</div>`);
+  },
+  'wa-smart-pick': el => { closeModal(); waSmartFill(el.dataset.id); },
   'wa-retry': el => act('wa.retry', { id: el.dataset.id }, 'تمت إعادة الجدولة').then(() => { ST.wa = null; render(); }),
   'wa-cancel': el => act('wa.cancel', { id: el.dataset.id }, 'أُلغيت').then(() => { ST.wa = null; render(); }),
   'wa-now': el => act('wa.sendNow', { lessonId: el.dataset.id }, r => 'جاري إرسال ' + (r.n || 0) + ' رسالة').then(() => { (ST.waP || {})[el.dataset.id] = null; render(); }),
@@ -1556,6 +1572,14 @@ document.addEventListener('change', e => { const el = e.target; if (recInput(el)
 document.addEventListener('toggle', e => { if (e.target.dataset && e.target.dataset.actToggle === 'prep') ST.prepOpen = e.target.open; }, true);
 document.addEventListener('input', e => { const el = e.target.closest('[data-input]'); if (el && INP[el.dataset.input]) INP[el.dataset.input](el, e); });
 
+function waSmartFill(dev) {
+  const jwt = (ST.waSmart || {}).jwt; if (!jwt || !dev) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dataset.dirty = 1; };
+  set('wa-method', 'POST_FORM'); set('wa-url', 'https://server.smart-whats.com/user/messages/send');
+  set('wa-body', `jwt=${jwt}&devices=${dev}&message={message}&numbers={phone}`); set('wa-okWord', ''); set('wa-enabled', true);
+  const out = $('#wa-sl-out'); if (out) { out.className = 'small c-ok'; out.textContent = 'تم الربط ✓ اضغط «حفظ ربط الواتساب» تحت، وبعدها جرّب رسالة على رقمك.'; }
+  toast('تم الربط، باقي تضغط حفظ');
+}
 function waFormData(f) {
   const d = new FormData(f); const b = k => !!d.get(k);
   return { enabled: b('enabled'), method: d.get('method'), url: (d.get('url') || '').trim(), body: (d.get('body') || '').trim(), okWord: (d.get('okWord') || '').trim(), autoAbsent: b('autoAbsent'), autoLate: b('autoLate'), autoPresent: b('autoPresent'), autoRec: b('autoRec'), delayMin: +d.get('delayMin') || 0, tplPresent: d.get('tplPresent'), tplLate: d.get('tplLate'), tplRec: d.get('tplRec') };
