@@ -1,0 +1,92 @@
+// قاعدة بيانات منصة حلقات التسميع — PostgreSQL (Neon) على Vercel
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+/// role: admin | teacher | student — status: pending | active | disabled
+model User {
+  id           String    @id @default(cuid())
+  role         String
+  status       String    @default("active")
+  name         String
+  username     String    @unique
+  passwordHash String
+  info         Json      @default("{}")
+  halqaId      String?
+  reqHalqaId   String?
+  canPlan      Boolean   @default(false)
+  canAuto      Boolean   @default(false)
+  autoAllowed  Boolean   @default(false)
+  plan         Json?
+  createdAt    DateTime  @default(now())
+  approvedAt   DateTime?
+}
+
+model Halqa {
+  id        String   @id @default(cuid())
+  name      String
+  teacherId String?
+  days      Int[]
+  time      String   @default("")
+  createdAt DateTime @default(now())
+}
+
+/// حصة: date بصيغة YYYY-MM-DD
+model Lesson {
+  id        String   @id @default(cuid())
+  halqaId   String
+  date      String
+  time      String   @default("")
+  link      String   @default("")
+  note      String   @default("")
+  att       Json     @default("{}")
+  queue     Json     @default("[]")
+  currentId String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([halqaId, date])
+}
+
+model Join {
+  id       String   @id @default(cuid())
+  lessonId String
+  userId   String
+  at       DateTime @default(now())
+
+  @@unique([lessonId, userId])
+}
+
+/// type: new | review | tath
+model Rec {
+  id       String   @id @default(cuid())
+  userId   String
+  lessonId String?
+  halqaId  String?
+  date     String
+  type     String
+  surah    Int
+  fromA    Int
+  toA      Int
+  mistakes Int      @default(0)
+  alerts   Int      @default(0)
+  grade    String
+  pass     Boolean
+  note     String   @default("")
+  byId     String?
+  at       DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}

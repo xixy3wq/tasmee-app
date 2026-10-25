@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c6a5a">
+<title>حلقات التسميع</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='4' y='4' width='40' height='40' rx='10' fill='%231c6a5a'/%3E%3Cpath d='M14 16c4-2 7-2 10 1 3-3 6-3 10-1v17c-4-2-7-2-10 1-3-3-6-3-10-1z' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;600;700&display=swap">
+<style>
+/* Layout: a quiet working ledger — sticky header with role tabs, one centered column, cards only for things you act on. */
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --sunk:#e9efec; --ink:#16302a; --muted:#5b6f68; --line:#d8e2dd;
+  --accent:#1c6a5a; --accent-ink:#ffffff; --accent-soft:#dcece7; --gold:#a8771f; --gold-soft:#f5ead2;
+  --ok:#2c7a4b; --ok-soft:#dff0e5; --warn:#a56a12; --warn-soft:#f7ebd3; --bad:#b0413a; --bad-soft:#f6e0de; --info:#2f5f8f; --info-soft:#e0eaf4;
+  --f-display:"Reem Kufi","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --f-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1614; --surface:#15201d; --sunk:#1b2925; --ink:#e2ece8; --muted:#93a8a0; --line:#25352f;
+  --accent:#55b59f; --accent-ink:#06221b; --accent-soft:#1d3a33; --gold:#d8aa52; --gold-soft:#3a2f18;
+  --ok:#62c38a; --ok-soft:#183427; --warn:#e2a64e; --warn-soft:#3a2c14; --bad:#e57a6f; --bad-soft:#3b1f1c; --info:#7fb1e0; --info-soft:#1a2b3c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1614; --surface:#15201d; --sunk:#1b2925; --ink:#e2ece8; --muted:#93a8a0; --line:#25352f;
+  --accent:#55b59f; --accent-ink:#06221b; --accent-soft:#1d3a33; --gold:#d8aa52; --gold-soft:#3a2f18;
+  --ok:#62c38a; --ok-soft:#183427; --warn:#e2a64e; --warn-soft:#3a2c14; --bad:#e57a6f; --bad-soft:#3b1f1c; --info:#7fb1e0; --info-soft:#1a2b3c; color-scheme:dark}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+#root{direction:rtl;min-height:100%}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;text-wrap:balance;margin:0;line-height:1.3}
+h1{font-size:1.6rem} h2{font-size:1.25rem} h3{font-size:1.05rem}
+a{color:var(--accent)}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1040px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top-in{max-width:1040px;margin:0 auto;padding-block:10px 0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--f-display);font-size:1.2rem;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:8px}
+.brand svg{width:26px;height:26px}
+.who{margin-inline-start:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;overflow-x:auto;margin-top:8px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{background:none;border:0;border-bottom:3px solid transparent;padding:8px 12px;font:inherit;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.count{background:var(--gold);color:var(--surface);border-radius:999px;font-size:.72rem;padding:0 7px;font-weight:700}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:500;padding:7px 14px;border-radius:8px;cursor:pointer;text-decoration:none;line-height:1.4;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.ghost{border-color:transparent;background:none;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink);background:var(--sunk)}
+.btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+.btn.sm{padding:4px 10px;font-size:.85rem}
+.btn.big{padding:12px 22px;font-size:1.05rem}
+.btn.wa{color:var(--ok);border-color:var(--ok-soft)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.card.flat{border:0;background:none;padding:0}
+.sec-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px;align-items:start}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.stat b{display:block;font-size:1.35rem;font-family:var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.list{display:grid;gap:0}
+.item{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 4px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item.click{cursor:pointer;border-radius:6px}
+.item.click:hover{background:var(--sunk)}
+.item .grow{flex:1 1 180px;min-width:0}
+.item .name{font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:1px 9px;border-radius:999px;font-size:.78rem;font-weight:600;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.info{background:var(--info-soft);color:var(--info)}
+.chip.acc{background:var(--accent-soft);color:var(--accent)} .chip.gold{background:var(--gold-soft);color:var(--gold)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--surface);color:var(--muted);font:inherit;font-size:.82rem;padding:5px 10px;cursor:pointer;border-inline-start:1px solid var(--line)}
+.seg button:first-child{border-inline-start:0}
+.seg button.on.p{background:var(--ok-soft);color:var(--ok);font-weight:700}
+.seg button.on.l{background:var(--warn-soft);color:var(--warn);font-weight:700}
+.seg button.on.a{background:var(--bad-soft);color:var(--bad);font-weight:700}
+.seg button.on.e{background:var(--info-soft);color:var(--info);font-weight:700}
+.por{display:inline-block;white-space:nowrap}
+.por b{font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
+.plan{display:grid;gap:8px}
+.plan-row{display:grid;grid-template-columns:92px 1fr;gap:10px;align-items:baseline;padding:8px 10px;background:var(--sunk);border-radius:8px}
+.plan-row .lbl{font-size:.82rem;color:var(--muted);font-weight:600}
+form{display:grid;gap:12px}
+.fld{display:grid;gap:4px;min-width:0}
+.fld>span{font-size:.85rem;font-weight:600;color:var(--muted)}
+.fld i{color:var(--bad);font-style:normal}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--accent)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px}
+.check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:.92rem}
+.days{display:flex;flex-wrap:wrap;gap:6px}
+.days label{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;cursor:pointer;font-size:.88rem}
+.days label:has(input:checked){background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:8px 10px;text-align:start;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.02em}
+td.num,th.num{text-align:center}
+.center-box{max-width:440px;margin:0 auto;padding-block:48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+.hero-mark{display:flex;align-items:center;gap:12px}
+.hero-mark svg{width:44px;height:44px;flex:none}
+.empty{padding:22px;text-align:center;color:var(--muted);background:var(--sunk);border-radius:var(--r);display:grid;gap:8px;justify-items:center}
+.note{padding:10px 12px;border-radius:8px;background:var(--gold-soft);color:var(--ink);font-size:.88rem}
+.note.info{background:var(--info-soft)}
+.now{border:1px solid var(--gold);background:var(--gold-soft);border-radius:var(--r);padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.now .lbl{font-size:.78rem;color:var(--gold);font-weight:700}
+.now .name{font-weight:700;font-size:1.05rem}
+.qnum{width:26px;height:26px;border-radius:50%;background:var(--sunk);display:inline-grid;place-items:center;font-size:.8rem;font-weight:700;color:var(--muted);flex:none}
+.session-hero{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.datebox{background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:8px 14px;text-align:center;line-height:1.2;flex:none}
+.datebox b{display:block;font-family:var(--f-display);font-size:1.5rem}
+.datebox span{font-size:.8rem}
+.join-card{border:1px solid var(--accent);background:var(--accent-soft);border-radius:var(--r);padding:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.join-card .grow{flex:1 1 200px;min-width:0}
+.grade-preview{font-family:var(--f-display);font-size:1.1rem}
+#modal{position:fixed;inset:0;z-index:20;background:rgba(10,20,17,.45);display:grid;place-items:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));direction:rtl;overflow-y:auto}
+.dlg{background:var(--surface);color:var(--ink);border-radius:14px;width:min(560px,100%);padding:20px;display:grid;gap:14px;max-height:calc(100dvh - 32px);overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.dlg-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.dlg-foot{display:flex;gap:8px;justify-content:flex-start;flex-wrap:wrap}
+#toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;z-index:30;font-size:.92rem;max-width:calc(100% - 32px);direction:rtl}
+.spin{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation-duration:3s}}
+.banner{background:var(--warn-soft);color:var(--ink);font-size:.82rem;text-align:center;padding:6px 16px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:.92rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.fields-tbl td{white-space:normal}
+.back{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:0;display:inline-flex;gap:4px;align-items:center}
+.back:hover{color:var(--accent)}
+@media (max-width:560px){h1{font-size:1.35rem}.plan-row{grid-template-columns:1fr;gap:2px}}
+</style>
+</head>
+<body>
+
+<div id="root"><div id="app"></div></div>
+<div id="modal" hidden></div>
+<div id="toast" hidden></div>
+
+<script>
+document.documentElement.lang = 'ar';
+
+/* ---------------- Quran data ---------------- */
+const SN = "الفاتحة|البقرة|آل عمران|النساء|المائدة|الأنعام|الأعراف|الأنفال|التوبة|يونس|هود|يوسف|الرعد|إبراهيم|الحجر|النحل|الإسراء|الكهف|مريم|طه|الأنبياء|الحج|المؤمنون|النور|الفرقان|الشعراء|النمل|القصص|العنكبوت|الروم|لقمان|السجدة|الأحزاب|سبأ|فاطر|يس|الصافات|ص|الزمر|غافر|فصلت|الشورى|الزخرف|الدخان|الجاثية|الأحقاف|محمد|الفتح|الحجرات|ق|الذاريات|الطور|النجم|القمر|الرحمن|الواقعة|الحديد|المجادلة|الحشر|الممتحنة|الصف|الجمعة|المنافقون|التغابن|الطلاق|التحريم|الملك|القلم|الحاقة|المعارج|نوح|الجن|المزمل|المدثر|القيامة|الإنسان|المرسلات|النبأ|النازعات|عبس|التكوير|الانفطار|المطففين|الانشقاق|البروج|الطارق|الأعلى|الغاشية|الفجر|البلد|الشمس|الليل|الضحى|الشرح|التين|العلق|القدر|البينة|الزلزلة|العاديات|القارعة|التكاثر|العصر|الهمزة|الفيل|قريش|الماعون|الكوثر|الكافرون|النصر|المسد|الإخلاص|الفلق|الناس".split('|');
+const AYAS = [7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128,111,110,98,135,112,78,118,64,77,227,93,88,69,60,34,30,73,54,45,83,182,88,75,85,54,53,89,59,37,35,38,29,18,45,60,49,62,55,78,96,29,22,24,13,14,11,11,18,12,12,30,52,52,44,28,28,20,56,40,31,50,40,46,42,29,19,36,25,22,17,19,26,30,20,15,21,11,8,8,19,5,8,8,11,11,8,3,9,5,4,7,3,6,3,5,4,5,6];
+const SSTART = []; let TOTAL = 0;
+AYAS.forEach((n, i) => { SSTART[i] = TOTAL; TOTAL += n; });
+const SUR = new Int16Array(TOTAL);
+AYAS.forEach((n, s) => { for (let a = 0; a < n; a++) SUR[SSTART[s] + a] = s; });
+const W = new Float64Array(TOTAL).fill(604 / TOTAL); // pages per ayah (approx until real page data loads)
+let PAGES_OK = false;
+function buildOrder(dir) {
+  const arr = new Int32Array(TOTAL); let k = 0;
+  const ss = dir === 'fwd' ? [...Array(114).keys()] : [...Array(114).keys()].reverse();
+  ss.forEach(s => { for (let a = 0; a < AYAS[s]; a++) arr[k++] = SSTART[s] + a; });
+  const pos = new Int32Array(TOTAL); arr.forEach((g, i) => pos[g] = i);
+  return { ord: arr, pos };
+}
+const ORD = { fwd: buildOrder('fwd'), bwd: buildOrder('bwd') };
+const gOf = (surah, ayah) => SSTART[surah - 1] + ayah - 1; // surah, ayah are 1-based
+async function loadPages() {
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/quran-meta@6.0.17/+esm');
+    let get = mod.getAyahMeta || (mod.default && mod.default.getAyahMeta);
+    if (!get && mod.QuranRiwaya) { const h = mod.QuranRiwaya.hafs(); get = i => h.getAyahMeta(i); }
+    if (!get) throw new Error('no api');
+    const P = new Int16Array(TOTAL);
+    for (let i = 0; i < TOTAL; i++) P[i] = get(i + 1).page;
+    if (P[0] !== 1 || P[TOTAL - 1] !== 604) throw new Error('bad data');
+    const cnt = new Int16Array(606); P.forEach(p => cnt[p]++);
+    for (let i = 0; i < TOTAL; i++) W[i] = 1 / cnt[P[i]];
+    PAGES_OK = true; scheduleRender();
+  } catch (e) { PAGES_OK = false; }
+}
+
+/* ---------------- helpers ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const pad = n => String(n).padStart(2, '0');
+const isoDate = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const today = () => isoDate(new Date());
+const addDays = (ds, n) => { const d = new Date(ds + 'T00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
+const DAYN = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const fmtDate = ds => { if (!ds) return ''; const d = new Date(ds + 'T00:00'); return DAYN[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
+const fmtTime = t => { if (!t) return ''; let [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'ص' : 'م'; h = h % 12 || 12; return h + ':' + pad(m) + ' ' + ap; };
+const clock = ts => { const d = new Date(ts); return fmtTime(pad(d.getHours()) + ':' + pad(d.getMinutes())); };
+const clone = o => JSON.parse(JSON.stringify(o ?? {}));
+function deepMerge(a, b) { const o = clone(a); for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) o[k] = deepMerge(o[k], b[k]); else o[k] = b[k]; } return o; }
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
+async function hashPw(user, pw) {
+  const txt = String(user).toLowerCase() + ':' + pw;
+  try { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+  catch { let h = 5381; for (const c of txt) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + (h >>> 0).toString(16); }
+}
+function normPhone(p) {
+  let d = String(p || '').replace(/[^\d]/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('05') && d.length === 10) d = '966' + d.slice(1);
+  else if (d.startsWith('5') && d.length === 9) d = '966' + d;
+  return d;
+}
+const waLink = (phone, text) => { const p = normPhone(phone); return p ? 'https://wa.me/' + p + '?text=' + encodeURIComponent(text) : ''; };
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
+
+/* ---------------- store ---------------- */
+const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings'];
+const S = {}; COLS.forEach(c => S[c] = {});
+let READY = false, SETUP = false, OFFLINE = false;
+async function api(op, payload = {}) {
+  let r;
+  try { r = await fetch('/api', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ op, ...payload }) }); }
+  catch { const e = new Error('offline'); e.userMsg = 'ما فيه اتصال بالإنترنت.'; throw e; }
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok || j.error) { const e = new Error(j.error || 'server'); e.userMsg = j.error || 'تعذّر الاتصال بالخادم، حاول مرة ثانية.'; e.status = r.status; throw e; }
+  return j;
+}
+let lastSig = '';
+async function sync() {
+  const j = await api('sync');
+  const sig = JSON.stringify(j);
+  if (sig === lastSig && READY && !OFFLINE) return;
+  lastSig = sig;
+  COLS.forEach(c => S[c] = (j.data && j.data[c]) || {});
+  ST.meId = j.me; SETUP = !!j.setup; READY = true; OFFLINE = false;
+  scheduleRender();
+}
+let syncing = null;
+function safeSync() {
+  if (!syncing) syncing = sync().catch(() => { OFFLINE = true; if (!READY) scheduleRender(); }).finally(() => { syncing = null; });
+  return syncing;
+}
+async function put(col, id, data) { S[col][id] = clone(data); scheduleRender(); await api('put', { col, id, data }); await safeSync(); }
+async function patch(col, id, data) { S[col][id] = deepMerge(S[col][id] || {}, data); scheduleRender(); await api('patch', { col, id, data }); await safeSync(); }
+async function del(col, id) { delete S[col][id]; scheduleRender(); await api('del', { col, id }); await safeSync(); }
+async function run(fn, okMsg) {
+  try { await fn(); if (okMsg) toast(okMsg); return true; }
+  catch (e) { console.error(e); toast(e.userMsg || 'تعذّر الحفظ، حاول مرة ثانية.'); lastSig = ''; safeSync(); return false; }
+}
+const L = col => Object.entries(S[col]).map(([id, v]) => ({ ...v, id }));
+
+/* ---------------- settings ---------------- */
+const DEF_FIELDS = [
+  { k: 'phone', label: 'جوال الطالب', on: true, req: false, type: 'tel' },
+  { k: 'parentName', label: 'اسم ولي الأمر', on: true, req: true },
+  { k: 'parentPhone', label: 'جوال ولي الأمر', on: true, req: true, type: 'tel' },
+  { k: 'age', label: 'العمر', on: true, req: false, type: 'number' },
+  { k: 'memorized', label: 'مقدار الحفظ الحالي', on: true, req: false, ph: 'مثال: جزء عمّ وجزء تبارك' },
+];
+const DEF = {
+  center: 'حلقات التسميع', siteUrl: '', days: [0, 1, 2, 3, 4],
+  grade: { ex: 0, vg: 2, gd: 4, alertsPer: 3 },
+  fields: DEF_FIELDS,
+  tpl: {
+    absent: 'السلام عليكم ورحمة الله، نفيدكم بغياب ابنكم {الطالب} عن حلقة {الحلقة} يوم {التاريخ}. نرجو الحرص على الحضور، وجزاكم الله خيرًا.',
+    excellent: 'السلام عليكم ورحمة الله، يسعدنا إبلاغكم بتميّز ابنكم {الطالب} في حلقة {الحلقة} يوم {التاريخ}. بارك الله فيه وفيكم.'
+  }
+};
+const SET = () => { const m = S.settings.main || {}; return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, tpl: { ...DEF.tpl, ...(m.tpl || {}) }, fields: m.fields || DEF_FIELDS }; };
+const fillTpl = (t, v) => t.replace(/\{الطالب\}/g, v.student || '').replace(/\{الحلقة\}/g, v.halqa || '').replace(/\{التاريخ\}/g, v.date || '');
+function gradeOf(m, al) {
+  const g = SET().grade; const e = (+m || 0) + Math.floor((+al || 0) / (+g.alertsPer || 3));
+  if (e <= g.ex) return { k: 'ok', t: 'ممتاز', pass: true };
+  if (e <= g.vg) return { k: 'acc', t: 'جيد جدًا', pass: true };
+  if (e <= g.gd) return { k: 'warn', t: 'جيد', pass: true };
+  return { k: 'bad', t: 'يعاد', pass: false };
+}
+const TYPE = { new: 'حفظ جديد', review: 'مراجعة', tath: 'تثبيت' };
+const ATT = { p: 'حاضر', l: 'متأخر', a: 'غائب', e: 'مستأذن' };
+const ATTC = { p: 'ok', l: 'warn', a: 'bad', e: 'info' };
+
+/* ---------------- plan logic ---------------- */
+const defPlan = () => ({ mode: 'manual', manual: {}, auto: { dir: 'bwd', newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
+const planOf = st => deepMerge(defPlan(), st.plan || {});
+const isAuto = st => planOf(st).mode === 'auto' && !!st.autoAllowed;
+function take(ord, start, end, amount, stopAtSurah) {
+  const out = []; let w = 0, p = start;
+  while (p < end) {
+    const g = ord[p]; out.push(g); w += W[g]; p++;
+    if (w >= amount - 1e-9) break;
+    if (stopAtSurah && p < end && SUR[ord[p]] !== SUR[g]) break;
+  }
+  return { list: out, next: p, pages: w };
+}
+function segs(list) {
+  const out = [];
+  list.forEach(g => {
+    const s = SUR[g], a = g - SSTART[s] + 1, last = out[out.length - 1];
+    if (last && last.s === s && last.a2 === a - 1) last.a2 = a; else out.push({ s, a1: a, a2: a });
+  });
+  return out;
+}
+function autoInfo(st) {
+  const a = planOf(st).auto; const { ord } = ORD[a.dir] || ORD.bwd;
+  const np = Math.max(0, Math.min(TOTAL, +a.newPos || 0));
+  let memPages = 0; for (let i = 0; i < np; i++) memPages += W[ord[i]];
+  const res = { memPages, done: np >= TOTAL };
+  if (np < TOTAL && +a.newAmt > 0) res.new = take(ord, np, TOTAL, +a.newAmt, true);
+  if (np > 0 && +a.revAmt > 0) { let rp = +a.revPos || 0; if (rp >= np) rp = 0; res.review = take(ord, rp, np, +a.revAmt, false); }
+  if (np > 0 && +a.tathAmt > 0) { const out = []; let w = 0, p = np; while (p > 0) { p--; out.unshift(ord[p]); w += W[ord[p]]; if (w >= +a.tathAmt - 1e-9) break; } res.tath = { list: out }; }
+  return res;
+}
+function planSegs(st) { // {new:[segs], review:[segs], tath:[segs]}
+  const out = {};
+  if (isAuto(st)) {
+    const inf = autoInfo(st);
+    ['new', 'review', 'tath'].forEach(k => { if (inf[k]) out[k] = segs(inf[k].list); });
+    out._info = inf;
+  } else {
+    const m = planOf(st).manual || {};
+    ['new', 'review', 'tath'].forEach(k => { const x = m[k]; if (x && +x.surah) { const s = +x.surah - 1; out[k] = [{ s, a1: +x.from || 1, a2: +x.to || AYAS[s] }]; } });
+  }
+  return out;
+}
+const segText = arr => arr.map(x => `<span class="por">${esc(SN[x.s])} <b>﴿${x.a1 === x.a2 ? x.a1 : x.a1 + '–' + x.a2}﴾</b></span>`).join('، ');
+function fmtAmt(n) { n = +n; const m = { 0.125: 'ثمن وجه', 0.25: 'ربع وجه', 0.5: 'نصف وجه', 0.75: 'ثلاثة أرباع وجه', 1: 'وجه', 2: 'وجهان' }; return m[n] || (n + ' أوجه'); }
+function posText(dir, np) { if (np >= TOTAL) return 'أتمّ'; const g = ORD[dir].ord[np]; const s = SUR[g]; return SN[s] + ' آية ' + (g - SSTART[s] + 1); }
+
+/* ---------------- session state ---------------- */
+const ST = { meId: null, view: null, sid: null, uid: null, halqa: '', range: 30, reg: false, regDone: false, q: '', back: null };
+const me = () => { const u = ST.meId && S.users[ST.meId]; return u ? { ...u, id: ST.meId } : null; };
+const hasAdmin = () => !SETUP;
+const myHalaqat = u => L('halaqat').filter(h => u.role === 'admin' || h.teacherId === u.id).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+const halqaName = id => (S.halaqat[id] && S.halaqat[id].name) || '—';
+const studentsOf = hid => L('users').filter(u => u.role === 'student' && u.status === 'active' && u.halqaId === hid).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+const canPlan = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
+const canAutoU = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canAuto);
+const halqaDays = hid => { const h = S.halaqat[hid]; return (h && h.days && h.days.length) ? h.days : SET().days; };
+const recsOf = uid => L('recs').filter(r => r.uid === uid).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
+function attStats(st, days) {
+  const from = days ? addDays(today(), -days) : '';
+  const ss = L('sessions').filter(s => s.halqaId === st.halqaId && s.date <= today() && (!from || s.date >= from));
+  const c = { p: 0, l: 0, a: 0, e: 0, n: 0, total: ss.length };
+  ss.forEach(s => { const v = (s.att || {})[st.id]; if (v) c[v]++; else c.n++; });
+  const marked = c.p + c.l + c.a + c.e; c.rate = marked ? Math.round((c.p + c.l) / marked * 100) : null;
+  return c;
+}
+
+/* ---------------- render loop ---------------- */
+let rq = 0;
+function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; render(); }); }
+function render() {
+  const app = $('#app'); const saved = {};
+  app.querySelectorAll('[data-dirty][id]').forEach(el => saved[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? { c: el.checked } : { v: el.value });
+  const act = document.activeElement; const fid = app.contains(act) ? act.id : null; let sel = null;
+  try { if (fid && act.selectionStart != null) sel = [act.selectionStart, act.selectionEnd]; } catch {}
+  const sy = window.scrollY;
+  app.innerHTML = view();
+  for (const id in saved) { const el = document.getElementById(id); if (!el || !app.contains(el)) continue; el.dataset.dirty = 1; if ('c' in saved[id]) el.checked = saved[id].c; else el.value = saved[id].v; }
+  if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); try { if (sel) el.setSelectionRange(sel[0], sel[1]); } catch {} } }
+  window.scrollTo(0, sy);
+}
+function clean() { $('#app').querySelectorAll('[data-dirty]').forEach(el => delete el.dataset.dirty); }
+function go(v, extra) { clean(); Object.assign(ST, { view: v }, extra || {}); render(); window.scrollTo(0, 0); }
+document.addEventListener('input', e => { if (e.target.id) e.target.dataset.dirty = 1; }, true);
+document.addEventListener('change', e => { if (e.target.id) e.target.dataset.dirty = 1; }, true);
+
+/* ---------------- icons ---------------- */
+const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="4" width="40" height="40" rx="10" fill="var(--accent)"/><path d="M14 16c4-2 7-2 10 1 3-3 6-3 10-1v17c-4-2-7-2-10 1-3-3-6-3-10-1z" fill="none" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linejoin="round"/><path d="M24 17v17" stroke="var(--accent-ink)" stroke-width="2.4"/></svg>`;
+
+/* ---------------- views ---------------- */
+function view() {
+  if (!READY && OFFLINE) return `<div class="center-box"><div class="hero-mark">${MARK}<h1>تعذّر الاتصال</h1></div><div class="card">ما قدرنا نوصل للخادم. تأكد من الإنترنت وحاول مرة ثانية.</div><button class="btn pri" data-act="retry">إعادة المحاولة</button></div>`;
+  if (!READY) return `<div class="center-box"><div class="row"><div class="spin"></div><span class="muted">جاري تحميل الحلقات…</span></div></div>`;
+  const h = location.hash.replace('#', '');
+  if (ST.regDone) return regDoneV();
+  if (ST.reg || h === 'register' || h.startsWith('join-')) return regV(h.startsWith('join-') ? h.slice(5) : '');
+  if (!hasAdmin()) return setupV();
+  const u = me();
+  if (!u) return loginV();
+  if (u.status !== 'active') return blockedV(u);
+  return shellV(u);
+}
+const banner = () => OFFLINE ? `<div class="banner">انقطع الاتصال بالخادم، ونحاول نعيد الاتصال…</div>` : '';
+function fieldHtml(f, val, pre, opt = {}) {
+  const t = f.type || 'text'; const req = opt.forceReq ?? f.req;
+  return `<label class="fld"><span>${esc(f.label)}${req ? ' <i>*</i>' : ''}</span><input id="${pre}${f.k}" name="${f.k}" type="${t}" ${t === 'tel' ? 'inputmode="tel" dir="ltr"' : ''} ${t === 'number' ? 'inputmode="numeric" min="0"' : ''} value="${esc(val ?? '')}" placeholder="${esc(f.ph || '')}" ${req ? 'required' : ''} ${opt.auto ? `autocomplete="${opt.auto}"` : ''}></label>`;
+}
+
+function setupV() {
+  return `${banner()}<div class="center-box">
+  <div class="hero-mark">${MARK}<div><h1>تجهيز المنصة</h1><div class="muted">أول حساب يُنشأ هو حساب المدير.</div></div></div>
+  <form class="card" data-form="setup">
+    <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="su-center" name="center" value="حلقات التسميع" required></label>
+    <label class="fld"><span>اسمك</span><input id="su-name" name="name" required></label>
+    <div class="fgrid">
+      <label class="fld"><span>اسم المستخدم</span><input id="su-user" name="username" dir="ltr" autocomplete="username" required></label>
+      <label class="fld"><span>كلمة المرور</span><input id="su-pw" name="password" type="password" autocomplete="new-password" required minlength="4"></label>
+    </div>
+    <button class="btn pri big" type="submit">إنشاء حساب المدير</button>
+  </form></div>`;
+}
+function loginV() {
+  const st = SET();
+  return `${banner()}<div class="center-box">
+  <div class="hero-mark">${MARK}<div><h1>${esc(st.center)}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
+  <form class="card" data-form="login">
+    <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" required></label>
+    <label class="fld"><span>كلمة المرور</span><input id="lg-pw" name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn pri big" type="submit">دخول</button>
+    <div class="small muted">ولي الأمر يدخل بحساب ابنه.</div>
+  </form>
+  <div class="row" style="justify-content:center"><span class="muted">طالب جديد؟</span><button class="btn" data-act="to-reg">سجّل بياناتك</button></div>
+  </div>`;
+}
+function blockedV(u) {
+  const msg = u.status === 'pending' ? 'طلب تسجيلك وصل، وبانتظار اعتماد الإدارة. تقدر تدخل بعد الاعتماد.' : 'هذا الحساب موقوف. تواصل مع إدارة الحلقة.';
+  return `${banner()}<div class="center-box"><div class="hero-mark">${MARK}<h1>${esc(u.name)}</h1></div><div class="card">${msg}</div><button class="btn" data-act="logout">تسجيل خروج</button></div>`;
+}
+function regV(hid) {
+  const st = SET(); const fields = st.fields.filter(f => f.on);
+  const hs = L('halaqat').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const fixedH = hid && S.halaqat[hid];
+  return `${banner()}<div class="center-box" style="max-width:560px">
+  <div class="hero-mark">${MARK}<div><h1>تسجيل طالب جديد</h1><div class="muted">${esc(st.center)}${fixedH ? ' · حلقة ' + esc(fixedH.name) : ''}</div></div></div>
+  <form class="card" data-form="register" data-hid="${esc(fixedH ? hid : '')}">
+    <label class="fld"><span>الاسم الكامل <i>*</i></span><input id="rg-name" name="name" required autocomplete="name"></label>
+    <div class="fgrid">
+      <label class="fld"><span>اسم المستخدم <i>*</i></span><input id="rg-username" name="username" dir="ltr" required autocomplete="username" pattern="[A-Za-z0-9_.]{3,}" title="حروف إنجليزية أو أرقام، 3 أحرف على الأقل"></label>
+      <label class="fld"><span>كلمة المرور <i>*</i></span><input id="rg-password" name="password" type="password" required minlength="4" autocomplete="new-password"></label>
+    </div>
+    <div class="fgrid">${fields.map(f => fieldHtml(f, '', 'rg-')).join('')}</div>
+    ${!fixedH && hs.length ? `<label class="fld"><span>الحلقة المطلوبة</span><select id="rg-halqa" name="reqHalqa"><option value="">تحددها الإدارة</option>${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label>` : ''}
+    <button class="btn pri big" type="submit">إرسال الطلب</button>
+    <div class="small muted">بعد الإرسال تراجع الإدارة طلبك وتعتمده، وبعدها تقدر تدخل باسم المستخدم وكلمة المرور.</div>
+  </form>
+  <button class="btn ghost" data-act="from-reg">رجوع لتسجيل الدخول</button></div>`;
+}
+function regDoneV() {
+  return `<div class="center-box"><div class="hero-mark">${MARK}<h1>وصل طلبك</h1></div><div class="card">شكرًا لك. طلبك الآن عند الإدارة، وبعد الاعتماد تقدر تدخل باسم المستخدم وكلمة المرور اللي اخترتها.</div><button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
+}
+
+const TABS = {
+  admin: () => [['req', 'الطلبات', L('users').filter(u => u.role === 'student' && u.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['reports', 'التقارير'], ['settings', 'الإعدادات']],
+  teacher: () => [['sessions', 'الحصص'], ['students', 'طلابي'], ['reports', 'التقارير']],
+  student: () => [['home', 'صفحتي']]
+};
+const ROLE = { admin: 'المدير', teacher: 'معلم', student: 'طالب' };
+const PARENT_TAB = { session: 'sessions', student: 'students' };
+function shellV(u) {
+  const tabs = TABS[u.role]();
+  const keys = tabs.map(t => t[0]);
+  if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && ST.view !== 'home')) ST.view = keys[0];
+  const activeTab = PARENT_TAB[ST.view] || ST.view;
+  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: homeV })[ST.view](u);
+  return `${banner()}<header class="top"><div class="top-in">
+    <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
+      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
+    ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
+  </div></header><main class="wrap">${body}</main>`;
+}
+
+/* ---- admin: requests ---- */
+function reqV() {
+  const pend = L('users').filter(u => u.role === 'student' && u.status === 'pending').sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const hs = L('halaqat'); const fields = SET().fields;
+  return `<div class="sec-head"><h1>طلبات التسجيل</h1><button class="btn" data-act="copy-reg" data-h="">نسخ رابط التسجيل العام</button></div>
+  ${!hs.length ? `<div class="note">أنشئ حلقة أولًا من تبويب الحلقات حتى تقدر تعتمد الطلاب عليها.</div>` : ''}
+  ${!pend.length ? `<div class="empty"><b>ما فيه طلبات جديدة</b><span>أرسل رابط التسجيل للطلاب، وتوصلك طلباتهم هنا للاعتماد.</span></div>` :
+    `<div class="grid2">${pend.map(p => `<div class="card" style="display:grid;gap:12px">
+      <div class="sec-head"><h3>${esc(p.name)}</h3><span class="chip gold">ينتظر الاعتماد</span></div>
+      <dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right">${esc(p.username)}</dd>
+      ${fields.filter(f => p[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${esc(p[f.k])}</dd>`).join('')}
+      <dt>تاريخ الطلب</dt><dd>${p.createdAt ? fmtDate(isoDate(new Date(p.createdAt))) : '—'}</dd></dl>
+      <label class="fld"><span>الحلقة</span><select id="ap-h-${p.id}">${hs.map(h => `<option value="${h.id}" ${h.id === p.reqHalqa ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select></label>
+      <div class="row"><button class="btn pri" data-act="approve" data-id="${p.id}" ${hs.length ? '' : 'disabled'}>اعتماد</button><button class="btn danger" data-act="reject" data-id="${p.id}">رفض وحذف</button></div>
+    </div>`).join('')}</div>`}`;
+}
+
+/* ---- sessions ---- */
+function sessionsV(u) {
+  const hs = myHalaqat(u);
+  if (!hs.length) return `<h1>الحصص</h1><div class="empty"><b>${u.role === 'admin' ? 'ما فيه حلقات بعد' : 'ما عندك حلقة مسندة'}</b><span>${u.role === 'admin' ? 'ابدأ بإنشاء حلقة من تبويب الحلقات.' : 'تواصل مع المدير ليسند لك حلقة.'}</span></div>`;
+  if (ST.halqa && !hs.some(h => h.id === ST.halqa)) ST.halqa = '';
+  const ids = ST.halqa ? [ST.halqa] : hs.map(h => h.id);
+  const all = L('sessions').filter(s => ids.includes(s.halqaId));
+  const t = today();
+  const up = all.filter(s => s.date >= t).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const past = all.filter(s => s.date < t).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 25);
+  const row = s => { const n = studentsOf(s.halqaId).length; const att = s.att || {}; const pres = Object.values(att).filter(v => v === 'p' || v === 'l').length; const recs = L('recs').filter(r => r.sid === s.id).length;
+    return `<div class="item click" data-act="open-session" data-id="${s.id}"><div class="grow"><div class="name">${fmtDate(s.date)} <span class="muted small">${fmtTime(s.time)}</span></div><div class="small muted">${esc(halqaName(s.halqaId))}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
+      ${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${s.link ? '' : '<span class="chip warn">بدون رابط</span>'}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span></div>`; };
+  return `<div class="sec-head"><h1>الحصص</h1><button class="btn pri" data-act="new-session">حصة جديدة</button></div>
+  ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
+  <section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
+  ${up.length ? `<div class="list">${up.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. أضف حصة وحط رابطها، وتظهر للطلاب في صفحتهم.</span></div>`}</section>
+  ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`;
+}
+function sessionV(u) {
+  const s = S.sessions[ST.sid] && { ...S.sessions[ST.sid], id: ST.sid };
+  if (!s) return `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button><div class="empty">هذه الحصة غير موجودة.</div>`;
+  const studs = studentsOf(s.halqaId); const att = s.att || {}; const queue = (s.queue || []).filter(id => S.users[id]);
+  const joins = {}; L('joins').filter(j => j.sid === s.id).forEach(j => joins[j.uid] = j.at);
+  const recs = L('recs').filter(r => r.sid === s.id).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const hname = halqaName(s.halqaId); const tp = SET().tpl;
+  const vars = st => ({ student: st.name, halqa: hname, date: fmtDate(s.date) });
+  const cur = s.current && S.users[s.current] ? { ...S.users[s.current], id: s.current } : null;
+  const notQueued = studs.filter(x => !queue.includes(x.id) && x.id !== s.current);
+  const attRow = st => { const v = att[st.id]; const wA = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.absent, vars(st))); const wE = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.excellent, vars(st)));
+    return `<div class="item"><div class="grow"><div class="name">${esc(st.name)}</div><div class="small muted">${joins[st.id] ? `دخل ${clock(joins[st.id])}` : 'لم يضغط دخول'}</div></div>
+    <div class="seg">${Object.keys(ATT).map(k => `<button class="${k} ${v === k ? 'on' : ''}" data-act="att" data-id="${st.id}" data-v="${k}">${ATT[k]}</button>`).join('')}</div>
+    ${v === 'a' && wA ? `<a class="btn wa sm" href="${wA}" target="_blank" rel="noopener">واتساب غياب</a>` : ''}${(v === 'p' || v === 'l') && wE ? `<a class="btn wa sm" href="${wE}" target="_blank" rel="noopener">واتساب تميّز</a>` : ''}</div>`; };
+  return `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
+  <div class="session-hero"><div class="datebox"><b>${new Date(s.date + 'T00:00').getDate()}</b><span>${DAYN[new Date(s.date + 'T00:00').getDay()]}</span></div>
+    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDate(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
+    <div class="row">${s.link ? `<a class="btn pri" href="${esc(s.link)}" target="_blank" rel="noopener">افتح الحصة</a><button class="btn" data-act="copy" data-text="${esc(s.link)}">نسخ الرابط</button>` : `<span class="chip warn">ما فيه رابط</span>`}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>
+  <div class="grid2">
+  <section class="card"><div class="sec-head"><h2>التحضير</h2><div class="row"><button class="btn sm" data-act="att-joined">تحضير من دخل</button><button class="btn sm" data-act="att-rest">الباقي غائب</button></div></div>
+    ${studs.length ? `<div class="list">${studs.map(attRow).join('')}</div>` : '<div class="empty">ما فيه طلاب معتمدون في هذه الحلقة.</div>'}</section>
+  <section class="card" style="display:grid;gap:12px"><h2>طابور التسميع</h2>
+    ${cur ? `<div class="now"><div style="flex:1 1 160px;min-width:0"><div class="lbl">يسمّع الآن</div><div class="name">${esc(cur.name)}</div></div><button class="btn pri" data-act="rec" data-id="${cur.id}">سجّل التسميع</button><button class="btn" data-act="q-next">التالي</button></div>` : (queue.length ? `<button class="btn pri" data-act="q-next">ابدأ بأول الطابور</button>` : '')}
+    ${queue.length ? `<div class="list">${queue.map((id, i) => `<div class="item"><span class="qnum">${i + 1}</span><div class="grow name">${esc(S.users[id].name)}</div><button class="btn ghost sm" data-act="q-up" data-i="${i}" aria-label="تقديم">▲</button><button class="btn ghost sm" data-act="q-down" data-i="${i}" aria-label="تأخير">▼</button><button class="btn ghost sm" data-act="rec" data-id="${id}">سجّل</button><button class="btn ghost sm" data-act="q-rm" data-i="${i}" aria-label="حذف">✕</button></div>`).join('')}</div>` : (!cur ? '<div class="empty small">الطابور فاضي. أضف الحاضرين بالترتيب اللي تبيه.</div>' : '')}
+    <div class="row"><select id="q-pick" style="flex:1 1 160px"><option value="">إضافة طالب…</option>${notQueued.map(x => `<option value="${x.id}">${esc(x.name)}${att[x.id] === 'p' || att[x.id] === 'l' ? '' : ' (غير محضّر)'}</option>`).join('')}</select><button class="btn" data-act="q-add">أضف</button><button class="btn" data-act="q-all">كل الحاضرين</button></div>
+  </section></div>
+  <section class="card"><h2>تسميع هذه الحصة</h2>
+  ${recs.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>النوع</th><th>المقطع</th><th class="num">أخطاء</th><th class="num">تنبيهات</th><th>التقدير</th><th></th></tr></thead><tbody>
+    ${recs.map(r => `<tr><td>${esc((S.users[r.uid] || {}).name || '—')}</td><td>${TYPE[r.type] || ''}</td><td>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}</td><td class="num">${r.mistakes}</td><td class="num">${r.alerts}</td><td><span class="chip ${gradeOf(r.mistakes, r.alerts).k}">${esc(r.grade)}</span></td><td><button class="btn ghost sm" data-act="del-rec" data-id="${r.id}">حذف</button></td></tr>`).join('')}
+  </tbody></table></div>` : '<div class="empty small">ما سُجّل تسميع في هذه الحصة بعد.</div>'}</section>`;
+}
+
+/* ---- students ---- */
+function studentsV(u) {
+  const hs = myHalaqat(u); const hids = hs.map(h => h.id);
+  let list = L('users').filter(x => x.role === 'student' && x.status !== 'pending' && (u.role === 'admin' || hids.includes(x.halqaId)));
+  if (ST.halqa) list = list.filter(x => x.halqaId === ST.halqa);
+  const q = (ST.q || '').trim(); if (q) list = list.filter(x => (x.name || '').includes(q) || (x.username || '').toLowerCase().includes(q.toLowerCase()));
+  list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1>${u.role === 'admin' ? '<button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div>
+  <div class="row"><input id="st-q" placeholder="ابحث بالاسم أو اسم المستخدم" value="${esc(ST.q)}" data-input="search" style="flex:1 1 220px">
+  ${hs.length > 1 ? `<select id="st-h" data-change="filter-h" style="flex:0 1 200px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}</div>
+  <section class="card">${list.length ? `<div class="list">${list.map(x => { const a = attStats(x, 30); return `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><div class="name">${esc(x.name)}</div><div class="small muted">${esc(halqaName(x.halqaId))} · <span dir="ltr">${esc(x.username)}</span></div></div>
+    ${x.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}<span class="chip ${isAuto(x) ? 'acc' : ''}">${isAuto(x) ? 'خطة تلقائية' : 'خطة يدوية'}</span><span class="chip num">حضور ${a.rate == null ? '—' : a.rate + '٪'}</span></div>`; }).join('')}</div>` : `<div class="empty">${q ? 'ما فيه نتائج.' : 'ما فيه طلاب معتمدون بعد.'}</div>`}</section>`;
+}
+function planHtml(st) {
+  const ps = planSegs(st); const rows = ['new', 'review', 'tath'].filter(k => ps[k]);
+  const p = planOf(st); const auto = isAuto(st);
+  const workday = halqaDays(st.halqaId).includes(new Date().getDay());
+  let head = auto ? `<span class="chip acc">تلقائية</span> <span class="small muted">حفظ ${fmtAmt(p.auto.newAmt)}، مراجعة ${fmtAmt(p.auto.revAmt)}${+p.auto.tathAmt ? '، تثبيت ' + fmtAmt(p.auto.tathAmt) : ''} · ${p.auto.dir === 'fwd' ? 'من الفاتحة' : 'من الناس'}</span>` : `<span class="chip">يدوية</span>`;
+  return `<div class="plan"><div class="row">${head}${workday ? '' : '<span class="chip gold">اليوم إجازة</span>'}</div>
+  ${rows.length ? rows.map(k => `<div class="plan-row"><span class="lbl">${TYPE[k]}</span><div>${segText(ps[k])}</div></div>`).join('') : `<div class="empty small">${auto && ps._info && ps._info.done ? 'أتمّ الحفظ في هذا الاتجاه، ما شاء الله.' : 'ما حُدّد مقطع بعد.'}</div>`}
+  ${auto && ps._info ? `<div class="small muted">وصل في الحفظ إلى: ${esc(posText(p.auto.dir, p.auto.newPos))} · المحفوظ تقريبًا ${Math.round(ps._info.memPages)} وجه${PAGES_OK ? '' : ' (تقدير تقريبي للأوجه)'}</div>` : ''}</div>`;
+}
+function profileV(u) {
+  const st = S.users[ST.uid] && { ...S.users[ST.uid], id: ST.uid };
+  if (!st) return `<button class="back" data-act="tab" data-v="students">→ الطلاب</button><div class="empty">الطالب غير موجود.</div>`;
+  const a = attStats(st, ST.range); const rs = recsOf(st.id); const fields = SET().fields;
+  const inRange = rs.filter(r => !ST.range || r.date >= addDays(today(), -ST.range));
+  const avg = inRange.length ? (inRange.reduce((x, r) => x + (+r.mistakes || 0), 0) / inRange.length).toFixed(1) : '—';
+  const wa = st.parentPhone ? waLink(st.parentPhone, 'السلام عليكم ورحمة الله، ') : '';
+  return `<button class="back" data-act="tab" data-v="students">→ ${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</button>
+  <div class="sec-head"><div><h1>${esc(st.name)}</h1><div class="muted">${esc(halqaName(st.halqaId))} · <span dir="ltr">${esc(st.username)}</span>${st.status === 'disabled' ? ' · <span class="chip bad">موقوف</span>' : ''}</div></div>
+    <div class="row">${wa ? `<a class="btn wa" href="${wa}" target="_blank" rel="noopener">واتساب ولي الأمر</a>` : ''}${u.role === 'admin' ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button>` : ''}</div></div>
+  <div class="row">${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}</div>
+  <div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>نسبة الحضور</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${a.l}</b><span>تأخر</span></div><div class="stat"><b>${inRange.length}</b><span>تسميع</span></div><div class="stat"><b>${avg}</b><span>متوسط الأخطاء</span></div></div>
+  <div class="grid2">
+  <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الخطة</h2>${canPlan(u) ? `<button class="btn sm" data-act="edit-plan" data-id="${st.id}">تعديل الخطة</button>` : ''}</div>
+    ${planHtml(st)}
+    ${u.role === 'admin' ? `<label class="check"><input type="checkbox" id="pf-auto-${st.id}" data-change="student-auto" data-id="${st.id}" ${st.autoAllowed ? 'checked' : ''}> السماح بالخطة التلقائية لهذا الطالب</label>` : ''}</section>
+  <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${esc(st[f.k])}</dd>`).join('') || '<dt>—</dt><dd></dd>'}</dl></section></div>
+  <section class="card"><h2>سجل التسميع</h2>${historyTable(inRange)}</section>`;
+}
+function historyTable(rs) {
+  if (!rs.length) return '<div class="empty small">ما فيه تسميع في هذه الفترة.</div>';
+  return `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المقطع</th><th class="num">أخطاء</th><th class="num">تنبيهات</th><th>التقدير</th><th>ملاحظة</th></tr></thead><tbody>
+  ${rs.slice(0, 60).map(r => `<tr><td>${fmtDate(r.date)}</td><td>${TYPE[r.type] || ''}</td><td>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}</td><td class="num">${r.mistakes}</td><td class="num">${r.alerts}</td><td><span class="chip ${gradeOf(r.mistakes, r.alerts).k}">${esc(r.grade)}</span></td><td style="white-space:normal;min-width:120px">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+/* ---- admin: teachers ---- */
+function teachersV() {
+  const ts = L('users').filter(u => u.role === 'teacher').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  return `<div class="sec-head"><h1>المعلمون</h1><button class="btn pri" data-act="add-teacher">إضافة معلم</button></div>
+  <div class="note info">صلاحية <b>إعداد الخطط</b> تسمح للمعلم ينشئ ويعدّل خطط طلابه. صلاحية <b>الخطة التلقائية</b> تسمح له يحوّل الخطة لتلقائية، بشرط إن الطالب نفسه مسموح له من صفحته.</div>
+  <section class="card">${ts.length ? `<div class="list">${ts.map(t => { const hs = L('halaqat').filter(h => h.teacherId === t.id); return `<div class="item"><div class="grow"><div class="name">${esc(t.name)}</div><div class="small muted"><span dir="ltr">${esc(t.username)}</span> · ${hs.length ? hs.map(h => esc(h.name)).join('، ') : 'بدون حلقة'}</div></div>
+    ${t.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}
+    <label class="check"><input type="checkbox" id="tc-plan-${t.id}" data-change="t-perm" data-k="canPlan" data-id="${t.id}" ${t.canPlan ? 'checked' : ''}> إعداد الخطط</label>
+    <label class="check"><input type="checkbox" id="tc-auto-${t.id}" data-change="t-perm" data-k="canAuto" data-id="${t.id}" ${t.canAuto ? 'checked' : ''}> الخطة التلقائية</label>
+    <button class="btn sm" data-act="edit-teacher" data-id="${t.id}">تعديل</button></div>`; }).join('')}</div>` : '<div class="empty">ما فيه معلمون بعد. أضف معلمًا ثم أسند له حلقة.</div>'}</section>`;
+}
+
+/* ---- admin: halaqat ---- */
+function halaqatV() {
+  const hs = L('halaqat').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  return `<div class="sec-head"><h1>الحلقات</h1><button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div>
+  ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; return `<section class="card" style="display:grid;gap:10px">
+    <div class="sec-head"><h2>${esc(h.name)}</h2><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
+    <dl class="kv"><dt>المعلم</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت المعتاد</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
+    <button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل لهذه الحلقة</button></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
+}
+
+/* ---- reports ---- */
+function reportsV(u) {
+  const hs = myHalaqat(u);
+  if (!hs.length) return `<h1>التقارير</h1><div class="empty">ما فيه حلقات.</div>`;
+  const hid = hs.some(h => h.id === ST.halqa) ? ST.halqa : hs[0].id;
+  const studs = studentsOf(hid); const from = ST.range ? addDays(today(), -ST.range) : '';
+  const nSess = L('sessions').filter(s => s.halqaId === hid && s.date <= today() && (!from || s.date >= from)).length;
+  const rows = studs.map(st => { const a = attStats(st, ST.range); const rs = recsOf(st.id).filter(r => !from || r.date >= from); const rep = rs.filter(r => r.pass === false).length; const avg = rs.length ? (rs.reduce((x, r) => x + (+r.mistakes || 0), 0) / rs.length).toFixed(1) : '—'; return { st, a, n: rs.length, rep, avg }; });
+  const tot = rows.reduce((x, r) => ({ p: x.p + r.a.p + r.a.l, m: x.m + r.a.p + r.a.l + r.a.a + r.a.e, n: x.n + r.n }), { p: 0, m: 0, n: 0 });
+  return `<h1>التقارير</h1>
+  <div class="row"><select id="rp-h" data-change="filter-h" style="flex:0 1 220px">${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>
+  ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}</div>
+  <div class="stats"><div class="stat"><b>${nSess}</b><span>حصة</span></div><div class="stat"><b>${tot.m ? Math.round(tot.p / tot.m * 100) + '٪' : '—'}</b><span>نسبة حضور الحلقة</span></div><div class="stat"><b>${tot.n}</b><span>تسميع مسجّل</span></div><div class="stat"><b>${studs.length}</b><span>طالب</span></div></div>
+  <section class="card">${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th class="num">حضور</th><th class="num">تأخر</th><th class="num">غياب</th><th class="num">استئذان</th><th class="num">النسبة</th><th class="num">تسميع</th><th class="num">أعاد</th><th class="num">متوسط الأخطاء</th></tr></thead><tbody>
+  ${rows.map(r => `<tr class="item click" style="display:table-row" data-act="open-student" data-id="${r.st.id}"><td>${esc(r.st.name)}</td><td class="num">${r.a.p}</td><td class="num">${r.a.l}</td><td class="num">${r.a.a}</td><td class="num">${r.a.e}</td><td class="num"><span class="chip ${r.a.rate == null ? '' : r.a.rate >= 85 ? 'ok' : r.a.rate >= 65 ? 'warn' : 'bad'}">${r.a.rate == null ? '—' : r.a.rate + '٪'}</span></td><td class="num">${r.n}</td><td class="num">${r.rep}</td><td class="num">${r.avg}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ما فيه طلاب في هذه الحلقة.</div>'}</section>`;
+}
+
+/* ---- admin: settings ---- */
+function settingsV() {
+  const st = SET();
+  return `<h1>الإعدادات</h1>
+  <form class="card" data-form="settings" style="gap:18px">
+    <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="sg-center" name="center" value="${esc(st.center)}" required></label>
+    <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div><span class="small muted" style="font-weight:400">تقدر تغيّرها لكل حلقة من تبويب الحلقات.</span></div>
+    <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
+      <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
+      <span class="small muted" style="font-weight:400">ما فوق «جيد» يكون «يعاد»، ولا تتقدم الخطة التلقائية إلا بعد النجاح.</span></div>
+    <div class="fld"><span>حقول التسجيل</span><div class="small muted" style="font-weight:400">الاسم واسم المستخدم وكلمة المرور ثابتة دائمًا.</div>
+      <div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الحقل</th><th class="num">ظاهر</th><th class="num">إجباري</th><th></th></tr></thead><tbody>
+      ${st.fields.map(f => `<tr><td><input id="sf-lb-${f.k}" name="lb-${f.k}" value="${esc(f.label)}" style="min-width:140px"></td><td class="num"><input type="checkbox" id="sf-on-${f.k}" name="on-${f.k}" ${f.on ? 'checked' : ''}></td><td class="num"><input type="checkbox" id="sf-req-${f.k}" name="req-${f.k}" ${f.req ? 'checked' : ''}></td><td>${f.custom ? `<button type="button" class="btn ghost sm" data-act="sf-del" data-k="${f.k}">حذف</button>` : ''}</td></tr>`).join('')}
+      </tbody></table></div><div><button type="button" class="btn sm" data-act="sf-add">إضافة حقل</button></div></div>
+    <div class="fld"><span>رسائل واتساب لولي الأمر</span><span class="small muted" style="font-weight:400">استخدم {الطالب} و{الحلقة} و{التاريخ} وتنعبّى تلقائيًا.</span>
+      <label class="fld"><span>رسالة الغياب</span><textarea id="sg-tA" name="absent" rows="3">${esc(st.tpl.absent)}</textarea></label>
+      <label class="fld"><span>رسالة التميّز</span><textarea id="sg-tE" name="excellent" rows="3">${esc(st.tpl.excellent)}</textarea></label></div>
+    <div><button class="btn pri" type="submit">حفظ الإعدادات</button></div>
+  </form>`;
+}
+
+/* ---- student / parent home ---- */
+function homeV(u) {
+  const t = today(); const hs = S.halaqat[u.halqaId];
+  const sess = L('sessions').filter(s => s.halqaId === u.halqaId);
+  const next = sess.filter(s => s.date >= t).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  const joined = next && L('joins').some(j => j.sid === next.id && j.uid === u.id);
+  const a = attStats(u, 30); const rs = recsOf(u.id);
+  const past = sess.filter(s => s.date <= t).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 12);
+  return `<div><h1>السلام عليكم، ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${hs ? 'حلقة ' + esc(hs.name) : ''} · هذه الصفحة يتابع منها ولي الأمر أيضًا</div></div>
+  ${next ? `<div class="join-card"><div class="grow"><div class="small muted">${next.date === t ? 'حصة اليوم' : 'الحصة القادمة'}</div><h2>${fmtDate(next.date)} · ${fmtTime(next.time)}</h2>${next.note ? `<div class="small">${esc(next.note)}</div>` : ''}${(next.att || {})[u.id] ? `<span class="chip ${ATTC[next.att[u.id]]}">${ATT[next.att[u.id]]}</span>` : ''}</div>
+    ${next.link ? `<a class="btn pri big" href="${esc(next.link)}" target="_blank" rel="noopener" data-act="join" data-id="${next.id}">${joined ? 'ادخل الحصة مرة ثانية' : 'ادخل الحصة'}</a>` : '<span class="chip warn">الرابط ينزل قبل الحصة</span>'}</div>` : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
+  <div class="grid2">
+    <section class="card" style="display:grid;gap:12px"><h2>المطلوب منك</h2>${planHtml(u)}</section>
+    <section class="card" style="display:grid;gap:12px"><h2>آخر ٣٠ يوم</h2><div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>الحضور</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${rs.filter(r => r.date >= addDays(t, -30)).length}</b><span>تسميع</span></div></div>
+    ${past.length ? `<div class="list">${past.slice(0, 6).map(s => { const v = (s.att || {})[u.id]; return `<div class="item"><div class="grow">${fmtDate(s.date)}</div><span class="chip ${v ? ATTC[v] : ''}">${v ? ATT[v] : 'لم يُحضَّر'}</span></div>`; }).join('')}</div>` : ''}</section>
+  </div>
+  <section class="card"><h2>سجل التسميع</h2>${historyTable(rs)}</section>`;
+}
+
+/* ---------------- modals ---------------- */
+let CONFIRM = null;
+function openModal(html) { const m = $('#modal'); m.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; const f = m.querySelector('input:not([type=hidden]),select,textarea'); if (f) setTimeout(() => f.focus(), 30); }
+function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; }
+const dlgHead = t => `<div class="dlg-head"><h2>${t}</h2><button class="btn ghost sm" data-act="close" aria-label="إغلاق">✕</button></div>`;
+function confirmBox(text, yesLabel, fn) { CONFIRM = fn; openModal(`${dlgHead('تأكيد')}<div>${text}</div><div class="dlg-foot"><button class="btn danger" data-act="confirm-yes">${yesLabel}</button><button class="btn" data-act="close">إلغاء</button></div>`); }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
+const surahOptions = sel => `<option value="">—</option>` + SN.map((n, i) => `<option value="${i + 1}" ${+sel === i + 1 ? 'selected' : ''}>${i + 1}. ${esc(n)}</option>`).join('');
+
+function sessionModal(s) {
+  const u = me(); const hs = myHalaqat(u); const isNew = !s;
+  const h0 = s ? s.halqaId : (ST.halqa || (hs[0] && hs[0].id));
+  const lastTime = (S.halaqat[h0] && S.halaqat[h0].time) || '';
+  openModal(`${dlgHead(isNew ? 'حصة جديدة' : 'تعديل الحصة')}
+  <form data-form="session" data-id="${s ? s.id : ''}">
+    <label class="fld"><span>الحلقة</span><select name="halqaId" ${isNew ? '' : 'disabled'}>${hs.map(h => `<option value="${h.id}" ${h.id === h0 ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select></label>
+    <div class="fgrid"><label class="fld"><span>التاريخ</span><input type="date" name="date" value="${s ? s.date : today()}" required></label><label class="fld"><span>الوقت</span><input type="time" name="time" value="${s ? s.time : lastTime}" required></label></div>
+    <label class="fld"><span>رابط الحصة (Zoom أو Meet أو Teams)</span><input name="link" type="url" dir="ltr" value="${esc(s ? s.link : '')}" placeholder="https://"></label>
+    <label class="fld"><span>ملاحظة (اختياري)</span><input name="note" value="${esc(s ? s.note : '')}" placeholder="مثال: مراجعة جزء عمّ"></label>
+    <div class="dlg-foot"><button class="btn pri" type="submit">${isNew ? 'إنشاء الحصة' : 'حفظ'}</button>${s ? `<button type="button" class="btn danger" data-act="del-session" data-id="${s.id}">حذف الحصة</button>` : ''}</div>
+  </form>`);
+}
+function recModal(uid, sid) {
+  const st = { ...S.users[uid], id: uid }; const ps = planSegs(st);
+  const first = ['new', 'review', 'tath'].find(k => ps[k]) || 'new';
+  const sug = k => ps[k] && ps[k][0];
+  const s0 = sug(first);
+  window.__recPlan = { new: sug('new'), review: sug('review'), tath: sug('tath') };
+  const extra = k => ps[k] && ps[k].length > 1 ? `<div class="small muted">المقطع المطلوب كامل: ${segText(ps[k])}. سجّل كل سورة لحالها.</div>` : '';
+  openModal(`${dlgHead('تسجيل تسميع')}<div class="muted">${esc(st.name)}</div>
+  <form data-form="rec" data-uid="${uid}" data-sid="${sid}">
+    <label class="fld"><span>النوع</span><select name="type" id="rc-type" data-change="rec-type">${Object.keys(TYPE).map(k => `<option value="${k}" ${k === first ? 'selected' : ''}>${TYPE[k]}${ps[k] ? ' (في الخطة)' : ''}</option>`).join('')}</select></label>
+    <div id="rc-hint">${extra(first)}</div>
+    <label class="fld"><span>السورة</span><select name="surah" id="rc-surah" required data-change="rec-surah">${surahOptions(s0 ? s0.s + 1 : '')}</select></label>
+    <div class="fgrid"><label class="fld"><span>من آية</span><input name="from" id="rc-from" type="number" min="1" value="${s0 ? s0.a1 : ''}" required></label><label class="fld"><span>إلى آية</span><input name="to" id="rc-to" type="number" min="1" value="${s0 ? s0.a2 : ''}" required></label></div>
+    <div class="fgrid"><label class="fld"><span>الأخطاء</span><input name="mistakes" id="rc-m" type="number" min="0" value="0" data-input="grade"></label><label class="fld"><span>التنبيهات</span><input name="alerts" id="rc-a" type="number" min="0" value="0" data-input="grade"></label></div>
+    <div class="row"><span class="muted small">التقدير:</span><span id="rc-grade" class="grade-preview"><span class="chip ok">ممتاز</span></span></div>
+    <label class="fld"><span>ملاحظة للطالب وولي الأمر (اختياري)</span><input name="note" placeholder="مثال: انتبه لأحكام المد"></label>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ التسميع</button><button type="button" class="btn" data-act="close">إلغاء</button></div>
+  </form>`);
+  window.__recExtra = k => extra(k);
+}
+function studentModal(st) {
+  const fields = SET().fields; const hs = L('halaqat'); const isNew = !st;
+  openModal(`${dlgHead(isNew ? 'إضافة طالب' : 'تعديل بيانات الطالب')}
+  <form data-form="student" data-id="${st ? st.id : ''}">
+    <label class="fld"><span>الاسم الكامل</span><input name="name" value="${esc(st ? st.name : '')}" required></label>
+    <div class="fgrid"><label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" value="${esc(st ? st.username : '')}" required pattern="[A-Za-z0-9_.]{3,}"></label>
+    <label class="fld"><span>${isNew ? 'كلمة المرور' : 'كلمة مرور جديدة (اتركها فاضية)'}</span><input name="password" type="password" ${isNew ? 'required minlength="4"' : ''} autocomplete="new-password"></label></div>
+    <div class="fgrid">${fields.map(f => fieldHtml(f, st ? st[f.k] : '', 'sm-', { forceReq: false })).join('')}</div>
+    <div class="fgrid"><label class="fld"><span>الحلقة</span><select name="halqaId" required>${hs.map(h => `<option value="${h.id}" ${st && st.halqaId === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>الحالة</span><select name="status"><option value="active" ${!st || st.status === 'active' ? 'selected' : ''}>نشط</option><option value="disabled" ${st && st.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label></div>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${st ? `<button type="button" class="btn danger" data-act="del-user" data-id="${st.id}">حذف الطالب</button>` : ''}</div>
+  </form>`);
+}
+function teacherModal(t) {
+  const isNew = !t;
+  openModal(`${dlgHead(isNew ? 'إضافة معلم' : 'تعديل المعلم')}
+  <form data-form="teacher" data-id="${t ? t.id : ''}">
+    <label class="fld"><span>الاسم</span><input name="name" value="${esc(t ? t.name : '')}" required></label>
+    <div class="fgrid"><label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" value="${esc(t ? t.username : '')}" required pattern="[A-Za-z0-9_.]{3,}"></label>
+    <label class="fld"><span>${isNew ? 'كلمة المرور' : 'كلمة مرور جديدة (اتركها فاضية)'}</span><input name="password" type="password" ${isNew ? 'required minlength="4"' : ''} autocomplete="new-password"></label></div>
+    <label class="fld"><span>الجوال</span><input name="phone" type="tel" dir="ltr" value="${esc(t ? t.phone : '')}"></label>
+    <div class="row"><label class="check"><input type="checkbox" name="canPlan" ${!t || t.canPlan ? 'checked' : ''}> إعداد الخطط</label><label class="check"><input type="checkbox" name="canAuto" ${t && t.canAuto ? 'checked' : ''}> الخطة التلقائية</label></div>
+    ${t ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${t.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${t.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${t ? `<button type="button" class="btn danger" data-act="del-user" data-id="${t.id}">حذف المعلم</button>` : ''}</div>
+  </form>`);
+}
+function halqaModal(h) {
+  const ts = L('users').filter(u => u.role === 'teacher' && u.status !== 'disabled'); const days = h && h.days && h.days.length ? h.days : SET().days;
+  openModal(`${dlgHead(h ? 'تعديل الحلقة' : 'حلقة جديدة')}
+  <form data-form="halqa" data-id="${h ? h.id : ''}">
+    <label class="fld"><span>اسم الحلقة</span><input name="name" value="${esc(h ? h.name : '')}" required placeholder="مثال: حلقة أبي بن كعب"></label>
+    <label class="fld"><span>المعلم</span><select name="teacherId"><option value="">بدون معلم</option>${ts.map(t => `<option value="${t.id}" ${h && h.teacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+    <div class="fld"><span>أيام الدوام</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
+    <label class="fld"><span>الوقت المعتاد للحصة</span><input type="time" name="time" value="${esc(h ? h.time : '')}"></label>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${h ? `<button type="button" class="btn danger" data-act="del-halqa" data-id="${h.id}">حذف الحلقة</button>` : ''}</div>
+  </form>`);
+}
+function planModal(st) {
+  const u = me(); const p = planOf(st); const allowAuto = canAutoU(u) && st.autoAllowed;
+  const a = p.auto; const curG = a.newPos < TOTAL ? ORD[a.dir].ord[a.newPos] : null;
+  const curS = curG != null ? SUR[curG] + 1 : (a.dir === 'fwd' ? 1 : 114); const curA = curG != null ? curG - SSTART[curS - 1] + 1 : 1;
+  const man = k => p.manual[k] || {};
+  const amtSel = (name, val, opts) => `<select name="${name}">${opts.map(o => `<option value="${o}" ${+val === o ? 'selected' : ''}>${o ? fmtAmt(o) : 'بدون'}</option>`).join('')}</select>`;
+  openModal(`${dlgHead('خطة ' + esc(st.name))}
+  <form data-form="plan" data-id="${st.id}">
+    <div class="row"><label class="check"><input type="radio" name="mode" value="manual" data-change="plan-mode" ${p.mode !== 'auto' || !allowAuto ? 'checked' : ''}> يدوية</label>
+    <label class="check"><input type="radio" name="mode" value="auto" data-change="plan-mode" ${p.mode === 'auto' && allowAuto ? 'checked' : ''} ${allowAuto ? '' : 'disabled'}> تلقائية</label></div>
+    ${allowAuto ? '' : `<div class="note small">${!st.autoAllowed ? 'الخطة التلقائية غير مسموحة لهذا الطالب. يفعّلها المدير من صفحة الطالب.' : 'ما عندك صلاحية الخطة التلقائية. يفعّلها المدير من تبويب المعلمين.'}</div>`}
+    <div id="pm-manual" ${p.mode === 'auto' && allowAuto ? 'hidden' : ''} style="display:grid;gap:12px">
+      ${['new', 'review', 'tath'].map(k => `<div class="fld"><span>${TYPE[k]}</span><div class="fgrid"><select name="m-${k}-s">${surahOptions(man(k).surah)}</select><input name="m-${k}-f" type="number" min="1" placeholder="من آية" value="${man(k).from || ''}"><input name="m-${k}-t" type="number" min="1" placeholder="إلى آية" value="${man(k).to || ''}"></div></div>`).join('')}
+      <div class="small muted">اترك السورة «—» إذا ما فيه مطلوب من هذا النوع.</div>
+    </div>
+    <div id="pm-auto" ${p.mode === 'auto' && allowAuto ? '' : 'hidden'} style="display:grid;gap:12px">
+      <label class="fld"><span>اتجاه الحفظ</span><select name="dir"><option value="bwd" ${a.dir !== 'fwd' ? 'selected' : ''}>من الناس إلى البقرة</option><option value="fwd" ${a.dir === 'fwd' ? 'selected' : ''}>من الفاتحة إلى الناس</option></select></label>
+      <div class="fld"><span>الحفظ الجديد يبدأ من</span><div class="fgrid"><select name="startS">${surahOptions(curS)}</select><input name="startA" type="number" min="1" value="${curA}"></div><span class="small muted" style="font-weight:400">كل ما قبل هذا الموضع (حسب الاتجاه) يُعتبر محفوظًا ويدخل في المراجعة.</span></div>
+      <div class="fgrid"><label class="fld"><span>الحفظ اليومي</span>${amtSel('newAmt', a.newAmt, [0.125, 0.25, 0.5, 0.75, 1, 2])}</label>
+      <label class="fld"><span>المراجعة اليومية</span>${amtSel('revAmt', a.revAmt, [0, 0.5, 1, 2, 3, 4, 5, 10, 20])}</label>
+      <label class="fld"><span>التثبيت (آخر المحفوظ)</span>${amtSel('tathAmt', a.tathAmt, [0, 0.5, 1, 2, 3, 5])}</label></div>
+      <div class="small muted">تتقدم الخطة فقط إذا سمّع الطالب ونجح. إذا غاب أو أعاد يبقى نفس المقطع للحصة الجاية. وما تتقدم في أيام الإجازة.</div>
+    </div>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ الخطة</button><button type="button" class="btn" data-act="close">إلغاء</button></div>
+  </form>`);
+}
+function pwModal() {
+  openModal(`${dlgHead('تغيير كلمة المرور')}<form data-form="mypw"><label class="fld"><span>كلمة المرور الحالية</span><input name="old" type="password" required autocomplete="current-password"></label><label class="fld"><span>كلمة المرور الجديدة</span><input name="pw" type="password" required minlength="4" autocomplete="new-password"></label><div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button></div></form>`);
+}
+function regLink(hid) { return location.origin + location.pathname + (hid ? '#join-' + hid : '#register'); }
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('تم النسخ'); }
+  catch { openModal(`${dlgHead('انسخ النص')}<input id="cp-x" dir="ltr" value="${esc(text)}" readonly><div class="small muted">حدّد النص وانسخه.</div>`); setTimeout(() => { const i = $('#cp-x'); if (i) { i.focus(); i.select(); } }, 40); }
+}
+function usernameTaken(un, exceptId) { un = un.toLowerCase(); return L('users').some(u => (u.username || '').toLowerCase() === un && u.id !== exceptId); }
+
+/* ---------------- actions ---------------- */
+const curSession = () => ({ ...S.sessions[ST.sid], id: ST.sid });
+const ACT = {
+  'tab': el => go(el.dataset.v),
+  'logout': async () => { try { await api('logout'); } catch {} ST.meId = null; ST.view = null; clean(); await safeSync(); render(); },
+  'to-reg': () => { ST.reg = true; render(); },
+  'from-reg': () => { ST.reg = false; ST.regDone = false; try { history.replaceState(null, '', location.pathname + location.search); } catch { location.hash = ''; } render(); },
+  'close': () => closeModal(),
+  'confirm-yes': async () => { const f = CONFIRM; CONFIRM = null; closeModal(); if (f) await f(); },
+  'my-pw': () => pwModal(),
+  'filter-h': el => { ST.halqa = el.dataset.h; render(); },
+  'range': el => { ST.range = +el.dataset.d; render(); },
+  'open-session': el => go('session', { sid: el.dataset.id }),
+  'open-student': el => go('student', { uid: el.dataset.id }),
+  'new-session': () => sessionModal(null),
+  'edit-session': el => sessionModal({ ...S.sessions[el.dataset.id], id: el.dataset.id }),
+  'del-session': el => confirmBox('تحذف الحصة؟ التسميع المسجّل فيها يبقى في سجل الطلاب.', 'حذف', () => run(async () => { await del('sessions', el.dataset.id); go('sessions'); }, 'حُذفت الحصة')),
+  'att': el => { const s = curSession(); const cur = (s.att || {})[el.dataset.id]; const v = cur === el.dataset.v ? null : el.dataset.v; run(() => patch('sessions', s.id, { att: { [el.dataset.id]: v } })); },
+  'att-joined': () => { const s = curSession(); const att = {}; L('joins').filter(j => j.sid === s.id).forEach(j => { if (!(s.att || {})[j.uid]) att[j.uid] = 'p'; }); if (!Object.keys(att).length) return toast('ما فيه أحد دخل من الموقع بعد'); run(() => patch('sessions', s.id, { att }), 'تم تحضير ' + Object.keys(att).length); },
+  'att-rest': () => { const s = curSession(); const att = {}; studentsOf(s.halqaId).forEach(x => { if (!(s.att || {})[x.id]) att[x.id] = 'a'; }); if (!Object.keys(att).length) return toast('كل الطلاب محضّرون'); run(() => patch('sessions', s.id, { att })); },
+  'q-add': () => { const id = $('#q-pick').value; if (!id) return; const s = curSession(); clean(); run(() => patch('sessions', s.id, { queue: [...(s.queue || []), id] })); },
+  'q-all': () => { const s = curSession(); const q = [...(s.queue || [])]; studentsOf(s.halqaId).forEach(x => { const v = (s.att || {})[x.id]; if ((v === 'p' || v === 'l') && !q.includes(x.id) && x.id !== s.current) q.push(x.id); }); run(() => patch('sessions', s.id, { queue: q })); },
+  'q-up': el => { const s = curSession(); const q = [...s.queue]; const i = +el.dataset.i; if (i > 0) { [q[i - 1], q[i]] = [q[i], q[i - 1]]; run(() => patch('sessions', s.id, { queue: q })); } },
+  'q-down': el => { const s = curSession(); const q = [...s.queue]; const i = +el.dataset.i; if (i < q.length - 1) { [q[i + 1], q[i]] = [q[i], q[i + 1]]; run(() => patch('sessions', s.id, { queue: q })); } },
+  'q-rm': el => { const s = curSession(); const q = [...s.queue]; q.splice(+el.dataset.i, 1); run(() => patch('sessions', s.id, { queue: q })); },
+  'q-next': () => { const s = curSession(); const q = [...(s.queue || [])]; const nx = q.shift() || null; run(() => patch('sessions', s.id, { queue: q, current: nx })); },
+  'rec': el => recModal(el.dataset.id, ST.sid),
+  'del-rec': el => confirmBox('تحذف هذا التسميع؟ (الخطة التلقائية ما ترجع للخلف)', 'حذف', () => run(() => del('recs', el.dataset.id), 'حُذف')),
+  'join': el => { const u = me(); const id = el.dataset.id + '_' + u.id; if (!S.joins[id]) run(() => put('joins', id, { sid: el.dataset.id, uid: u.id, at: Date.now() })); },
+  'copy': el => copyText(el.dataset.text),
+  'copy-reg': el => copyText(regLink(el.dataset.h)),
+  'retry': () => { OFFLINE = false; render(); safeSync(); },
+  'approve': el => { const id = el.dataset.id; const hid = $('#ap-h-' + id).value; run(() => patch('users', id, { status: 'active', halqaId: hid, approvedAt: Date.now() }), 'تم اعتماد الطالب'); },
+  'reject': el => confirmBox('تحذف طلب التسجيل؟', 'حذف الطلب', () => run(() => del('users', el.dataset.id), 'حُذف الطلب')),
+  'add-student': () => { if (!L('halaqat').length) return toast('أنشئ حلقة أولًا'); studentModal(null); },
+  'edit-student': el => studentModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
+  'del-user': el => confirmBox('تحذف هذا الحساب نهائيًا؟', 'حذف', () => run(async () => { await del('users', el.dataset.id); if (ST.view === 'student') go('students'); }, 'حُذف الحساب')),
+  'add-teacher': () => teacherModal(null),
+  'edit-teacher': el => teacherModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
+  'add-halqa': () => halqaModal(null),
+  'edit-halqa': el => halqaModal({ ...S.halaqat[el.dataset.id], id: el.dataset.id }),
+  'del-halqa': el => { const n = studentsOf(el.dataset.id).length; if (n) { closeModal(); return toast('انقل طلاب الحلقة (' + n + ') لحلقة ثانية قبل حذفها'); } confirmBox('تحذف الحلقة؟', 'حذف', () => run(() => del('halaqat', el.dataset.id), 'حُذفت الحلقة')); },
+  'edit-plan': el => planModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
+  'sf-add': () => openModal(`${dlgHead('إضافة حقل تسجيل')}<form data-form="sf-add"><label class="fld"><span>اسم الحقل</span><input name="label" required placeholder="مثال: الحي"></label><label class="fld"><span>النوع</span><select name="type"><option value="text">نص</option><option value="tel">رقم جوال</option><option value="number">رقم</option></select></label><label class="check"><input type="checkbox" name="req"> إجباري</label><div class="dlg-foot"><button class="btn pri" type="submit">إضافة</button></div></form>`),
+  'sf-del': el => { const st = SET(); run(() => put('settings', 'main', { ...st, fields: st.fields.filter(f => f.k !== el.dataset.k) })); },
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const fn = ACT[el.dataset.act]; if (!fn) return;
+  if (el.tagName !== 'A') e.preventDefault();
+  fn(el, e);
+});
+
+const CHG = {
+  'filter-h': el => { ST.halqa = el.value; delete el.dataset.dirty; render(); },
+  'student-auto': el => { delete el.dataset.dirty; run(() => patch('users', el.dataset.id, { autoAllowed: el.checked }), el.checked ? 'سُمح بالخطة التلقائية' : 'أُلغي السماح بالخطة التلقائية'); },
+  't-perm': el => { delete el.dataset.dirty; run(() => patch('users', el.dataset.id, { [el.dataset.k]: el.checked }), 'تم تحديث الصلاحية'); },
+  'plan-mode': el => { const auto = el.value === 'auto' && el.checked; $('#pm-auto').hidden = !auto; $('#pm-manual').hidden = auto; },
+  'rec-type': el => { const s = window.__recPlan[el.value]; $('#rc-hint').innerHTML = window.__recExtra(el.value); if (s) { $('#rc-surah').value = s.s + 1; $('#rc-from').value = s.a1; $('#rc-to').value = s.a2; } },
+  'rec-surah': () => { const n = AYAS[+$('#rc-surah').value - 1]; if (n) { $('#rc-from').max = n; $('#rc-to').max = n; } },
+};
+document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (el && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
+const INP = {
+  'grade': () => { const g = gradeOf($('#rc-m').value, $('#rc-a').value); $('#rc-grade').innerHTML = `<span class="chip ${g.k}">${g.t}</span>`; },
+  'search': el => { ST.q = el.value; clearTimeout(INP.t); INP.t = setTimeout(render, 200); },
+};
+document.addEventListener('input', e => { const el = e.target.closest('[data-input]'); if (el && INP[el.dataset.input]) INP[el.dataset.input](el, e); });
+
+/* ---------------- forms ---------------- */
+const FORMS = {
+  async setup(f, d) {
+    if (await run(() => api('setup', { center: d.get('center'), name: d.get('name'), username: d.get('username'), password: d.get('password') }))) { clean(); ST.view = null; await safeSync(); }
+  },
+  async login(f, d) {
+    try { await api('login', { username: d.get('username'), password: d.get('password') }); } catch (e) { return toast(e.userMsg); }
+    ST.view = null; clean(); await safeSync();
+  },
+  async register(f, d) {
+    const body = { name: d.get('name'), username: d.get('username'), password: d.get('password'), reqHalqa: f.dataset.hid || d.get('reqHalqa') || '' };
+    SET().fields.filter(x => x.on).forEach(x => { body[x.k] = (d.get(x.k) || '').trim(); });
+    if (await run(() => api('register', body))) { clean(); ST.regDone = true; render(); }
+  },
+  async session(f, d) {
+    const id = f.dataset.id; const data = { date: d.get('date'), time: d.get('time'), link: (d.get('link') || '').trim(), note: (d.get('note') || '').trim() };
+    if (id) { if (await run(() => patch('sessions', id, data), 'حُفظت الحصة')) closeModal(); }
+    else { const nid = newId(); if (await run(() => put('sessions', nid, { ...data, halqaId: d.get('halqaId'), att: {}, queue: [], current: null }), 'أُنشئت الحصة')) { closeModal(); go('session', { sid: nid }); } }
+  },
+  async rec(f, d) {
+    const uid = f.dataset.uid, sid = f.dataset.sid; const sur = +d.get('surah'); const n = AYAS[sur - 1];
+    const from = +d.get('from'), to = +d.get('to');
+    if (!n) return toast('اختر السورة');
+    if (from < 1 || to < from || to > n) return toast('تأكد من أرقام الآيات (سورة ' + SN[sur - 1] + ' عدد آياتها ' + n + ')');
+    const m = +d.get('mistakes') || 0, al = +d.get('alerts') || 0; const g = gradeOf(m, al);
+    const ses = S.sessions[sid];
+    const rec = { uid, sid, halqaId: ses ? ses.halqaId : '', date: ses ? ses.date : today(), type: d.get('type'), surah: sur, from, to, mistakes: m, alerts: al, grade: g.t, pass: g.pass, note: (d.get('note') || '').trim(), at: Date.now() };
+    if (await run(() => put('recs', newId(), rec), 'سُجّل التسميع: ' + g.t)) closeModal();
+  },
+  async student(f, d) {
+    const id = f.dataset.id;
+    const data = { name: d.get('name').trim(), username: d.get('username').trim(), halqaId: d.get('halqaId'), status: d.get('status') };
+    SET().fields.forEach(x => { data[x.k] = (d.get(x.k) || '').trim(); });
+    if (d.get('password')) data.password = d.get('password');
+    const ok = id ? await run(() => patch('users', id, data), 'حُفظت البيانات') : await run(() => put('users', newId(), { ...data, role: 'student' }), 'أُضيف الطالب');
+    if (ok) closeModal();
+  },
+  async teacher(f, d) {
+    const id = f.dataset.id;
+    const data = { name: d.get('name').trim(), username: d.get('username').trim(), phone: (d.get('phone') || '').trim(), canPlan: !!d.get('canPlan'), canAuto: !!d.get('canAuto') };
+    if (id) data.status = d.get('status');
+    if (d.get('password')) data.password = d.get('password');
+    const ok = id ? await run(() => patch('users', id, data), 'حُفظ') : await run(() => put('users', newId(), { ...data, role: 'teacher' }), 'أُضيف المعلم');
+    if (ok) closeModal();
+  },
+  async halqa(f, d) {
+    const id = f.dataset.id; const data = { name: d.get('name').trim(), teacherId: d.get('teacherId') || '', days: d.getAll('day').map(Number), time: d.get('time') || '' };
+    if (!data.days.length) return toast('اختر يوم دوام واحد على الأقل');
+    const ok = id ? await run(() => patch('halaqat', id, data), 'حُفظت الحلقة') : await run(() => put('halaqat', newId(), data), 'أُنشئت الحلقة');
+    if (ok) closeModal();
+  },
+  async plan(f, d) {
+    const id = f.dataset.id; const st = { ...S.users[id], id }; const old = planOf(st); const u = me();
+    const mode = d.get('mode') === 'auto' && canAutoU(u) && st.autoAllowed ? 'auto' : 'manual';
+    const manual = {};
+    for (const k of ['new', 'review', 'tath']) { const s = +d.get('m-' + k + '-s'); if (!s) continue; const n = AYAS[s - 1]; const fr = +d.get('m-' + k + '-f') || 1, to = +d.get('m-' + k + '-t') || n; if (fr > n || to > n || fr > to) return toast('آيات ' + TYPE[k] + ' غير صحيحة (سورة ' + SN[s - 1] + ': ' + n + ' آية)'); manual[k] = { surah: s, from: fr, to }; }
+    let auto = old.auto;
+    if (mode === 'auto') {
+      const dir = d.get('dir') === 'fwd' ? 'fwd' : 'bwd'; const ss = +d.get('startS'); const sa = +d.get('startA') || 1;
+      if (!ss || sa > AYAS[ss - 1]) return toast('تأكد من موضع بداية الحفظ');
+      const np = ORD[dir].pos[gOf(ss, sa)];
+      auto = { dir, newPos: np, revPos: (dir === old.auto.dir && np === old.auto.newPos) ? old.auto.revPos : 0, newAmt: +d.get('newAmt'), revAmt: +d.get('revAmt'), tathAmt: +d.get('tathAmt') };
+    }
+    const plan = { mode, manual, auto };
+    if (await run(async () => { S.users[id] = { ...S.users[id], plan }; await patch('users', id, { plan }); }, 'حُفظت الخطة')) closeModal();
+  },
+  async settings(f, d) {
+    const st = SET(); const days = d.getAll('day').map(Number);
+    if (!days.length) return toast('اختر يوم دوام واحد على الأقل');
+    const fields = st.fields.map(x => ({ ...x, label: (d.get('lb-' + x.k) || x.label).trim() || x.label, on: !!d.get('on-' + x.k), req: !!d.get('req-' + x.k) && !!d.get('on-' + x.k) }));
+    const ns = { center: d.get('center').trim() || DEF.center, days, fields, grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
+    if (!(ns.grade.ex <= ns.grade.vg && ns.grade.vg <= ns.grade.gd)) return toast('حدود التقدير لازم تكون متصاعدة');
+    if (await run(() => put('settings', 'main', { ...st, ...ns }), 'حُفظت الإعدادات')) clean();
+  },
+  async 'sf-add'(f, d) {
+    const st = SET(); const nf = { k: 'c_' + newId(), label: d.get('label').trim(), type: d.get('type'), on: true, req: !!d.get('req'), custom: true };
+    if (await run(() => put('settings', 'main', { ...st, fields: [...st.fields, nf] }), 'أُضيف الحقل')) closeModal();
+  },
+  async mypw(f, d) {
+    if (await run(() => api('mypw', { old: d.get('old'), pw: d.get('pw') }), 'تم تغيير كلمة المرور')) closeModal();
+  },
+};
+document.addEventListener('submit', e => {
+  const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault();
+  const btn = f.querySelector('[type=submit]'); if (btn) btn.disabled = true;
+  Promise.resolve(FORMS[f.dataset.form](f, new FormData(f))).finally(() => { if (btn && btn.isConnected) btn.disabled = false; });
+});
+window.addEventListener('hashchange', () => render());
+
+/* ---------------- boot ---------------- */
+render();
+loadPages();
+safeSync();
+setInterval(() => { if (document.visibilityState === 'visible' && !syncing) safeSync(); }, 6000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') safeSync(); });
+</script>
+</body>
+</html>
