@@ -36,6 +36,7 @@ export async function waSend(cfg: WaCfg, phone: string, text: string): Promise<{
   const sub = (tpl: string, mode: "url" | "json" | "raw") => tpl
     .replace(/\{phone\}/g, mode === "url" ? enc(p) : p).replace(/\{phone0\}/g, mode === "url" ? enc(p0) : p0)
     .replace(/\{message\}/g, mode === "url" ? enc(text) : mode === "json" ? JSON.stringify(text).slice(1, -1) : text);
+  if (!String(cfg.url || "").trim()) return { ok: false, resp: "ما تم الربط بعد: اطلع فوق لمربع «الربط السريع»، اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، بعدين «حفظ ربط الواتساب»." };
   if (!/^https:\/\//i.test(cfg.url)) return { ok: false, resp: "رابط الإرسال لازم يبدأ بـ https://" };
   try {
     const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 15000);
