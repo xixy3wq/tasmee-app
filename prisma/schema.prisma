@@ -25,6 +25,8 @@ model User {
   canAuto      Boolean   @default(false)
   autoAllowed  Boolean   @default(false)
   plan         Json?
+  /// هدف الطالب: { pages, from, by, note }
+  goal         Json?
   createdAt    DateTime  @default(now())
   approvedAt   DateTime?
 }
@@ -105,4 +107,52 @@ model Rec {
 model Setting {
   key   String @id
   value Json
+}
+
+/// سجل العمليات وتغييرات الخطط
+model AuditLog {
+  id       String   @id @default(cuid())
+  at       DateTime @default(now())
+  byId     String?
+  byName   String   @default("")
+  action   String
+  targetId String?
+  text     String   @default("")
+  detail   Json?
+
+  @@index([targetId, at])
+  @@index([at])
+}
+
+/// إعلانات الحلقات (halqaId فارغ = لكل الحلقات)
+model Ann {
+  id      String   @id @default(cuid())
+  halqaId String?
+  title   String
+  body    String   @default("")
+  byId    String?
+  byName  String   @default("")
+  at      DateTime @default(now())
+}
+
+model AnnRead {
+  id     String   @id @default(cuid())
+  annId  String
+  userId String
+  at     DateTime @default(now())
+
+  @@unique([annId, userId])
+}
+
+/// الورد اليومي ومهام اليوم للطالب
+model Wird {
+  id     String   @id @default(cuid())
+  userId String
+  date   String
+  items  Json     @default("[]")
+  read   Int      @default(0)
+  note   String   @default("")
+  at     DateTime @default(now())
+
+  @@unique([userId, date])
 }

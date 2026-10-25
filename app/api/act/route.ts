@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { currentUser, handle, fail, cleanUsername, USERNAME_RE, str, int, type Me } from "@/lib/auth";
 import { getSettings, gradeOf, GRADES, localDate, type Field } from "@/lib/settings";
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
+import { audit } from "@/lib/audit";
+import crypto from "node:crypto";
 export const dynamic = "force-dynamic";
 
 const isAdmin = (u: Me) => u.role === "admin";
@@ -62,7 +64,11 @@ const A: Record<string, H> = {
       type: ["tel", "number", "text"].includes(f.type) ? f.type : "text", ph: str(f.ph, 80), custom: !!f.custom,
     }));
     const cur = await getSettings();
-    const value = { center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const tpls = Array.isArray(d.tpls) ? d.tpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "x" + i, name: str(t.name, 40) || "رسالة", text: str(t.text, 800) })).filter((t: any) => t.text) : cur.tpls;
+    const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
+    const pp = d.points || {}; const points = { present: AMT(pp.present ?? cur.points.present, 100), late: AMT(pp.late ?? cur.points.late, 100), ex: AMT(pp.ex ?? cur.points.ex, 100), vg: AMT(pp.vg ?? cur.points.vg, 100), gd: AMT(pp.gd ?? cur.points.gd, 100), page: AMT(pp.page ?? cur.points.page, 100) };
+    const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
   },
 
@@ -99,6 +105,8 @@ const A: Record<string, H> = {
     await prisma.$transaction([
       prisma.rec.deleteMany({ where: { userId: id } }),
       prisma.join.deleteMany({ where: { userId: id } }),
+      prisma.wird.deleteMany({ where: { userId: id } }),
+      prisma.annRead.deleteMany({ where: { userId: id } }),
       prisma.halqa.updateMany({ where: { teacherId: id }, data: { teacherId: null } }),
       prisma.user.delete({ where: { id } }),
     ]);
@@ -119,13 +127,18 @@ const A: Record<string, H> = {
     const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
     const halqaId = str(d.halqaId); if (!(await prisma.halqa.findUnique({ where: { id: halqaId } }))) fail("اختر الحلقة");
     const s = await getSettings();
-    const data: any = { name, username, halqaId, status: d.status === "disabled" ? "disabled" : "active", info: cleanInfo(s.fields, d.info) };
+    const data: any = { name, username, halqaId, status: ["disabled", "archived"].includes(d.status) ? d.status : "active", info: cleanInfo(s.fields, d.info) };
     const pw = String(d.password ?? "");
     if (pw) { if (pw.length < 4) fail("كلمة المرور 4 أحرف على الأقل"); data.passwordHash = await bcrypt.hash(pw, 10); }
     if (id) {
       const ex = await prisma.user.findUnique({ where: { id } });
       if (!ex || ex.role !== "student") fail("الطالب غير موجود", 404);
       await prisma.user.update({ where: { id }, data });
+      if (ex!.halqaId !== halqaId) {
+        const [a, c] = await Promise.all([ex!.halqaId ? prisma.halqa.findUnique({ where: { id: ex!.halqaId } }) : null, prisma.halqa.findUnique({ where: { id: halqaId } })]);
+        await audit(u, "student.move", id, `نقل ${name} من ${a?.name || "—"} إلى ${c?.name || "—"}`);
+      }
+      if (ex!.status !== data.status) await audit(u, "student.status", id, `${name}: ${({ active: "نشط", disabled: "موقوف", archived: "مؤرشف" } as any)[data.status]}`);
     } else {
       if (!pw) fail("اكتب كلمة المرور");
       await prisma.user.create({ data: { ...data, role: "student", plan: defPlan(), approvedAt: new Date() } });
@@ -337,7 +350,87 @@ const A: Record<string, H> = {
       const np = Math.min(TOTAL, ORD[dir].pos[gOf(ss, sa)]);
       auto = { dir, newPos: np, revPos: dir === old.auto.dir && np === old.auto.newPos ? old.auto.revPos : 0, newAmt: AMT(a.newAmt, 5), revAmt: AMT(a.revAmt), tathAmt: AMT(a.tathAmt, 10) };
     }
-    await prisma.user.update({ where: { id: st.id }, data: { plan: { mode, manual, auto } } });
+    const near = AMT(b.near, 10);
+    const pz = b.paused && validDate(str(b.paused.from)) ? { from: str(b.paused.from), to: validDate(str(b.paused.to)) ? str(b.paused.to) : "", reason: str(b.paused.reason, 100) } : null;
+    const plan = { mode, manual, auto, near, paused: pz };
+    await prisma.user.update({ where: { id: st.id }, data: { plan } });
+    const desc = (p: any) => p.mode === "auto" ? `تلقائية: حفظ ${p.auto.newAmt} ومراجعة ${p.auto.revAmt} وتثبيت ${p.auto.tathAmt} وجه` : `يدوية${Object.keys(p.manual || {}).length ? " (" + Object.entries(p.manual).map(([k, v]: any) => `${({ new: "حفظ", review: "مراجعة", tath: "تثبيت" } as any)[k]} ${v.surah}:${v.from}-${v.to}`).join("، ") + ")" : ""}`;
+    await audit(u, "plan", st.id, `${st.name}: ${desc(old)} ← ${desc(plan)}${pz ? ` · موقوفة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : ""}`, { before: old, after: plan });
+  },
+  async "plan.applyTpl"(u, b) {
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan && u.canAuto))) fail("ما عندك صلاحية الخطط التلقائية", 403);
+    const t = b.tpl || {}; const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 200);
+    let done = 0, skipped = 0;
+    for (const id of ids) {
+      const st = await studentFor(u, id);
+      if (!st.autoAllowed) { skipped++; continue; }
+      const p = planOf(st);
+      p.mode = "auto"; p.auto = { ...p.auto, newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) };
+      await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+      done++;
+    }
+    await audit(u, "plan.tpl", null, `تطبيق قالب «${str(t.name, 60)}» على ${done} طالب`);
+    return { done, skipped };
+  },
+  async "goal.save"(u, b) {
+    const st = await studentFor(u, str(b.id));
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية الخطط", 403);
+    const g = b.goal;
+    const goal = g && AMT(g.pages, 604) > 0 ? { pages: AMT(g.pages, 604), from: validDate(str(g.from)) ? str(g.from) : localDate(), by: validDate(str(g.by)) ? str(g.by) : "", note: str(g.note, 120) } : null;
+    await prisma.user.update({ where: { id: st.id }, data: { goal: goal as any } });
+    await audit(u, "goal", st.id, goal ? `${st.name}: هدف ${goal.pages} وجه${goal.by ? " قبل " + goal.by : ""}` : `${st.name}: حذف الهدف`);
+  },
+  async "log.list"(u, b) {
+    const target = str(b.target);
+    if (target) await studentFor(u, target); else needAdmin(u);
+    const rows = await prisma.auditLog.findMany({ where: target ? { targetId: target } : {}, orderBy: { at: "desc" }, take: target ? 50 : 200 });
+    return { rows: rows.map((r) => ({ at: +r.at, by: r.byName, action: r.action, text: r.text })) };
+  },
+
+  // ---------- الإعلانات ----------
+  async "ann.save"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const halqaId = str(b.halqaId) || null;
+    if (halqaId) await halqaFor(u, halqaId); else if (!isAdmin(u)) fail("المعلم ينشر لحلقته فقط");
+    const title = str(b.title, 120); if (!title) fail("اكتب عنوان الإعلان");
+    const data = { halqaId, title, body: str(b.body, 2000), byId: u.id, byName: u.name };
+    if (b.id) {
+      const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
+      if (!a || (!isAdmin(u) && a.byId !== u.id)) fail("الإعلان غير موجود", 404);
+      await prisma.ann.update({ where: { id: a!.id }, data });
+    } else await prisma.ann.create({ data });
+  },
+  async "ann.delete"(u, b) {
+    const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
+    if (!a) return;
+    if (!isAdmin(u) && a.byId !== u.id) fail("غير مصرح", 403);
+    await prisma.$transaction([prisma.annRead.deleteMany({ where: { annId: a.id } }), prisma.ann.delete({ where: { id: a.id } })]);
+  },
+  async "ann.read"(u, b) {
+    const a = await prisma.ann.findUnique({ where: { id: str(b.id) } });
+    if (!a || (a.halqaId && a.halqaId !== u.halqaId && u.role === "student")) fail("الإعلان غير موجود", 404);
+    await prisma.annRead.upsert({ where: { annId_userId: { annId: a!.id, userId: u.id } }, create: { annId: a!.id, userId: u.id }, update: {} });
+  },
+
+  // ---------- الورد اليومي ----------
+  async "wird.save"(u, b) {
+    if (u.role !== "student") fail("للطالب فقط", 403);
+    const date = validDate(str(b.date)) ? str(b.date) : localDate();
+    if (date > localDate() || date < localDate(-7)) fail("التاريخ غير متاح");
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).map((x: any) => ({ k: str(x.k, 120), done: !!x.done }));
+    const data = { items, read: Math.min(604, Math.max(0, int(b.read))), note: str(b.note, 200) };
+    await prisma.wird.upsert({ where: { userId_date: { userId: u.id, date } }, create: { userId: u.id, date, ...data }, update: data });
+  },
+
+  // ---------- كلمة مرور مؤقتة ----------
+  async "user.resetpw"(u, b) {
+    needAdmin(u);
+    const t = await prisma.user.findUnique({ where: { id: str(b.id) } });
+    if (!t || t.role === "admin") fail("الحساب غير موجود", 404);
+    const pw = String(crypto.randomInt(100000, 1000000));
+    await prisma.user.update({ where: { id: t!.id }, data: { passwordHash: await bcrypt.hash(pw, 10) } });
+    await audit(u, "user.resetpw", t!.id, `كلمة مرور مؤقتة لـ ${t!.name}`);
+    return { pw, username: t!.username };
   },
 };
 

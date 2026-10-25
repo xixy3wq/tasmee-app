@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { getSettings, isHoliday, localDate, weekday, type Settings } from "@/lib/settings";
+import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
+import { halqaPoints } from "@/lib/points";
 export const dynamic = "force-dynamic";
 
 // كل ما يحتاجه المستخدم الحالي، مفلترًا حسب دوره
 const userOut = (u: any) => ({
   role: u.role, status: u.status, name: u.name, username: u.username, halqaId: u.halqaId, reqHalqa: u.reqHalqaId || "",
   canPlan: u.canPlan, canAuto: u.canAuto, autoAllowed: u.autoAllowed, plan: u.plan || null,
-  createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, ...((u.info as object) || {}),
+  goal: u.goal || null, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, ...((u.info as object) || {}),
 });
 const lessonOut = (l: any) => ({
   halqaId: l.halqaId, date: l.date, time: l.time, link: l.link, note: l.note, att: l.att || {}, queue: l.queue || [], current: l.currentId || null,
@@ -41,6 +42,7 @@ export async function GET() {
   if (!me) return NextResponse.json({ me: null });
   const settings = await getSettings();
   let users: any[], halaqat: any[], lessons: any[], recs: any[], joins: any[];
+  let board: any = null;
 
   if (me.role === "admin") {
     halaqat = await prisma.halqa.findMany();
@@ -82,7 +84,25 @@ export async function GET() {
     });
     recs = await prisma.rec.findMany({ where: { userId: me.id } });
     joins = await prisma.join.findMany({ where: { userId: me.id } });
+    // لوحة الشرف الأسبوعية لحلقة الطالب
+    if (me.halqaId) {
+      const today = localDate(); const list = await halqaPoints(me.halqaId, weekStart(today), today, settings);
+      const rank = list.findIndex((x) => x.id === me.id) + 1;
+      const mine = list.find((x) => x.id === me.id)?.pts ?? 0;
+      const top = settings.board === "hide" ? [] : list.slice(0, settings.board === "top3" ? 3 : 5).map((x) => ({ n: x.id === me.id ? x.name : (x.name || "").split(" ")[0], pts: x.pts, me: x.id === me.id }));
+      board = { pts: mine, rank: settings.board === "hide" ? null : rank, total: list.length, top };
+    }
   }
+
+  // الإعلانات وقراءتها
+  const hidsAll = halaqat.map((h) => h.id);
+  const anns = await prisma.ann.findMany({ where: me.role === "admin" ? {} : { OR: [{ halqaId: null }, { halqaId: { in: hidsAll } }] }, orderBy: { at: "desc" }, take: 40 });
+  const reads = me.role === "student"
+    ? await prisma.annRead.findMany({ where: { userId: me.id, annId: { in: anns.map((a) => a.id) } } })
+    : await prisma.annRead.findMany({ where: { annId: { in: anns.map((a) => a.id) } } });
+  // الورد اليومي: آخر 14 يوم
+  const wUsers = me.role === "student" ? [me.id] : users.filter((x) => x.role === "student").map((x) => x.id);
+  const wirds = await prisma.wird.findMany({ where: { userId: { in: wUsers }, date: { gte: localDate(-14) } } });
 
   const out = {
     me: me.id,
@@ -93,6 +113,9 @@ export async function GET() {
     recs: map(recs, recOut),
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
     settings: { main: settings },
+    anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
+    wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),
+    board,
   };
   return NextResponse.json(out, { headers: { "Cache-Control": "no-store" } });
 }
