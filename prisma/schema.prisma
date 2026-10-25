@@ -35,6 +35,10 @@ model Halqa {
   teacherId String?
   days      Int[]
   time      String   @default("")
+  /// رابط ثابت للحلقة يُستخدم لكل حصة ما لم يُحدد رابط خاص
+  link      String   @default("")
+  /// إنشاء الحصص تلقائيًا حسب أيام الدوام
+  auto      Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
@@ -49,6 +53,11 @@ model Lesson {
   att       Json     @default("{}")
   queue     Json     @default("[]")
   currentId String?
+  /// للحصص المنشأة تلقائيًا: halqaId_date
+  autoKey   String?  @unique
+  cancelled Boolean  @default(false)
+  /// مشاكل الدخول: { uid: { at, msg } }
+  issues    Json     @default("{}")
   createdBy String?
   createdAt DateTime @default(now())
 
@@ -60,6 +69,7 @@ model Join {
   lessonId String
   userId   String
   at       DateTime @default(now())
+  leftAt   DateTime?
 
   @@unique([lessonId, userId])
 }
@@ -80,6 +90,12 @@ model Rec {
   grade    String
   pass     Boolean
   note     String   @default("")
+  /// مدة التسميع بالثواني
+  secs     Int?
+  /// سمّع السورة كاملة
+  full     Boolean  @default(false)
+  /// تقييم سريع بدون عدّ أخطاء
+  quick    Boolean  @default(false)
   byId     String?
   at       DateTime @default(now())
 

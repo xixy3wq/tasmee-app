@@ -11,6 +11,10 @@ export const DEF = {
   center: "حلقات ارتق",
   days: [0, 1, 2, 3, 4],
   grade: { ex: 0, vg: 2, gd: 4, alertsPer: 3 },
+  /// تنبيه الغياب بعد كم غياب متتالي
+  absentAlert: 3,
+  /// الإجازات: [{ from, to, name }] بصيغة YYYY-MM-DD
+  holidays: [] as { from: string; to: string; name: string }[],
   fields: DEF_FIELDS,
   tpl: {
     absent: "السلام عليكم ورحمة الله، نفيدكم بغياب ابنكم {الطالب} عن حلقة {الحلقة} يوم {التاريخ}. نرجو الحرص على الحضور، وجزاكم الله خيرًا.",
@@ -31,3 +35,14 @@ export function gradeOf(s: Settings, m: number, al: number) {
   if (e <= g.gd) return { t: "جيد", pass: true };
   return { t: "يعاد", pass: false };
 }
+
+export const GRADES = ["ممتاز", "جيد جدًا", "جيد", "يعاد"];
+export const isHoliday = (s: Settings, date: string) => (s.holidays || []).some((h) => date >= h.from && date <= h.to);
+
+/** التاريخ المحلي (السعودية افتراضيًا) بصيغة YYYY-MM-DD مع إزاحة أيام */
+export function localDate(addDays = 0) {
+  const off = Number(process.env.APP_TZ_OFFSET_MIN ?? 180);
+  const d = new Date(Date.now() + off * 60000 + addDays * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+export const weekday = (date: string) => new Date(date + "T00:00:00Z").getUTCDay();

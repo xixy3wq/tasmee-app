@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { currentUser, handle, fail, cleanUsername, USERNAME_RE, str, int, type Me } from "@/lib/auth";
-import { getSettings, gradeOf, type Field } from "@/lib/settings";
+import { getSettings, gradeOf, GRADES, localDate, type Field } from "@/lib/settings";
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 export const dynamic = "force-dynamic";
 
@@ -61,8 +61,24 @@ const A: Record<string, H> = {
       label: str(f.label, 60) || "حقل", on: !!f.on, req: !!f.req && !!f.on,
       type: ["tel", "number", "text"].includes(f.type) ? f.type : "text", ph: str(f.ph, 80), custom: !!f.custom,
     }));
-    const value = { center: str(d.center, 80) || "حلقات ارتق", days, grade: g, fields, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const cur = await getSettings();
+    const value = { center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
+  },
+
+  async "holidays.save"(u, b) {
+    needAdmin(u);
+    const list = (Array.isArray(b.list) ? b.list : []).slice(0, 60).map((h: any) => ({ from: str(h.from, 10), to: str(h.to, 10) || str(h.from, 10), name: str(h.name, 60) || "إجازة" }))
+      .filter((h: any) => validDate(h.from) && validDate(h.to) && h.to >= h.from);
+    const cur = await getSettings();
+    const value = { ...cur, holidays: list };
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
+    // الحصص التلقائية القادمة داخل الإجازة تُلغى
+    const today = localDate();
+    for (const h of list) {
+      if (h.to < today) continue;
+      await prisma.lesson.updateMany({ where: { autoKey: { not: null }, date: { gte: h.from > today ? h.from : today, lte: h.to } }, data: { cancelled: true, note: h.name } });
+    }
   },
 
   // ---------- المستخدمون ----------
@@ -148,7 +164,8 @@ const A: Record<string, H> = {
     if (!days.length) fail("اختر يوم دوام واحد على الأقل");
     let teacherId: string | null = str(d.teacherId) || null;
     if (teacherId) { const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t || t.role !== "teacher") teacherId = null; }
-    const data = { name, days, teacherId, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "" };
+    const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
+    const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "" };
     if (id) await prisma.halqa.update({ where: { id }, data });
     else await prisma.halqa.create({ data });
   },
@@ -175,8 +192,13 @@ const A: Record<string, H> = {
     const l = await prisma.lesson.create({ data: { halqaId: str(d.halqaId), date, time, link, note, createdBy: u.id } });
     return { id: l.id };
   },
+  async "lesson.cancel"(u, b) {
+    const l = await lessonFor(u, str(b.id));
+    await prisma.lesson.update({ where: { id: l.id }, data: { cancelled: !!b.v, ...(b.v && b.note ? { note: str(b.note, 200) } : {}) } });
+  },
   async "lesson.delete"(u, b) {
     const l = await lessonFor(u, str(b.id));
+    if (l.autoKey) { await prisma.lesson.update({ where: { id: l.id }, data: { cancelled: true } }); return; }
     await prisma.$transaction([prisma.join.deleteMany({ where: { lessonId: l.id } }), prisma.lesson.delete({ where: { id: l.id } })]);
   },
   async "lesson.att"(u, b) {
@@ -202,32 +224,88 @@ const A: Record<string, H> = {
     if (u.role !== "student") return;
     const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
     if (!l || l.halqaId !== u.halqaId) fail("الحصة غير موجودة", 404);
-    await prisma.join.upsert({ where: { lessonId_userId: { lessonId: l!.id, userId: u.id } }, create: { lessonId: l!.id, userId: u.id }, update: {} });
+    await prisma.join.upsert({ where: { lessonId_userId: { lessonId: l!.id, userId: u.id } }, create: { lessonId: l!.id, userId: u.id }, update: { leftAt: null } });
+  },
+  async "leave"(u, b) {
+    if (u.role !== "student") return;
+    await prisma.join.updateMany({ where: { lessonId: str(b.lessonId), userId: u.id }, data: { leftAt: new Date() } });
+  },
+  async "queue.ready"(u, b) {
+    if (u.role !== "student") fail("غير مصرح", 403);
+    const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
+    if (!l || l.halqaId !== u.halqaId || l.cancelled) fail("الحصة غير متاحة", 404);
+    if (l!.date !== localDate()) fail("الطابور متاح يوم الحصة فقط");
+    const q = ((l!.queue as string[]) || []).filter((x) => x !== u.id);
+    if (b.v !== false && l!.currentId !== u.id) q.push(u.id);
+    await prisma.lesson.update({ where: { id: l!.id }, data: { queue: q } });
+  },
+  async "issue"(u, b) {
+    if (u.role !== "student") fail("غير مصرح", 403);
+    const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
+    if (!l || l.halqaId !== u.halqaId) fail("الحصة غير موجودة", 404);
+    const iss: any = { ...((l!.issues as any) || {}) };
+    if (b.clear) delete iss[u.id]; else iss[u.id] = { at: Date.now(), msg: str(b.msg, 200) || "ما أقدر أدخل الحصة" };
+    await prisma.lesson.update({ where: { id: l!.id }, data: { issues: iss } });
+  },
+  async "issue.clear"(u, b) {
+    const l = await lessonFor(u, str(b.id));
+    const iss: any = { ...((l.issues as any) || {}) }; delete iss[str(b.uid)];
+    await prisma.lesson.update({ where: { id: l.id }, data: { issues: iss } });
   },
 
   // ---------- التسميع ----------
   async "rec.add"(u, b) {
+    return A["rec.addMany"](u, { ...b, items: [b] });
+  },
+  async "rec.addMany"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
     const st = await studentFor(u, str(b.uid));
     let lesson: any = null;
     if (b.lessonId) { lesson = await lessonFor(u, str(b.lessonId)); if (lesson.halqaId !== st.halqaId) fail("الطالب ليس في حلقة هذه الحصة"); }
-    const type = ["new", "review", "tath"].includes(b.type) ? b.type : "new";
-    const surah = int(b.surah), from = int(b.from), to = int(b.to);
-    if (!validRange(surah, from, to)) fail(`تأكد من أرقام الآيات (السورة ${surah || "?"} عدد آياتها ${AYAS[surah - 1] ?? "?"})`);
-    const mistakes = Math.max(0, int(b.mistakes)), alerts = Math.max(0, int(b.alerts));
-    const g = gradeOf(await getSettings(), mistakes, alerts);
-    const date = lesson ? lesson.date : validDate(str(b.date)) ? str(b.date) : new Date().toISOString().slice(0, 10);
-    await prisma.rec.create({ data: { userId: st.id, lessonId: lesson?.id ?? null, halqaId: st.halqaId, date, type, surah, fromA: from, toA: to, mistakes, alerts, grade: g.t, pass: g.pass, note: str(b.note, 300), byId: u.id } });
-    // تقدّم الخطة التلقائية بعد النجاح فقط
-    const p = planOf(st);
-    if (g.pass && p.mode === "auto" && st.autoAllowed && (type === "new" || type === "review")) {
-      const dir = p.auto.dir === "fwd" ? "fwd" : "bwd";
-      const pos = ORD[dir].pos[gOf(surah, to)];
-      if (type === "new" && pos + 1 > p.auto.newPos) p.auto.newPos = pos + 1;
-      if (type === "review") { let np = pos + 1; if (np >= p.auto.newPos) np = 0; p.auto.revPos = np; }
-      await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 10);
+    if (!items.length) fail("أضف مقطع واحد على الأقل");
+    const settings = await getSettings();
+    const date = lesson ? lesson.date : validDate(str(b.date)) ? str(b.date) : localDate();
+    const secs = Math.max(0, Math.min(6 * 3600, int(b.secs))) || null;
+    const rows: any[] = [];
+    for (const it of items) {
+      const type = ["new", "review", "tath"].includes(it.type) ? it.type : "new";
+      const surah = int(it.surah); const full = !!it.full;
+      const from = full ? 1 : int(it.from), to = full ? AYAS[surah - 1] : int(it.to);
+      if (!validRange(surah, from, to)) fail(`تأكد من أرقام الآيات (السورة ${surah || "?"} عدد آياتها ${AYAS[surah - 1] ?? "?"})`);
+      const quick = GRADES.includes(it.quickGrade);
+      const mistakes = quick ? 0 : Math.max(0, int(it.mistakes)), alerts = quick ? 0 : Math.max(0, int(it.alerts));
+      const g = quick ? { t: it.quickGrade, pass: it.quickGrade !== "يعاد" } : gradeOf(settings, mistakes, alerts);
+      rows.push({ userId: st.id, lessonId: lesson?.id ?? null, halqaId: st.halqaId, date, type, surah, fromA: from, toA: to, mistakes, alerts, grade: g.t, pass: g.pass, full, quick, note: str(b.note ?? it.note, 300), secs: rows.length ? null : secs, byId: u.id });
     }
-    return { grade: g.t };
+    await prisma.rec.createMany({ data: rows });
+    // تقدّم الخطة التلقائية بعد النجاح فقط
+    const p = planOf(st); let moved = false;
+    if (p.mode === "auto" && st.autoAllowed) {
+      const dir = p.auto.dir === "fwd" ? "fwd" : "bwd";
+      for (const r of rows) {
+        if (!r.pass || (r.type !== "new" && r.type !== "review")) continue;
+        const pos = ORD[dir].pos[gOf(r.surah, r.toA)];
+        if (r.type === "new" && pos + 1 > p.auto.newPos) { p.auto.newPos = pos + 1; moved = true; }
+        if (r.type === "review") { let np = pos + 1; if (np >= p.auto.newPos) np = 0; p.auto.revPos = np; moved = true; }
+      }
+      if (moved) await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+    }
+    return { grade: rows.map((r) => r.grade).join("، ") };
+  },
+  async "rec.update"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const r = await prisma.rec.findUnique({ where: { id: str(b.id) } });
+    if (!r) fail("التسميع غير موجود", 404);
+    await studentFor(u, r!.userId);
+    const d = b.data || {};
+    const type = ["new", "review", "tath"].includes(d.type) ? d.type : r!.type;
+    const surah = int(d.surah) || r!.surah, from = int(d.from) || r!.fromA, to = int(d.to) || r!.toA;
+    if (!validRange(surah, from, to)) fail("تأكد من أرقام الآيات");
+    const quick = GRADES.includes(d.quickGrade);
+    const mistakes = quick ? 0 : Math.max(0, int(d.mistakes)), alerts = quick ? 0 : Math.max(0, int(d.alerts));
+    const g = quick ? { t: d.quickGrade, pass: d.quickGrade !== "يعاد" } : gradeOf(await getSettings(), mistakes, alerts);
+    await prisma.rec.update({ where: { id: r!.id }, data: { type, surah, fromA: from, toA: to, mistakes, alerts, quick, grade: g.t, pass: g.pass, full: from === 1 && to === AYAS[surah - 1], note: str(d.note, 300), ...(validDate(str(d.date)) ? { date: str(d.date) } : {}) } });
   },
   async "rec.delete"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);

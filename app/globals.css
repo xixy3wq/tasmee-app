@@ -136,3 +136,33 @@ td.num,th.num{text-align:center}
 .back{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:0;display:inline-flex;gap:4px;align-items:center}
 .back:hover{color:var(--accent)}
 @media (max-width:560px){h1{font-size:1.35rem}.plan-row{grid-template-columns:1fr;gap:2px}}
+
+/* ---- المرحلة 1 ---- */
+.dim{opacity:.6}
+.alert-card{border-color:var(--bad-soft)}
+.bad-note{background:var(--bad-soft);display:grid;gap:6px}
+.recp{border:1px solid var(--accent);background:var(--surface);border-radius:var(--r);padding:14px;display:grid;gap:12px}
+.timer{font-family:var(--f-display);font-size:1.3rem;min-width:3.5em;text-align:center}
+.seg-box{background:var(--sunk);border-radius:8px;padding:10px;display:grid;gap:10px}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.tl{display:grid;gap:4px}
+.tl>span{font-size:.82rem;color:var(--muted);font-weight:600}
+.tl-row{display:flex;align-items:center;gap:8px}
+.tl-row b{min-width:2ch;text-align:center;font-size:1.4rem;font-family:var(--f-display)}
+.tb{padding:10px 14px;font-size:1.05rem}
+.big-t{flex:1;background:var(--surface)}
+.qgrades{display:flex;flex-wrap:wrap;gap:8px}
+.plan-row.retry{background:var(--bad-soft)}
+.prep summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.prep summary::-webkit-details-marker{display:none}
+.prep summary::before{content:"◂";color:var(--muted);transition:transform .2s}
+.prep[open] summary::before{transform:rotate(-90deg)}
+.prep[open]{display:grid;gap:12px}
+.cd{font-weight:600;color:var(--gold);font-variant-numeric:tabular-nums}
+.join-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.qscreen{margin:0;padding-inline-start:22px;display:grid;gap:4px}
+.qscreen li{padding:4px 8px;border-radius:6px}
+.qscreen li.cur{list-style:none;margin-inline-start:-22px;background:var(--gold-soft);font-weight:700}
+.qscreen li.cur span{font-size:.75rem;color:var(--gold);margin-inline-end:6px}
+.qscreen li.me{background:var(--accent-soft);font-weight:700}
+@media (prefers-reduced-motion: reduce){.prep summary::before{transition:none}}
