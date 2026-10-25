@@ -723,9 +723,10 @@ function homeV(u) {
   <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
   ${studentAnnsHtml(u)}
   ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
+  ${dueCard(u)}
   ${next ? lessonCard(u, next) : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
   <div class="grid2">
-    <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>المطلوب منك</h2><a class="btn ghost sm" href="${MUSHAF_URL}" target="_blank" rel="noopener">المصحف</a></div>${tip('هذا اللي تسمّعه في الحصة. جهّزه قبلها، والمعلم يسجل تسميعك ويتحدث المطلوب لحاله. أرقام الصفحات (ص) حسب مصحف المدينة النبوية من مجمع الملك فهد.')}${planHtml(u)}${goalHtml(u)}</section>
+    <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>خطتك</h2></div>${tip('المطلوب يتحدث لحاله بعد ما يسجل المعلم تسميعك. الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.')}${planHtml(u)}${goalHtml(u)}</section>
     ${tasksHtml(u)}
   </div>
   <div class="grid2">
@@ -1026,6 +1027,45 @@ function homeEn(u) {
   <section class="card"><h2>Recitation record</h2>${rs.length ? `<div class="tbl-wrap"><table dir="ltr"><thead><tr><th>Date</th><th>Type</th><th>Portion</th><th class="num">Mistakes</th><th>Grade</th><th>Note</th></tr></thead><tbody>${rs.slice(0, 40).map(r => `<tr><td>${fmtDateEn(r.date)}</td><td>${EN.type[r.type]}</td><td>${segEn(r.surah, r.from, r.to)}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${EN.grade[r.grade] || r.grade}</span></td><td dir="auto" style="white-space:normal">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">No recitations yet.</div>'}</section>`;
 }
 
+/* ---------------- «وش عليك بكرة» للطالب ---------------- */
+/* موعد الحصة القادمة اللي يتجهز لها الطالب */
+function nextLessonFor(u) {
+  const t = today(); const now = Date.now();
+  const ls = L('sessions').filter(s => s.halqaId === u.halqaId && !s.cancelled && s.date >= t).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  // حصة اليوم إذا ما انتهت، وإلا اللي بعدها
+  const sTodayDone = s => s.date === t && (lessonTs(s) + 90 * 60000 < now || L('recs').some(r => r.uid === u.id && r.sid === s.id));
+  let s = ls.find(x => !sTodayDone(x));
+  if (s) return { date: s.date, time: s.time };
+  // ما فيه حصة منشأة: أقرب يوم دوام بعد اليوم
+  const days = halqaDays(u.halqaId);
+  for (let i = 1; i <= 14; i++) { const d = addDays(t, i); if (days.includes(new Date(d + 'T00:00').getDay()) && !isHolidayC(d)) return { date: d, time: (S.halaqat[u.halqaId] || {}).time || '' }; }
+  return null;
+}
+function dayLabel(ds) { const t = today(); if (ds === t) return 'اليوم'; if (ds === addDays(t, 1)) return 'بكرة'; return 'يوم ' + DAYN[new Date(ds + 'T00:00').getDay()]; }
+const TYPE_ICON = { new: 'حفظ', review: 'مراجعة', tath: 'تثبيت' };
+function dueCard(u) {
+  if (isPaused(u)) return '';
+  const nx = nextLessonFor(u); const items = planItems(u);
+  const lbl = nx ? dayLabel(nx.date) : 'الحصة الجاية';
+  const head = `<div class="sec-head"><div><div class="small muted">${nx ? fmtDateH(nx.date) + (nx.time ? ' · ' + fmtTime(nx.time) : '') : ''}</div><h2>وش عليك ${lbl}؟</h2></div><a class="btn ghost sm" href="${MUSHAF_URL}" target="_blank" rel="noopener">افتح المصحف</a></div>`;
+  if (!items.length) return `<section class="card due">${head}<div class="empty small">ما حدد لك المعلم مطلوب بعد. إذا عندك سؤال كلّم معلمك.</div></section>`;
+  // تجميع المقاطع حسب النوع (المقطع اللي يمتد على أكثر من سورة يطلع في سطر واحد)
+  const groups = []; items.forEach(x => { const k = (x.retry ? 'r' : '') + x.type; let g = groups.find(y => y.k === k); if (!g) { g = { k, type: x.type, retry: x.retry, segs: [] }; groups.push(g); } g.segs.push({ s: x.surah - 1, a1: x.from, a2: x.to }); });
+  const order = { rnew: 0, rreview: 1, rtath: 2, new: 3, tath: 4, review: 5 }; groups.sort((a, b) => order[a.k] - order[b.k]);
+  const span = g => { const a = g.segs[0], z = g.segs[g.segs.length - 1]; return a.s === z.s ? `سورة ${SN[a.s]} من آية ${a.a1} إلى آية ${z.a2}` : `من ${SN[a.s]} آية ${a.a1} إلى ${SN[z.s]} آية ${z.a2}`; };
+  const pages = g => { const p1 = pageOf(g.segs[0].s, g.segs[0].a1), last = g.segs[g.segs.length - 1], p2 = pageOf(last.s, last.a2); return p1 ? (p1 === p2 ? 'صفحة ' + p1 : 'صفحة ' + p1 + ' إلى ' + p2) : ''; };
+  const meta = g => [pages(g), PAGES_OK ? fmtLines(linesOf(g.segs)) : ''].filter(Boolean).join(' · ');
+  const share = `المطلوب من ${u.name} ${lbl}${nx ? ' (' + fmtDate(nx.date) + ')' : ''}:\n` + groups.map(g => `- ${g.retry ? 'إعادة ' : ''}${TYPE_ICON[g.type]}: ${span(g)}${meta(g) ? ' (' + meta(g) + ')' : ''}`).join('\n');
+  // اللي بعده في الحفظ التلقائي (إذا نجح)
+  let after = '';
+  if (isAuto(u)) { const inf = autoInfo(u); if (inf.new && inf.new.next < TOTAL) { const a = planOf(u).auto; const nn = take((ORD[a.dir] || ORD.bwd).ord, inf.new.next, TOTAL, +a.newAmt, true); const sg = segs(nn.list); if (sg.length) after = `<div class="small muted">وإذا سمّعت الحفظ ونجحت، اللي بعده: ${segText(sg)}</div>`; } }
+  return `<section class="card due">${head}
+    <div class="due-list">${groups.map(g => `<div class="due-item t-${g.retry ? 'retry' : g.type}"><span class="due-tag">${g.retry ? 'إعادة ' : ''}${TYPE_ICON[g.type]}</span><div class="due-body"><b>${span(g)}</b>${meta(g) ? `<span class="due-meta">${meta(g)}</span>` : ''}</div></div>`).join('')}</div>
+    ${after}
+    <div class="row"><a class="btn wa sm" href="https://wa.me/?text=${encodeURIComponent(share)}" target="_blank" rel="noopener">أرسلها بالواتساب</a><button class="btn ghost sm" data-act="copy" data-text="${esc(share)}">نسخ</button></div>
+  </section>`;
+}
+
 /* ---------------- حسابات الأبناء على جهاز ولي الأمر ---------------- */
 const ACC_KEY = 'irtaq-accounts';
 function accounts() { try { return JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); } catch { return []; } }
@@ -1063,7 +1103,7 @@ const TOUR = [
   ['الدخول للحصة', 'قبل الحصة يطلع عدّاد يوضح كم باقي. وقت الحصة اضغط <b>«ادخل الحصة»</b> ويفتح لك Zoom أو Meet.<br><span class="muted">أول مرة ممكن يطلب منك تثبيت التطبيق من المتجر، ثبته وارجع اضغط الزر مرة ثانية.</span>'],
   ['التسميع', 'إذا صرت جاهز تسمّع اضغط <b>«جاهز للتسميع»</b>، وتشوف ترتيبك في الطابور. لما يجي دورك يطلع لك <b>«دورك الآن»</b>.'],
   ['ما قدرت تدخل؟', 'اضغط <b>«عندي مشكلة في الدخول»</b> واختر المشكلة، وتوصل للمعلم فورًا.'],
-  ['المطلوب منك', 'في قسم <b>«المطلوب منك»</b> تلقى الحفظ والمراجعة لليوم. وفي <b>«مهام اليوم»</b> علّم على اللي خلصته في البيت واضغط حفظ.'],
+  ['وش عليك بكرة؟', 'أول شي في صفحتك بطاقة <b>«وش عليك بكرة؟»</b>: الحفظ والمراجعة والتثبيت للحصة الجاية، بالسورة والآيات والصفحة. تقدر ترسلها لنفسك بالواتساب. وفي <b>«مهام اليوم»</b> علّم على اللي خلصته في البيت.'],
   ['لولي الأمر', 'تحت تلقى الحضور، وعدد الأوجه، والنقاط، وسجل التسميع مع ملاحظات المعلم. والإعلانات تطلع فوق باللون الذهبي.'],
   ['خلّه أسهل', 'من <b>«الدليل»</b> تقدر تثبت الموقع على شاشة الجوال مثل التطبيق، وتضيف مواعيد الحلقة لتقويمك. وزر <b>«أ+»</b> فوق يكبّر الخط.'],
 ];

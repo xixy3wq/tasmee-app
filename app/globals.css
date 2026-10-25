@@ -262,3 +262,17 @@ main.wrap:has(~ * .sticky-join), .wrap:has(.sticky-join){padding-bottom:110px}
 .fld-wide{grid-column:1/-1}
 .memo-fld,.memo-rows{display:grid;gap:6px}
 .memo-fld{padding:10px;border-radius:8px;background:var(--sunk)}
+
+/* ---- وش عليك بكرة ---- */
+.due{display:grid;gap:12px;border:2px solid var(--accent)}
+.due-list{display:grid;gap:8px}
+.due-item{display:flex;gap:12px;align-items:center;padding:12px;border-radius:10px;background:var(--sunk)}
+.due-tag{flex:none;min-width:64px;text-align:center;padding:6px 8px;border-radius:8px;font-weight:700;font-family:var(--f-display);font-size:.95rem}
+.due-body{display:grid;gap:2px;min-width:0}
+.due-body b{font-size:1.05rem;line-height:1.6}
+.due-meta{font-size:.82rem;color:var(--muted)}
+.t-new .due-tag{background:var(--accent);color:var(--accent-ink)}
+.t-review .due-tag{background:var(--info-soft);color:var(--info)}
+.t-tath .due-tag{background:var(--gold-soft);color:var(--gold)}
+.t-retry .due-tag{background:var(--bad-soft);color:var(--bad)}
+.t-retry{background:var(--bad-soft)}
