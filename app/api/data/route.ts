@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { APP_V } from "@/lib/version";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -39,7 +40,7 @@ async function ensureLessons(halaqat: any[], s: Settings) {
 
 export async function GET() {
   const me = await currentUser();
-  if (!me) return NextResponse.json({ me: null });
+  if (!me) return NextResponse.json({ me: null, appV: APP_V });
   const settings = await getSettings();
   let users: any[], halaqat: any[], lessons: any[], recs: any[], joins: any[];
   let board: any = null;
@@ -117,6 +118,7 @@ export async function GET() {
   const { exportKey, ...pubSettings } = settings as any;
   const out = {
     me: me.id,
+    appV: APP_V,
     today: localDate(),
     users: map(users, userOut),
     halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub })),
