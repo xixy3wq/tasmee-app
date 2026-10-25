@@ -1,4 +1,4 @@
-/* منصة حلقات التسميع — الواجهة. البيانات من /api/data والتعديلات عبر /api/act */
+/* منصة حلقات ارتق — الواجهة. البيانات من /api/data والتعديلات عبر /api/act */
 (function () {
 'use strict';
 
@@ -96,7 +96,7 @@ async function act(t, payload, okMsg) {
 const L = col => Object.entries(S[col]).map(([id, v]) => ({ ...v, id }));
 
 /* ---------------- settings ---------------- */
-const DEF = { center: 'حلقات التسميع', days: [0, 1, 2, 3, 4], grade: { ex: 0, vg: 2, gd: 4, alertsPer: 3 }, fields: [], tpl: { absent: '', excellent: '' } };
+const DEF = { center: 'حلقات ارتق', days: [0, 1, 2, 3, 4], grade: { ex: 0, vg: 2, gd: 4, alertsPer: 3 }, fields: [], tpl: { absent: '', excellent: '' } };
 const SET = () => { const m = S.settings.main || {}; return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, tpl: { ...DEF.tpl, ...(m.tpl || {}) }, fields: m.fields || [] }; };
 const fillTpl = (t, v) => t.replace(/\{الطالب\}/g, v.student || '').replace(/\{الحلقة\}/g, v.halqa || '').replace(/\{التاريخ\}/g, v.date || '');
 function gradeOf(m, al) {
@@ -216,7 +216,7 @@ function fieldHtml(f, val, pre, opt = {}) {
 
 function loginV() {
   return `${banner()}<div class="center-box">
-  <div class="hero-mark">${MARK}<div><h1>${esc(SET().center !== DEF.center ? SET().center : 'حلقات التسميع')}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
+  <div class="hero-mark">${MARK}<div><h1>${esc(SET().center !== DEF.center ? SET().center : 'حلقات ارتق')}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
   <form class="card" data-form="login">
     <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" autocapitalize="none" required></label>
     <label class="fld"><span>كلمة المرور</span><input id="lg-pw" name="password" type="password" autocomplete="current-password" required></label>
@@ -248,7 +248,7 @@ function regV(hid) {
 let regLoading = false;
 async function loadRegInfo() {
   if (regLoading) return; regLoading = true;
-  try { ST.regInfo = await api('/api/register'); } catch (e) { ST.regInfo = { center: 'حلقات التسميع', fields: [], halaqat: [] }; toast(e.message); }
+  try { ST.regInfo = await api('/api/register'); } catch (e) { ST.regInfo = { center: 'حلقات ارتق', fields: [], halaqat: [] }; toast(e.message); }
   regLoading = false; scheduleRender();
 }
 function regDoneV() {

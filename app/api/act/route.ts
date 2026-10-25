@@ -61,7 +61,7 @@ const A: Record<string, H> = {
       label: str(f.label, 60) || "حقل", on: !!f.on, req: !!f.req && !!f.on,
       type: ["tel", "number", "text"].includes(f.type) ? f.type : "text", ph: str(f.ph, 80), custom: !!f.custom,
     }));
-    const value = { center: str(d.center, 80) || "حلقات التسميع", days, grade: g, fields, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { center: str(d.center, 80) || "حلقات ارتق", days, grade: g, fields, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
   },
 

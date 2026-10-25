@@ -8,7 +8,7 @@ export const DEF_FIELDS: Field[] = [
   { k: "memorized", label: "مقدار الحفظ الحالي", on: true, req: false, ph: "مثال: جزء عمّ وجزء تبارك" },
 ];
 export const DEF = {
-  center: "حلقات التسميع",
+  center: "حلقات ارتق",
   days: [0, 1, 2, 3, 4],
   grade: { ex: 0, vg: 2, gd: 4, alertsPer: 3 },
   fields: DEF_FIELDS,

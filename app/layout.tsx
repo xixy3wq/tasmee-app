@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "حلقات التسميع",
-  description: "منصة حلقات التسميع عن بُعد: الحصص والتحضير والتسميع والخطط ومتابعة ولي الأمر",
+  title: "حلقات ارتق",
+  description: "منصة حلقات ارتق عن بُعد: الحصص والتحضير والتسميع والخطط ومتابعة ولي الأمر",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "التسميع", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "ارتق", statusBarStyle: "default" },
 };
 export const viewport: Viewport = { themeColor: "#1c6a5a", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
