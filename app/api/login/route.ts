@@ -13,7 +13,9 @@ export async function POST(req: Request) {
   if (!u || !ok) return NextResponse.json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" }, { status: 401 });
   if (u.status === "pending") return NextResponse.json({ error: "طلب تسجيلك بانتظار اعتماد الإدارة" }, { status: 403 });
   if (u.status !== "active") return NextResponse.json({ error: "هذا الحساب موقوف، تواصل مع إدارة الحلقة" }, { status: 403 });
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, await signSession(u.id), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 60 });
+  const token = await signSession(u.id);
+  // للطالب: رمز يحفظه جهاز ولي الأمر للتنقل بين حسابات الأبناء بدون كلمة مرور
+  const res = NextResponse.json({ ok: true, ...(u.role === "student" && b.remember ? { account: { id: u.id, name: u.name, token } } : {}) });
+  res.cookies.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 60 });
   return res;
 }

@@ -10,7 +10,11 @@ AYAS.forEach((n, i) => { SSTART[i] = TOTAL; TOTAL += n; });
 const SUR = new Int16Array(TOTAL);
 AYAS.forEach((n, s) => { for (let a = 0; a < n; a++) SUR[SSTART[s] + a] = s; });
 const W = new Float64Array(TOTAL).fill(604 / TOTAL);
-let PAGES_OK = false;
+let PAGES_OK = false, PG = null;
+const MUSHAF_URL = 'https://qurancomplex.gov.sa/quran-hafs/';
+/* أرقام الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد (604 صفحة) */
+const pageOf = (s, a) => PG ? PG[SSTART[s] + a - 1] : null;
+const pageTag = (s, a1, a2) => { const p1 = pageOf(s, a1), p2 = pageOf(s, a2); return p1 ? ` <span class="pg">ص ${p1 === p2 ? p1 : p1 + '–' + p2}</span>` : ''; };
 function buildOrder(dir) {
   const arr = new Int32Array(TOTAL); let k = 0;
   const ss = dir === 'fwd' ? [...Array(114).keys()] : [...Array(114).keys()].reverse();
@@ -23,9 +27,10 @@ const gOf = (surah, ayah) => SSTART[surah - 1] + ayah - 1;
 async function loadPages() {
   try {
     const r = await fetch('/api/pages'); if (!r.ok) return;
-    const { pages } = await r.json(); if (!pages || pages.length !== TOTAL) return;
-    const cnt = new Int16Array(606); pages.forEach(p => cnt[p]++);
-    for (let i = 0; i < TOTAL; i++) W[i] = 1 / cnt[pages[i]];
+    const { pages, lines } = await r.json(); if (!pages || pages.length !== TOTAL) return;
+    PG = pages;
+    if (lines && lines.length === TOTAL) for (let i = 0; i < TOTAL; i++) W[i] = lines[i] / 15; // الوجه 15 سطر
+    else { const cnt = new Int16Array(606); pages.forEach(p => cnt[p]++); for (let i = 0; i < TOTAL; i++) W[i] = 1 / cnt[pages[i]]; }
     PAGES_OK = true; scheduleRender();
   } catch (e) {}
 }
@@ -174,8 +179,12 @@ function planSegs(st) {
   }
   return out;
 }
-const segText = arr => arr.map(x => `<span class="por">${esc(SN[x.s])} <b>﴿${x.a1 === x.a2 ? x.a1 : x.a1 + '–' + x.a2}﴾</b></span>`).join('، ');
+const segText = arr => arr.map(x => `<span class="por">${esc(SN[x.s])} <b>﴿${x.a1 === x.a2 ? x.a1 : x.a1 + '–' + x.a2}﴾</b>${pageTag(x.s, x.a1, x.a2)}</span>`).join('، ');
 function fmtAmt(n) { n = +n; const m = { 0.125: 'ثمن وجه', 0.25: 'ربع وجه', 0.5: 'نصف وجه', 0.75: 'ثلاثة أرباع وجه', 1: 'وجه', 2: 'وجهان' }; return m[n] || (n + ' أوجه'); }
+/* الوجه 15 سطر: ربع وجه ≈ 4 أسطر، نصف وجه 7.5 سطر */
+const linesOf = segsArr => segsArr.reduce((t, x) => { for (let a = x.a1; a <= x.a2; a++) t += W[SSTART[x.s] + a - 1] * 15; return t; }, 0);
+const fmtLines = n => { const r = Math.round(n * 2) / 2; return r <= 0 ? '' : (r === 1 ? 'سطر' : r === 2 ? 'سطرين' : String(r).replace('.5', '½') + (r <= 10 ? ' أسطر' : ' سطر')); };
+const amtLines = n => fmtLines(+n * 15);
 function posText(dir, np) { if (np >= TOTAL) return 'أتمّ'; const g = ORD[dir].ord[np]; const s = SUR[g]; return SN[s] + ' آية ' + (g - SSTART[s] + 1); }
 
 /* ---------------- state helpers ---------------- */
@@ -299,7 +308,7 @@ function render() {
   const a = document.activeElement; const fid = app.contains(a) ? a.id : null; let sel = null;
   try { if (fid && a.selectionStart != null) sel = [a.selectionStart, a.selectionEnd]; } catch {}
   const sy = window.scrollY;
-  app.innerHTML = view();
+  app.innerHTML = view(); applyZoom();
   for (const id in saved) { const el = document.getElementById(id); if (!el || !app.contains(el)) continue; el.dataset.dirty = 1; if ('c' in saved[id]) el.checked = saved[id].c; else el.value = saved[id].v; }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); try { if (sel) el.setSelectionRange(sel[0], sel[1]); } catch {} } }
   window.scrollTo(0, sy);
@@ -329,15 +338,18 @@ function fieldHtml(f, val, pre, opt = {}) {
 }
 
 function loginV() {
+  if (!ST.regInfo) loadRegInfo();
   return `${banner()}<div class="center-box">
   <div class="hero-mark">${MARK}<div><h1>${esc(SET().center !== DEF.center ? SET().center : 'حلقات ارتق')}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
   <form class="card" data-form="login">
     <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" autocapitalize="none" required></label>
-    <label class="fld"><span>كلمة المرور</span><input id="lg-pw" name="password" type="password" autocomplete="current-password" required></label>
+    ${pwField('lg-pw', 'password', 'كلمة المرور', 'current-password')}
     <button class="btn pri big" type="submit">دخول</button>
-    <div class="small muted">ولي الأمر يدخل بحساب ابنه.</div>
+    <div class="row" style="justify-content:space-between"><span class="small muted">ولي الأمر يدخل بحساب ابنه.</span><button type="button" class="linkbtn" data-act="forgot">نسيت كلمة المرور؟</button></div>
   </form>
-  <div class="row" style="justify-content:center"><span class="muted">طالب جديد؟</span><button class="btn" data-act="to-reg">سجّل بياناتك</button></div>
+  ${accounts().length ? `<div class="card" style="display:grid;gap:8px"><b>حسابات محفوظة على هذا الجهاز</b><div class="list">${accounts().map(a => `<div class="item"><div class="grow">${esc(a.name)}</div><button class="btn pri sm" data-act="switch" data-id="${a.id}">دخول</button></div>`).join('')}</div></div>` : ''}
+  <div class="card guide-box"><b>أول مرة؟</b><ol class="steps"><li>اضغط «سجّل بياناتك» تحت، وعبّ النموذج.</li><li>انتظر اعتماد الإدارة، وغالبًا يكون خلال يوم.</li><li>ارجع هنا وادخل باسم المستخدم وكلمة المرور اللي اخترتها.</li></ol>
+    <div class="row" style="justify-content:center"><button class="btn pri" data-act="to-reg">سجّل بياناتك</button></div></div>
   </div>`;
 }
 function regV(hid) {
@@ -346,12 +358,14 @@ function regV(hid) {
   const hs = info.halaqat || []; const fixedH = hid && hs.find(h => h.id === hid);
   return `${banner()}<div class="center-box" style="max-width:560px">
   <div class="hero-mark">${MARK}<div><h1>تسجيل طالب جديد</h1><div class="muted">${esc(info.center)}${fixedH ? ' · ' + esc(fixedH.name) : ''}</div></div></div>
+  <ol class="stepper"><li class="on"><b>1</b><span>عبّ البيانات</span></li><li><b>2</b><span>اعتماد الإدارة</span></li><li><b>3</b><span>ادخل للموقع</span></li></ol>
   <form class="card" data-form="register" data-hid="${esc(fixedH ? hid : '')}">
-    <label class="fld"><span>الاسم الكامل <i>*</i></span><input id="rg-name" name="name" required autocomplete="name"></label>
+    <label class="fld"><span>اسم الطالب الكامل <i>*</i></span><input id="rg-name" name="name" required autocomplete="name" placeholder="مثال: عبدالله محمد العتيبي"></label>
     <div class="fgrid">
-      <label class="fld"><span>اسم المستخدم <i>*</i></span><input id="rg-username" name="username" dir="ltr" required autocapitalize="none" pattern="[A-Za-z0-9_.]{3,30}" title="حروف إنجليزية أو أرقام، 3 أحرف على الأقل"></label>
-      <label class="fld"><span>كلمة المرور <i>*</i></span><input id="rg-password" name="password" type="password" required minlength="4" autocomplete="new-password"></label>
+      <label class="fld"><span>اسم المستخدم <i>*</i></span><input id="rg-username" name="username" dir="ltr" required autocapitalize="none" autocorrect="off" spellcheck="false" pattern="[A-Za-z0-9_.]{3,30}" title="حروف إنجليزية أو أرقام، 3 أحرف على الأقل" placeholder="abdullah2015"><span class="hint">حروف إنجليزية وأرقام بدون مسافات، مثل اسم الطالب وسنة ميلاده.</span></label>
+      ${pwField('rg-password', 'password', 'كلمة المرور <i>*</i>', 'new-password', 'minlength="4"')}
     </div>
+    ${tip('احفظ اسم المستخدم وكلمة المرور عندك. بعد الإرسال نعطيك زر تنسخها فيه أو ترسلها لنفسك بالواتساب.')}
     <div class="fgrid">${info.fields.map(f => fieldHtml(f, '', 'rg-')).join('')}</div>
     ${!fixedH && hs.length ? `<label class="fld"><span>الحلقة المطلوبة</span><select id="rg-halqa" name="reqHalqa"><option value="">تحددها الإدارة</option>${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label>` : ''}
     <button class="btn pri big" type="submit">إرسال الطلب</button>
@@ -366,7 +380,14 @@ async function loadRegInfo() {
   regLoading = false; scheduleRender();
 }
 function regDoneV() {
-  return `<div class="center-box"><div class="hero-mark">${MARK}<h1>وصل طلبك</h1></div><div class="card">شكرًا لك. طلبك الآن عند الإدارة، وبعد الاعتماد تقدر تدخل باسم المستخدم وكلمة المرور اللي اخترتها.</div><button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
+  const c = ST.regCred || {}; const msg = `بيانات دخول ${c.name || ''} في ${(ST.regInfo || {}).center || 'الحلقة'}:\nالرابط: ${location.origin}\nاسم المستخدم: ${c.user || ''}\nكلمة المرور: ${c.pw || ''}`;
+  return `<div class="center-box"><ol class="stepper"><li class="done"><b>1</b><span>عبّ البيانات</span></li><li class="on"><b>2</b><span>اعتماد الإدارة</span></li><li><b>3</b><span>ادخل للموقع</span></li></ol>
+  <div class="hero-mark">${MARK}<h1>وصل طلبك</h1></div>
+  <div class="card" style="display:grid;gap:10px"><div>طلبك الآن عند الإدارة. بعد الاعتماد تدخل بهذي البيانات:</div>
+    <dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.user || '')}</b></dd><dt>كلمة المرور</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.pw || '')}</b></dd></dl>
+    <div class="row"><button class="btn" data-act="copy" data-text="${esc(msg)}">نسخ البيانات</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">أرسلها لنفسك بالواتساب</a></div>
+    ${tip('ما يوصلك إشعار بالاعتماد، جرّب تدخل بعد ساعات. وإذا طال الانتظار تواصل مع الإدارة.')}${supportBtn()}</div>
+  <button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
 }
 
 const TABS = {
@@ -379,13 +400,14 @@ const PARENT_TAB = { session: 'sessions', student: 'students' };
 function shellV(u) {
   const tabs = TABS[u.role](u);
   const keys = tabs.map(t => t[0]);
-  if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && ST.view !== 'home')) ST.view = keys[0];
+  if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && !['home', 'help'].includes(ST.view))) ST.view = keys[0];
   const activeTab = PARENT_TAB[ST.view] || ST.view;
   const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV })[ST.view](u);
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
+  if (u.role === 'student' && LANG !== 'en' && !ST.tourShown && !tourSeen(u)) { ST.tourShown = true; setTimeout(() => { if ($('#modal').hidden) showTour(0); }, 600); }
   return `${banner()}<header class="top"><div class="top-in">
     <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
-      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
+      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="kids">${accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن'}</button><button class="btn ghost sm" data-act="zoom" aria-label="تكبير الخط">أ${ZOOM > 1 ? '−' : '+'}</button><button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
     ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
   </div></header><main class="wrap">${body}</main>`;
 }
@@ -508,14 +530,14 @@ function planHtml(st) {
   const ps = planSegs(st); const rows = ['new', 'review', 'tath'].filter(k => ps[k]);
   const p = planOf(st); const auto = isAuto(st); const rt = retriesOf(st);
   const t = today(); const workday = halqaDays(st.halqaId).includes(new Date().getDay()) && !isHolidayC(t);
-  const head = auto ? `<span class="chip acc">تلقائية</span> <span class="small muted">حفظ ${fmtAmt(p.auto.newAmt)}، مراجعة ${fmtAmt(p.auto.revAmt)}${+p.auto.tathAmt ? '، تثبيت ' + fmtAmt(p.auto.tathAmt) : ''} · ${p.auto.dir === 'fwd' ? 'من الفاتحة' : 'من الناس'}</span>` : `<span class="chip">يدوية</span>`;
+  const head = auto ? `<span class="chip acc">تلقائية</span> <span class="small muted">حفظ ${fmtAmt(p.auto.newAmt)}${+p.auto.newAmt < 1 ? ' (' + amtLines(p.auto.newAmt) + ')' : ''}، مراجعة ${fmtAmt(p.auto.revAmt)}${+p.auto.tathAmt ? '، تثبيت ' + fmtAmt(p.auto.tathAmt) : ''} · ${p.auto.dir === 'fwd' ? 'من الفاتحة' : 'من الناس'}</span>` : `<span class="chip">يدوية</span>`;
   const pz = (st.plan || {}).paused;
   return `<div class="plan"><div class="row">${head}${workday ? '' : '<span class="chip gold">اليوم إجازة</span>'}${+p.near && !auto ? `<span class="chip">تثبيت آخر ${fmtAmt(p.near)}</span>` : ''}</div>
   ${pz && pz.from ? `<div class="note">${isPaused(st) ? 'الخطة موقوفة مؤقتًا' : 'إيقاف مجدول'} من ${fmtDate(pz.from)}${pz.to ? ' إلى ' + fmtDate(pz.to) : ''}${pz.reason ? ': ' + esc(pz.reason) : ''}</div>` : ''}
   ${rt.map(r => `<div class="plan-row retry"><span class="lbl">إعادة ${TYPE[r.type]}</span><div>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])} <span class="small muted">من ${fmtDate(r.date)}</span></div></div>`).join('')}
-  ${rows.length ? rows.map(k => `<div class="plan-row"><span class="lbl">${TYPE[k]}</span><div>${segText(ps[k])}</div></div>`).join('') : (rt.length ? '' : `<div class="empty small">${auto && ps._info && ps._info.done ? 'أتمّ الحفظ في هذا الاتجاه، ما شاء الله.' : 'ما حُدّد مقطع بعد.'}</div>`)}
+  ${rows.length ? rows.map(k => `<div class="plan-row"><span class="lbl">${TYPE[k]}</span><div>${segText(ps[k])}${PAGES_OK ? ` <span class="pg">· ${fmtLines(linesOf(ps[k]))}</span>` : ''}</div></div>`).join('') : (rt.length ? '' : `<div class="empty small">${auto && ps._info && ps._info.done ? 'أتمّ الحفظ في هذا الاتجاه، ما شاء الله.' : 'ما حُدّد مقطع بعد.'}</div>`)}
   ${auto && ps._info && ps._info.np > ps._info.ms ? `<div class="small muted">الحفظ السابق: من ${esc(posText(p.auto.dir, ps._info.ms))} إلى ${esc(posText(p.auto.dir, ps._info.np - 1))}</div>` : ''}
-  ${auto && ps._info ? `<div class="small muted">الحفظ الجديد يكمل من: ${esc(posText(p.auto.dir, p.auto.newPos))} · المحفوظ تقريبًا ${Math.round(ps._info.memPages)} وجه${PAGES_OK ? '' : ' (تقدير تقريبي للأوجه)'}</div>` : ''}</div>`;
+  ${auto && ps._info ? `<div class="small muted">الحفظ الجديد يكمل من: ${esc(posText(p.auto.dir, p.auto.newPos))} · المحفوظ تقريبًا ${Math.round(ps._info.memPages)} وجه${PAGES_OK ? ' حسب مصحف المدينة' : ' (تقدير تقريبي)'}</div>` : ''}</div>`;
 }
 function profileV(u) {
   const st = S.users[ST.uid] && { ...S.users[ST.uid], id: ST.uid };
@@ -596,6 +618,7 @@ function settingsV() {
   return `<h1>الإعدادات</h1>
   <form class="card" data-form="settings" style="gap:18px">
     <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="sg-center" name="center" value="${esc(st.center)}" required></label>
+    <div class="fgrid"><label class="fld"><span>جهة التواصل للطلاب وأولياء الأمور</span><input id="sg-sn" name="supportName" value="${esc(st.supportName || '')}" placeholder="مثال: إدارة الحلقة"></label><label class="fld"><span>رقم الواتساب للتواصل</span><input id="sg-sp" name="supportPhone" type="tel" dir="ltr" value="${esc(st.supportPhone || '')}" placeholder="05xxxxxxxx"></label></div>
     <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div><span class="small muted" style="font-weight:400">تقدر تغيّرها لكل حلقة من تبويب الحلقات.</span></div>
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
       <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
@@ -639,6 +662,7 @@ function lessonCard(u, s) {
       <div class="cd" data-cd="${lessonTs(s)}">${cdText(lessonTs(s))}</div>${s.note ? `<div class="small">${esc(s.note)}</div>` : ''}${(s.att || {})[u.id] ? `<span class="chip ${ATTC[s.att[u.id]]}">${ATT[s.att[u.id]]}</span>` : ''}</div>
     <div class="join-actions">${link ? `<a class="btn pri big" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${j ? 'ادخل الحصة مرة ثانية' : 'ادخل الحصة'}</a>` : '<span class="chip warn">الرابط ينزل قبل الحصة</span>'}
       ${joined && isToday ? `<button class="btn" data-act="leave" data-id="${s.id}">خرجت من الحصة</button>` : ''}</div></div>
+  ${link ? tip('أول مرة ممكن يطلب منك تثبيت Zoom أو Meet من المتجر. ثبته وارجع اضغط «ادخل الحصة».') : ''}
   ${isToday ? `<section class="card qcard" style="display:grid;gap:10px"><div class="sec-head"><h2>طابور التسميع</h2>${isCur ? '<span class="chip gold">دورك الآن</span>' : inQ ? `<span class="chip acc">ترتيبك ${pos}</span>` : ''}</div>
     ${isCur ? '<div class="now"><div class="name">دورك الآن، المعلم ينتظرك</div></div>' : inQ ? `<div class="row"><span>${pos === 1 ? 'أنت التالي، استعد.' : 'أنت في الطابور، قدّامك ' + (pos - 1) + ' ' + (pos - 1 === 1 ? 'طالب' : 'طلاب') + '.'}</span><button class="btn sm" data-act="ready" data-id="${s.id}" data-v="0">إلغاء الجاهزية</button></div>` : `<button class="btn pri" data-act="ready" data-id="${s.id}" data-v="1">جاهز للتسميع</button>`}
     ${s.cname || qn.length ? `<ol class="qscreen">${s.cname ? `<li class="cur"><span>يسمّع الآن</span> ${esc(s.cname)}</li>` : ''}${qn.map(x => `<li class="${x.id === u.id ? 'me' : ''}">${esc(x.n)}${x.id === u.id ? ' (أنت)' : ''}</li>`).join('')}</ol>` : '<div class="small muted">الطابور فاضي حاليًا.</div>'}
@@ -655,12 +679,13 @@ function homeV(u) {
   const past = sess.filter(s => s.date <= t && !s.cancelled).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 6);
   const vd = verseOfDay(t);
   return `<div><h1>السلام عليكم، ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${hs ? esc(hs.name) : ''} · ${fmtDateH(t)} · هذه الصفحة يتابع منها ولي الأمر أيضًا</div></div>
+  ${parentSummary(u)}
   <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
   ${studentAnnsHtml(u)}
   ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
   ${next ? lessonCard(u, next) : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
   <div class="grid2">
-    <section class="card" style="display:grid;gap:12px"><h2>المطلوب منك</h2>${planHtml(u)}${goalHtml(u)}</section>
+    <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>المطلوب منك</h2><a class="btn ghost sm" href="${MUSHAF_URL}" target="_blank" rel="noopener">المصحف</a></div>${tip('هذا اللي تسمّعه في الحصة. جهّزه قبلها، والمعلم يسجل تسميعك ويتحدث المطلوب لحاله. أرقام الصفحات (ص) حسب مصحف المدينة النبوية من مجمع الملك فهد.')}${planHtml(u)}${goalHtml(u)}</section>
     ${tasksHtml(u)}
   </div>
   <div class="grid2">
@@ -668,7 +693,9 @@ function homeV(u) {
     <section class="card" style="display:grid;gap:12px"><h2>إنجازك</h2><div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>الحضور، 30 يوم</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة هالأسبوع</span></div></div>
     ${past.length ? `<div class="list">${past.map(s => { const v = (s.att || {})[u.id]; return `<div class="item"><div class="grow">${fmtDate(s.date)}</div><span class="chip ${v ? ATTC[v] : ''}">${v ? ATT[v] : 'لم يُحضَّر'}</span></div>`; }).join('')}</div>` : ''}</section>
   </div>
-  <section class="card"><h2>سجل التسميع</h2>${historyTable(rs)}</section>`;
+  <section class="card"><h2>سجل التسميع</h2>${tip('كل تسميع مع تقديره وعدد الأخطاء وملاحظة المعلم. «إعادة» معناها يعيد المقطع في الحصة الجاية.')}${historyTable(rs)}</section>
+  <div class="row" style="justify-content:center"><button class="btn ghost" data-act="tour">كيف أستخدم الصفحة؟</button>${supportBtn('تواصل مع الإدارة')}</div>
+  ${stickyJoin(u)}`;
 }
 
 /* ---- announcements ---- */
@@ -700,6 +727,7 @@ function tasksHtml(u) {
   const doneSet = new Set((w.items || []).filter(x => x.done).map(x => x.k));
   if (isPaused(u)) return `<section class="card"><h2>مهام اليوم</h2><div class="note">خطتك موقوفة مؤقتًا${u.plan.paused.reason ? ': ' + esc(u.plan.paused.reason) : ''}.</div></section>`;
   return `<form class="card" data-form="wird" style="gap:10px"><div class="sec-head"><h2>مهام اليوم</h2>${w.items ? '<span class="chip ok">محفوظة</span>' : ''}</div>
+    ${tip('علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط «حفظ». المعلم يشوفها قبل الحصة.')}
     ${items.length ? items.map((x, i) => { const k = itemLabel(x); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${x.retry ? 'إعادة ' : ''}${x.type === 'new' ? 'احفظ' : 'راجع'} ${esc(SN[x.surah - 1])} <b class="num">${x.from === x.to ? x.from : x.from + '–' + x.to}</b></span></label>`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
     <div class="row"><label class="fld" style="flex:0 1 200px"><span>ورد التلاوة اليوم (أوجه)</span><input id="wd-read" name="read" type="number" min="0" max="604" inputmode="numeric" value="${w.read || ''}"></label>
     <label class="fld" style="flex:1 1 200px"><span>ملاحظة (اختياري)</span><input id="wd-note" name="note" maxlength="200" value="${esc(w.note || '')}"></label></div>
@@ -878,7 +906,13 @@ function helpV(u) {
   const install = sec('ثبّت الموقع كتطبيق', `${INSTALL_EVT ? '<button class="btn pri" data-act="install">تثبيت الآن</button>' : ''}${ol(['<b>آيفون:</b> افتح الموقع في Safari، اضغط زر المشاركة، ثم «إضافة إلى الشاشة الرئيسية».', '<b>أندرويد:</b> من قائمة Chrome (⋮) اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».'])}`);
   const notif = S.push ? sec('الإشعارات', `${ol(['اضغط «الإشعارات» فوق، ووافق على السماح.', 'في الآيفون: لازم تثبت الموقع على الشاشة الرئيسية أول، وبعدها تفعّل الإشعارات من داخله.', 'توصلك: تذكير قبل الحصة، و«دورك قرب» و«دورك الآن» في الطابور، والإعلانات.'])}`) : '';
   const cal = hid ? sec('مواعيد الحلقة في تقويم جوالك', `<p>يضيف حصص الحلقة لتقويم الجوال مع تنبيه قبلها بربع ساعة، ويتحدث لحاله.</p><div class="row"><a class="btn" href="webcal://${host}/api/ics/${hid}.ics">إضافة للتقويم</a><button class="btn ghost" data-act="copy" data-text="https://${host}/api/ics/${hid}.ics">نسخ الرابط</button></div>`) : '';
-  if (u.role === 'student') return `<h1>الدليل</h1>${sec('صفحتك', ol(['قبل الحصة يطلع لك عدّاد، وإذا بدأت اضغط «ادخل الحصة».', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع» وتشوف ترتيبك.', 'إذا ما قدرت تدخل اضغط «عندي مشكلة في الدخول» وتوصل للمعلم.', 'في «مهام اليوم» علّم على اللي خلصته في البيت واكتب كم وجه قرأت، واضغط حفظ.', 'ولي الأمر يدخل بنفس الحساب ويشوف الحضور والتسميع والإعلانات.']))}${cal}${install}${notif}`;
+  if (u.role === 'student') return `<h1>الدليل</h1>
+    <div class="row"><button class="btn pri" data-act="tour">شاهد الجولة التعريفية</button>${supportBtn('تواصل مع الإدارة')}</div>
+    ${sec('للطالب: يوم الحصة خطوة بخطوة', ol(['افتح الموقع قبل الحصة بدقائق، وتشوف العدّاد في صفحتك.', 'وقت الحصة اضغط «ادخل الحصة»، ويفتح Zoom أو Meet.', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع»، وتشوف ترتيبك في الطابور.', 'لما يطلع «دورك الآن» افتح المايك وسمّع المطلوب منك.', 'إذا ما قدرت تدخل اضغط «عندي مشكلة في الدخول» واختر المشكلة.', 'بعد الحصة شوف تقديرك وملاحظة المعلم في «سجل التسميع».']))}
+    ${sec('في البيت', ol(['افتح «المطلوب منك» وجهّز الحفظ والمراجعة للحصة الجاية.', 'في «مهام اليوم» علّم على اللي خلصته، واكتب كم وجه قرأت، واضغط «حفظ».', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ، وتطلع لك أوسمة مع الالتزام.']))}
+    ${sec('لولي الأمر', ol(['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير له.', '«إنجازك» فيه نسبة الحضور، وعدد الأوجه المحفوظة والمراجعة هالأسبوع.', '«سجل التسميع» فيه كل تسميع بتقديره وأخطائه وملاحظة المعلم.', 'الإعلانات تطلع فوق باللون الذهبي، اضغط «قرأت» بعد ما تقراها.', 'زر «English» فوق يعرض الصفحة بالإنجليزي، وزر «أ+» يكبّر الخط.', 'عندك أكثر من ولد؟ اضغط «إضافة ابن» وادخل حسابه مرة وحدة، وبعدها تتنقل بينهم من «الأبناء».']))}
+    ${cal}${install}${notif}
+    <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
   const teacher = sec('للمعلم', ol(['الحصص تنشأ لحالها إذا كانت الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'في التحضير: «الكل حاضر» ثم عدّل الغائبين، أو «من دخل» يحضّر اللي ضغطوا دخول.', 'الطابور: الطلاب يدخلونه بأنفسهم، أو أضفهم. «التالي» ينقل للطالب اللي بعده ويوصله إشعار.', 'لوحة التسجيل: اضغط «+ خطأ» و«+ تنبيه» وأنت تسمع، والتقدير يطلع لحاله. «حفظ والتالي» يوفر عليك.', '«المطلوب اليوم» يعرض خطة كل طالب وهل راجع في البيت.', 'من صفحة الطالب: الخطة والهدف ورسائل واتساب لولي الأمر.']));
   const admin = u.role === 'admin' ? sec('للمدير', ol(['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين وحدد صلاحياتهم، وأضف مشرفين إداريين بصلاحيات محددة من صفحة المعلمين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإجازات والفصول والنقاط والرسائل الجاهزة من «الإعدادات».', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.'])) +
     (isFullAdmin(u) ? sec('Google Sheets', `<p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع. الجدول يتحدث لحاله كل ساعة تقريبًا.</p>`) +
@@ -951,6 +985,89 @@ function homeEn(u) {
   </div>
   <section class="card"><h2>Recitation record</h2>${rs.length ? `<div class="tbl-wrap"><table dir="ltr"><thead><tr><th>Date</th><th>Type</th><th>Portion</th><th class="num">Mistakes</th><th>Grade</th><th>Note</th></tr></thead><tbody>${rs.slice(0, 40).map(r => `<tr><td>${fmtDateEn(r.date)}</td><td>${EN.type[r.type]}</td><td>${segEn(r.surah, r.from, r.to)}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${EN.grade[r.grade] || r.grade}</span></td><td dir="auto" style="white-space:normal">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">No recitations yet.</div>'}</section>`;
 }
+
+/* ---------------- حسابات الأبناء على جهاز ولي الأمر ---------------- */
+const ACC_KEY = 'irtaq-accounts';
+function accounts() { try { return JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); } catch { return []; } }
+function saveAccounts(list) { try { localStorage.setItem(ACC_KEY, JSON.stringify(list.slice(0, 10))); } catch {} }
+function saveAccount(a) { const l = accounts().filter(x => x.id !== a.id); l.push(a); saveAccounts(l); }
+function accountsHtml(curId) {
+  const l = accounts();
+  return `<div class="list">${l.map(a => `<div class="item ${a.id === curId ? 'cur-acc' : ''}"><div class="grow"><b>${esc(a.name)}</b>${a.id === curId ? '<div class="small muted">الحساب المفتوح الآن</div>' : ''}</div>${a.id === curId ? '<span class="chip ok">مفتوح</span>' : `<button class="btn pri sm" data-act="switch" data-id="${a.id}">افتح</button>`}<button class="btn ghost sm" data-act="acc-rm" data-id="${a.id}" aria-label="إزالة من الجهاز">إزالة</button></div>`).join('') || '<div class="small muted">ما فيه حسابات محفوظة.</div>'}</div>`;
+}
+function kidsModal() {
+  const u = me();
+  openModal(`${dlgHead('حسابات الأبناء')}<div class="small muted">تنقّل بين حسابات أولادك على هذا الجهاز بدون كلمة مرور. كل حساب تدخله مرة وحدة بس.</div>
+  ${accountsHtml(u && u.id)}
+  <form data-form="add-kid" class="card" style="gap:10px"><b>إضافة ابن آخر</b>
+    <label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" autocapitalize="none" autocomplete="off" required></label>
+    ${pwField('ak-pw', 'password', 'كلمة المرور', 'off')}
+    <button class="btn pri" type="submit">إضافة وفتح الحساب</button></form>`);
+}
+async function switchTo(id) {
+  const a = accounts().find(x => x.id === id); if (!a) return;
+  try { const r = await api('/api/switch', { token: a.token }); if (r.name && r.name !== a.name) saveAccount({ ...a, name: r.name }); closeModal(); ST.view = null; ST.tourShown = true; await load(); toast('فتحت حساب ' + (r.name || a.name)); }
+  catch (e) { toast(e.message); if (e.status === 401) { saveAccounts(accounts().filter(x => x.id !== id)); if (!$('#modal').hidden) kidsModal(); } }
+}
+
+/* ---------------- شرح وتسهيلات للطالب وولي الأمر ---------------- */
+const ICON_I = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+const tip = html => `<div class="tip">${ICON_I}<div>${html}</div></div>`;
+const support = () => { const st = S.settings.main ? SET() : (ST.regInfo || {}); return { name: st.supportName || 'إدارة الحلقة', phone: st.supportPhone || '' }; };
+const supportBtn = (label, text) => { const sp = support(); const l = sp.phone && waLink(sp.phone, text || 'السلام عليكم، احتاج مساعدة في موقع الحلقة'); return l ? `<a class="btn wa" href="${l}" target="_blank" rel="noopener">${label || 'تواصل مع ' + esc(sp.name)}</a>` : ''; };
+const pwField = (id, name, label, auto, extra = '') => `<label class="fld"><span>${label}</span><div class="pw-wrap"><input id="${id}" name="${name}" type="password" autocomplete="${auto}" required ${extra}><button type="button" class="pw-eye" data-act="pw-eye" aria-label="إظهار كلمة المرور">إظهار</button></div></label>`;
+
+/* جولة تعريفية: تظهر أول مرة على كل جهاز */
+const TOUR = [
+  ['أهلًا بك', 'هذي صفحتك في الحلقة، ويتابع منها ولي الأمر بنفس الحساب. خلنا نعرّفك عليها في دقيقة.'],
+  ['الدخول للحصة', 'قبل الحصة يطلع عدّاد يوضح كم باقي. وقت الحصة اضغط <b>«ادخل الحصة»</b> ويفتح لك Zoom أو Meet.<br><span class="muted">أول مرة ممكن يطلب منك تثبيت التطبيق من المتجر، ثبته وارجع اضغط الزر مرة ثانية.</span>'],
+  ['التسميع', 'إذا صرت جاهز تسمّع اضغط <b>«جاهز للتسميع»</b>، وتشوف ترتيبك في الطابور. لما يجي دورك يطلع لك <b>«دورك الآن»</b>.'],
+  ['ما قدرت تدخل؟', 'اضغط <b>«عندي مشكلة في الدخول»</b> واختر المشكلة، وتوصل للمعلم فورًا.'],
+  ['المطلوب منك', 'في قسم <b>«المطلوب منك»</b> تلقى الحفظ والمراجعة لليوم. وفي <b>«مهام اليوم»</b> علّم على اللي خلصته في البيت واضغط حفظ.'],
+  ['لولي الأمر', 'تحت تلقى الحضور، وعدد الأوجه، والنقاط، وسجل التسميع مع ملاحظات المعلم. والإعلانات تطلع فوق باللون الذهبي.'],
+  ['خلّه أسهل', 'من <b>«الدليل»</b> تقدر تثبت الموقع على شاشة الجوال مثل التطبيق، وتضيف مواعيد الحلقة لتقويمك. وزر <b>«أ+»</b> فوق يكبّر الخط.'],
+];
+function tourSeen(u) { try { return !!localStorage.getItem('irtaq-tour-' + u.id); } catch { return true; } }
+function showTour(i = 0) {
+  ST.tour = i; const [t, b] = TOUR[i]; const last = i === TOUR.length - 1;
+  openModal(`<div class="tour"><div class="tour-dots">${TOUR.map((_, k) => `<span class="${k === i ? 'on' : ''}"></span>`).join('')}</div><div class="small muted">${i + 1} من ${TOUR.length}</div><h2>${t}</h2><p>${b}</p>
+    <div class="dlg-foot">${last ? '<button class="btn pri big" data-act="tour-end">ابدأ</button>' : '<button class="btn pri" data-act="tour-next">التالي</button>'}${i ? '<button class="btn" data-act="tour-prev">السابق</button>' : ''}${last ? '' : '<button class="btn ghost" data-act="tour-end">تخطي</button>'}</div></div>`);
+}
+
+/* ملخص سريع لولي الأمر أعلى الصفحة */
+function parentSummary(u) {
+  const t = today(); const sess = L('sessions').filter(s => s.halqaId === u.halqaId && !s.cancelled);
+  const todayL = sess.find(s => s.date === t); const last = recsOf(u.id)[0];
+  const bits = [];
+  if (todayL) { const v = (todayL.att || {})[u.id]; bits.push(`حصة اليوم ${fmtTime(todayL.time)}: ${v ? `<b class="c-${ATTC[v]}">${ATT[v]}</b>` : 'لم يُحضَّر بعد'}`); }
+  else bits.push('ما فيه حصة اليوم');
+  if (last) bits.push(`آخر تسميع ${fmtDate(last.date)}: <b class="c-${GRADE_K[last.grade] || ''}">${esc(last.grade)}</b>`);
+  const g = goalProgress(u); if (g) bits.push(`الهدف: ${g.pct}٪`);
+  return `<div class="psum"><span class="small muted">ملخص سريع</span><div>${bits.join(' · ')}</div></div>`;
+}
+
+/* شريط ثابت أسفل الجوال وقت الحصة */
+function stickyJoin(u) {
+  const t = today(); const s = L('sessions').filter(x => x.halqaId === u.halqaId && x.date === t && !x.cancelled).sort((a, b) => a.time.localeCompare(b.time)).find(x => { const d = lessonTs(x) - Date.now(); return d < 20 * 60000 && d > -3 * 3600000; });
+  if (!s) return '';
+  const link = effLink(s); const isCur = s.current === u.id; const inQ = (s.queue || []).includes(u.id);
+  return `<div class="sticky-join">${isCur ? '<b class="now-tag">دورك الآن</b>' : inQ ? `<span class="small">ترتيبك ${(s.queue || []).indexOf(u.id) + 1}</span>` : `<button class="btn" data-act="ready" data-id="${s.id}" data-v="1">جاهز للتسميع</button>`}${link ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">ادخل الحصة</a>` : ''}</div>`;
+}
+
+/* حجم الخط */
+let ZOOM = 1; try { ZOOM = +localStorage.getItem('irtaq-zoom') || 1; } catch {}
+function applyZoom() { const r = document.getElementById('root'); if (r) r.style.zoom = ZOOM === 1 ? '' : String(ZOOM); try { localStorage.setItem('irtaq-zoom', String(ZOOM)); } catch {} }
+
+/* أسئلة شائعة */
+const FAQ = [
+  ['ضغطت «ادخل الحصة» وما صار شيء', 'تأكد إن التطبيق (Zoom أو Meet) مثبت على جوالك. إذا ما فتح، اضغط مطولًا على الزر واختر «فتح في المتصفح». وإذا ما زال، اضغط «عندي مشكلة في الدخول».'],
+  ['ما طلع لي زر «ادخل الحصة»', 'معناه المعلم ما حط الرابط بعد. ينزل قبل الحصة، اسحب الصفحة لتحت عشان تتحدث أو انتظر شوي.'],
+  ['نسيت كلمة المرور', 'تواصل مع إدارة الحلقة، يعطونك كلمة مرور جديدة بالواتساب.'],
+  ['كيف أعرف مستوى ولدي؟', 'شوف «سجل التسميع» تحت: فيه كل تسميع بتقديره وعدد أخطائه وملاحظة المعلم. و«إنجازك» فيه الحضور وعدد الأوجه.'],
+  ['وش يعني «إعادة» في المطلوب؟', 'الطالب ما اجتاز هذا المقطع، فيعيد تسميعه في الحصة الجاية لين ينجح.'],
+  ['هل لازم أسجل دخول كل مرة؟', 'لا، الموقع يتذكرك شهرين على نفس الجهاز. وإذا ثبته على الشاشة الرئيسية يفتح مثل التطبيق.'],
+  ['عندي أكثر من ولد في الحلقة', 'اضغط «إضافة ابن» فوق وادخل بحساب ولدك الثاني مرة وحدة. بعدها تتنقل بينهم من زر «الأبناء» بدون كلمة مرور.'],
+];
 
 /* ---------------- modals ---------------- */
 let CONFIRM = null;
@@ -1060,7 +1177,7 @@ function issueModal(sid) {
     <div class="small muted">اختر المشكلة، وتوصل للمعلم مباشرة.</div>
     <div class="qgrades">${opts.map((o, i) => `<label class="check"><input type="radio" name="opt" value="${esc(o)}" ${i ? '' : 'checked'}> ${esc(o)}</label>`).join('')}<label class="check"><input type="radio" name="opt" value=""> شيء ثاني</label></div>
     <label class="fld"><span>تفاصيل (اختياري)</span><input name="msg" maxlength="150"></label>
-    <div class="dlg-foot"><button class="btn pri" type="submit">إرسال للمعلم</button><button type="button" class="btn" data-act="close">إلغاء</button></div></form>`);
+    <div class="dlg-foot"><button class="btn pri" type="submit">إرسال للمعلم</button><button type="button" class="btn" data-act="close">إلغاء</button></div>${supportBtn('أو تواصل مع الإدارة بالواتساب', 'السلام عليكم، عندي مشكلة في دخول الحصة')}</form>`);
 }
 
 function studentModal(st) {
@@ -1109,7 +1226,7 @@ function planModal(st) {
   const hasPrior = p.mode === 'auto' && np > ms;
   const pf = at(ms) || { s: dir === 'fwd' ? 1 : 114, a: 1 }; const pt = at(np - 1) || pf; const ns = at(np) || pf;
   const man = k => p.manual[k] || {};
-  const amtSel = (name, val, opts) => `<select name="${name}">${opts.map(o => `<option value="${o}" ${+val === o ? 'selected' : ''}>${o ? fmtAmt(o) : 'بدون'}</option>`).join('')}</select>`;
+  const amtSel = (name, val, opts) => `<select name="${name}">${opts.map(o => `<option value="${o}" ${+val === o ? 'selected' : ''}>${o ? fmtAmt(o) + (o < 1 ? ' (' + amtLines(o) + ')' : '') : 'بدون'}</option>`).join('')}</select>`;
   const autoOn = p.mode === 'auto';
   const posF = (label, sN, aN, sv, av) => `<div class="fld"><span>${label}</span><div class="pos-row"><select name="${sN}" aria-label="${label}: السورة">${surahOptions(sv)}</select><input name="${aN}" type="number" min="1" inputmode="numeric" value="${av}" aria-label="${label}: الآية" placeholder="آية"></div></div>`;
   openModal(`${dlgHead('خطة ' + esc(st.name))}
@@ -1157,6 +1274,16 @@ const curSession = () => ({ ...S.sessions[ST.sid], id: ST.sid });
 const setQueue = (s, queue, current) => act('lesson.queue', current === undefined ? { id: s.id, queue } : { id: s.id, queue, current });
 const ACT = {
   'tab': el => go(el.dataset.v),
+  'pw-eye': el => { const i = el.parentElement.querySelector('input'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? 'إخفاء' : 'إظهار'; },
+  'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
+  'tour': () => showTour(0),
+  'kids': () => kidsModal(),
+  'switch': el => switchTo(el.dataset.id),
+  'acc-rm': el => { saveAccounts(accounts().filter(x => x.id !== el.dataset.id)); if (!$('#modal').hidden) kidsModal(); else render(); },
+  'tour-next': () => showTour(Math.min(TOUR.length - 1, (ST.tour || 0) + 1)),
+  'tour-prev': () => showTour(Math.max(0, (ST.tour || 0) - 1)),
+  'tour-end': () => { const u = me(); try { if (u) localStorage.setItem('irtaq-tour-' + u.id, '1'); } catch {} closeModal(); },
+  'zoom': () => { ZOOM = ZOOM >= 1.25 ? 1 : ZOOM >= 1.12 ? 1.25 : 1.12; render(); toast(ZOOM === 1 ? 'الخط بالحجم العادي' : 'تم تكبير الخط'); },
   'lang': () => { LANG = LANG === 'en' ? 'ar' : 'en'; try { localStorage.setItem('irtaq-lang', LANG); } catch {} render(); },
   'push': () => enablePush(),
   'install': async () => { if (!INSTALL_EVT) return toast('من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية»'); INSTALL_EVT.prompt(); try { await INSTALL_EVT.userChoice; } catch {} INSTALL_EVT = null; render(); },
@@ -1302,7 +1429,7 @@ function settingsData(f) {
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
-  return { center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3,
+  return { supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3,
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {
@@ -1312,13 +1439,14 @@ async function saveSettingsWith(mut, msg) {
 /* ---------------- forms ---------------- */
 const FORMS = {
   async login(f, d) {
-    try { await api('/api/login', { username: d.get('username'), password: d.get('password') }); clean(); ST.view = null; ST.reg = false; await load(); }
+    try { const r = await api('/api/login', { username: d.get('username'), password: d.get('password'), remember: true }); if (r.account) saveAccount(r.account); clean(); ST.view = null; ST.reg = false; await load(); }
     catch (e) { toast(e.message); }
   },
   async register(f, d) {
     const info = {}; (ST.regInfo?.fields || []).forEach(x => { info[x.k] = (d.get(x.k) || '').trim(); });
     try {
       await api('/api/register', { name: d.get('name'), username: d.get('username'), password: d.get('password'), info, reqHalqa: f.dataset.hid || d.get('reqHalqa') || '' });
+      ST.regCred = { name: d.get('name'), user: String(d.get('username')).trim().toLowerCase(), pw: d.get('password') };
       clean(); ST.regDone = true; render();
     } catch (e) { toast(e.message); }
   },
@@ -1414,6 +1542,10 @@ const FORMS = {
     const map = {}; for (const [k, v] of d.entries()) if (k.startsWith('h-')) { const id = k.slice(2); if ((S.users[id] || {}).halqaId !== v) map[id] = v; }
     if (!Object.keys(map).length) return closeModal();
     if (await act('students.assign', { map }, r => 'نُقل ' + r.n + ' طالب')) closeModal();
+  },
+  async 'add-kid'(f, d) {
+    try { const r = await api('/api/login', { username: d.get('username'), password: d.get('password'), remember: true }); if (!r.account) return toast('هذا الحساب ليس حساب طالب'); saveAccount(r.account); closeModal(); ST.view = null; ST.tourShown = true; await load(); toast('أُضيف حساب ' + r.account.name); }
+    catch (e) { toast(e.message); }
   },
   async msg(f, d) { if (await act('msg.send', { text: d.get('text') })) { f.reset(); clean(); } },
   async mypw(f, d) { if (await act('me.password', { old: d.get('old'), pw: d.get('pw') }, 'تم تغيير كلمة المرور')) closeModal(); },

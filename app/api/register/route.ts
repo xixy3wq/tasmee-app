@@ -9,7 +9,8 @@ export async function GET() {
   return handle(async () => {
     const s = await getSettings();
     const halaqat = await prisma.halqa.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
-    return { center: s.center, fields: s.fields.filter((f) => f.on), halaqat };
+    const x: any = s;
+    return { center: s.center, fields: s.fields.filter((f) => f.on), halaqat, supportName: x.supportName || "", supportPhone: x.supportPhone || "" };
   });
 }
 

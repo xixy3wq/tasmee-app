@@ -77,7 +77,7 @@ const A: Record<string, H> = {
     const pp = d.points || {}; const points = { present: AMT(pp.present ?? cur.points.present, 100), late: AMT(pp.late ?? cur.points.late, 100), ex: AMT(pp.ex ?? cur.points.ex, 100), vg: AMT(pp.vg ?? cur.points.vg, 100), gd: AMT(pp.gd ?? cur.points.gd, 100), page: AMT(pp.page ?? cur.points.page, 100) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, terms, tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
     await audit(u, "settings", null, "تعديل الإعدادات");
   },

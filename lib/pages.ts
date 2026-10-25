@@ -1,30 +1,14 @@
-import { TOTAL, SSTART } from "./quran";
-// رقم صفحة المصحف لكل آية، ووزن كل آية بالأوجه
-let cache: number[] | null = null;
-let weights: number[] | null = null;
-export async function loadPages() {
-  if (cache) return cache;
-  const m: any = await import("quran-meta");
-  let get: ((i: number) => any) | null = m.getAyahMeta || m.default?.getAyahMeta || null;
-  if (!get && m.QuranRiwaya?.hafs) { const h = m.QuranRiwaya.hafs(); get = (i: number) => h.getAyahMeta(i); }
-  if (!get) throw new Error("quran-meta api");
-  const p: number[] = [];
-  for (let i = 1; i <= TOTAL; i++) p.push(Number(get(i).page));
-  if (p[0] !== 1 || p[TOTAL - 1] !== 604) throw new Error("bad page data");
-  cache = p;
-  return p;
-}
-export async function ayahWeights() {
-  if (weights) return weights;
-  try {
-    const p = await loadPages(); const cnt: Record<number, number> = {};
-    p.forEach((x) => (cnt[x] = (cnt[x] || 0) + 1));
-    weights = p.map((x) => 1 / cnt[x]);
-  } catch { weights = new Array(TOTAL).fill(604 / TOTAL); }
-  return weights;
-}
+import { SSTART } from "./quran";
+// مصحف المدينة النبوية من مجمع الملك فهد (604 صفحة، 15 سطر): رقم الصفحة وعدد الأسطر لكل آية
+import M from "./mushaf.json";
+const DATA = M as unknown as { pages: number[]; lines: number[] };
+export async function loadPages() { return DATA.pages; }
+export function mushafData() { return DATA; }
+/** وزن كل آية بالأوجه = أسطرها ÷ 15 */
+const W = DATA.lines.map((l) => l / 15);
+export async function ayahWeights() { return W; }
 export async function rangePages(surah: number, from: number, to: number) {
-  const w = await ayahWeights(); let s = 0; const a = SSTART[surah - 1];
-  for (let i = from; i <= to; i++) s += w[a + i - 1] || 0;
+  let s = 0; const a = SSTART[surah - 1];
+  for (let i = from; i <= to; i++) s += W[a + i - 1] || 0;
   return s;
 }
