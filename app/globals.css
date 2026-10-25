@@ -223,3 +223,5 @@ details>summary{cursor:pointer}
 .help pre{background:var(--sunk);padding:8px;border-radius:6px;overflow-x:auto;font-size:.8rem}
 [dir=ltr] .plan-row{grid-template-columns:150px 1fr}
 .theme-btn svg{width:16px;height:16px}
+.pos-row{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:6px}
+.prior,.man-box{display:grid;gap:8px;padding:10px;border-radius:8px;background:var(--sunk)}

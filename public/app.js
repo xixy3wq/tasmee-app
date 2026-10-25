@@ -117,7 +117,7 @@ const ATTC = { p: 'ok', l: 'warn', a: 'bad', e: 'info' };
 /* ---------------- plan logic ---------------- */
 const defPlan = () => ({ mode: 'manual', manual: {}, auto: { dir: 'bwd', newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
 const planOf = st => deepMerge(defPlan(), st.plan || {});
-const isAuto = st => planOf(st).mode === 'auto' && !!st.autoAllowed;
+const isAuto = st => planOf(st).mode === 'auto';
 function take(ord, start, end, amount, stopAtSurah) {
   const out = []; let w = 0, p = start;
   while (p < end) {
@@ -137,13 +137,20 @@ function segs(list) {
 }
 function autoInfo(st) {
   const a = planOf(st).auto; const { ord } = ORD[a.dir] || ORD.bwd;
-  const np = Math.max(0, Math.min(TOTAL, +a.newPos || 0));
-  let memPages = 0; for (let i = 0; i < np; i++) memPages += W[ord[i]];
-  const res = { memPages, done: np >= TOTAL };
+  const np = Math.max(0, Math.min(TOTAL, +a.newPos || 0)); const ms = Math.max(0, Math.min(np, +a.memStart || 0));
+  let memPages = 0; for (let i = ms; i < np; i++) memPages += W[ord[i]];
+  const res = { memPages, done: np >= TOTAL, ms, np };
   if (np < TOTAL && +a.newAmt > 0) res.new = take(ord, np, TOTAL, +a.newAmt, true);
-  if (np > 0 && +a.revAmt > 0) { let rp = +a.revPos || 0; if (rp >= np) rp = 0; res.review = take(ord, rp, np, +a.revAmt, false); }
-  if (np > 0 && +a.tathAmt > 0) { const out = []; let w = 0, p = np; while (p > 0) { p--; out.unshift(ord[p]); w += W[ord[p]]; if (w >= +a.tathAmt - 1e-9) break; } res.tath = { list: out }; }
+  if (np > ms && +a.revAmt > 0) { let rp = +a.revPos || 0; if (rp < ms || rp >= np) rp = ms; res.review = take(ord, rp, np, +a.revAmt, false); }
+  if (np > ms && +a.tathAmt > 0) { const out = []; let w = 0, p = np; while (p > ms) { p--; out.unshift(ord[p]); w += W[ord[p]]; if (w >= +a.tathAmt - 1e-9) break; } res.tath = { list: out }; }
   return res;
+}
+function rangeSegs(s1, a1, s2, a2) {
+  s1 = +s1; s2 = +s2 || s1;
+  if (s2 === s1) return [{ s: s1 - 1, a1: +a1 || 1, a2: +a2 || AYAS[s1 - 1] }];
+  const out = []; const step = s2 > s1 ? 1 : -1;
+  for (let x = s1; ; x += step) { const last = x === s2; out.push({ s: x - 1, a1: x === s1 ? (+a1 || 1) : 1, a2: last ? (+a2 || AYAS[x - 1]) : AYAS[x - 1] }); if (last) break; }
+  return out;
 }
 function planSegs(st) {
   const out = {};
@@ -153,7 +160,7 @@ function planSegs(st) {
     out._info = inf;
   } else {
     const m = planOf(st).manual || {};
-    ['new', 'review', 'tath'].forEach(k => { const x = m[k]; if (x && +x.surah) { const s = +x.surah - 1; out[k] = [{ s, a1: +x.from || 1, a2: +x.to || AYAS[s] }]; } });
+    ['new', 'review', 'tath'].forEach(k => { const x = m[k]; if (x && +x.surah) out[k] = rangeSegs(x.surah, x.from, x.toSurah || x.surah, x.to); });
     const near = +(planOf(st).near || 0);
     if (near > 0 && !out.tath && st.id) {
       // التثبيت القريب: آخر ما حفظه الطالب ونجح فيه
@@ -177,7 +184,7 @@ const myHalaqat = u => L('halaqat').filter(h => u.role === 'admin' || h.teacherI
 const halqaName = id => (S.halaqat[id] && S.halaqat[id].name) || '—';
 const studentsOf = hid => L('users').filter(u => u.role === 'student' && u.status === 'active' && u.halqaId === hid).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const canPlan = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
-const canAutoU = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canAuto);
+const canAutoU = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
 const halqaDays = hid => { const h = S.halaqat[hid]; return (h && h.days && h.days.length) ? h.days : SET().days; };
 const recsOf = uid => L('recs').filter(r => r.uid === uid).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
 function rangeFrom(days) { if (typeof days === 'string' && days[0] === 'T') { const tm = (SET().terms || []).find(x => 'T' + x.id === days); return tm ? tm.from : ''; } return days ? addDays(today(), -days) : ''; }
@@ -507,7 +514,8 @@ function planHtml(st) {
   ${pz && pz.from ? `<div class="note">${isPaused(st) ? 'الخطة موقوفة مؤقتًا' : 'إيقاف مجدول'} من ${fmtDate(pz.from)}${pz.to ? ' إلى ' + fmtDate(pz.to) : ''}${pz.reason ? ': ' + esc(pz.reason) : ''}</div>` : ''}
   ${rt.map(r => `<div class="plan-row retry"><span class="lbl">إعادة ${TYPE[r.type]}</span><div>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])} <span class="small muted">من ${fmtDate(r.date)}</span></div></div>`).join('')}
   ${rows.length ? rows.map(k => `<div class="plan-row"><span class="lbl">${TYPE[k]}</span><div>${segText(ps[k])}</div></div>`).join('') : (rt.length ? '' : `<div class="empty small">${auto && ps._info && ps._info.done ? 'أتمّ الحفظ في هذا الاتجاه، ما شاء الله.' : 'ما حُدّد مقطع بعد.'}</div>`)}
-  ${auto && ps._info ? `<div class="small muted">وصل في الحفظ إلى: ${esc(posText(p.auto.dir, p.auto.newPos))} · المحفوظ تقريبًا ${Math.round(ps._info.memPages)} وجه${PAGES_OK ? '' : ' (تقدير تقريبي للأوجه)'}</div>` : ''}</div>`;
+  ${auto && ps._info && ps._info.np > ps._info.ms ? `<div class="small muted">الحفظ السابق: من ${esc(posText(p.auto.dir, ps._info.ms))} إلى ${esc(posText(p.auto.dir, ps._info.np - 1))}</div>` : ''}
+  ${auto && ps._info ? `<div class="small muted">الحفظ الجديد يكمل من: ${esc(posText(p.auto.dir, p.auto.newPos))} · المحفوظ تقريبًا ${Math.round(ps._info.memPages)} وجه${PAGES_OK ? '' : ' (تقدير تقريبي للأوجه)'}</div>` : ''}</div>`;
 }
 function profileV(u) {
   const st = S.users[ST.uid] && { ...S.users[ST.uid], id: ST.uid };
@@ -526,7 +534,7 @@ function profileV(u) {
   <div class="grid2">
   <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الخطة</h2><div class="row">${canPlan(u) ? `<button class="btn sm" data-act="edit-plan" data-id="${st.id}">تعديل الخطة</button><button class="btn sm" data-act="edit-goal" data-id="${st.id}">${st.goal ? 'تعديل الهدف' : 'هدف'}</button>` : ''}<button class="btn ghost sm" data-act="plan-log" data-id="${st.id}">سجل الخطة</button></div></div>
     ${planHtml(st)}${goalHtml(st)}
-    ${u.role === 'admin' ? `<label class="check"><input type="checkbox" id="pf-auto-${st.id}" data-change="student-auto" data-id="${st.id}" ${st.autoAllowed ? 'checked' : ''}> السماح بالخطة التلقائية لهذا الطالب</label>` : ''}</section>
+</section>
   <section class="card" style="display:grid;gap:12px"><h2>نقاط وأوسمة</h2><div class="stats"><div class="stat"><b>${ptsOf(st, weekStartC(today()), today())}</b><span>نقاط هالأسبوع</span></div><div class="stat"><b>${attendStreak(st)}</b><span>حصص متتالية</span></div></div>${(b => b.length ? `<div class="badges">${b.map(x => `<span class="badge"><b>${esc(x.t)}</b><span>${esc(x.d)}</span></span>`).join('')}</div>` : '')(badgesOf(st))}
     <div class="small muted" style="font-weight:600">الورد في البيت، آخر 7 أيام</div><div class="wgrid">${[...Array(7).keys()].reverse().map(i => { const d = addDays(today(), -i); const w = wirdOf(st.id, d); const n = w ? (w.items || []).filter(x => x.done).length : 0; return `<div class="wday ${w ? 'on' : ''}" title="${fmtDate(d)}"><span>${['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'][new Date(d + 'T00:00').getDay()]} ${new Date(d + 'T00:00').getDate()}</span><b>${w ? n + '/' + (w.items || []).length : '—'}</b>${w && w.read ? `<span>${w.read} و</span>` : ''}</div>`; }).join('')}</div></section>
   <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${esc(st[f.k])}</dd>`).join('') || '<dt>—</dt><dd></dd>'}</dl></section></div>
@@ -544,11 +552,10 @@ function teachersV() {
   const m = me(); const admins = L('users').filter(x => x.role === 'admin' && x.perms);
   return `<div class="sec-head"><h1>المعلمون</h1><button class="btn pri" data-act="add-teacher">إضافة معلم</button></div>
   ${isFullAdmin(m) ? `<section class="card" style="display:grid;gap:8px"><div class="sec-head"><h2>المشرفون الإداريون</h2><button class="btn sm" data-act="add-admin">إضافة مشرف إداري</button></div>${admins.length ? `<div class="list">${admins.map(a => `<div class="item"><div class="grow"><b>${esc(a.name)}</b><div class="small muted"><span dir="ltr">${esc(a.username)}</span> · ${(a.perms || []).map(p => PERM_LABEL[p]).join('، ')}</div></div>${a.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}<button class="btn sm" data-act="edit-admin" data-id="${a.id}">تعديل</button></div>`).join('')}</div>` : '<div class="small muted">مدراء مساعدين بصلاحيات محددة، مثل مشرف تعليمي أو مسؤول تسجيل.</div>'}</section>` : ''}
-  <div class="note info">صلاحية <b>إعداد الخطط</b> تسمح للمعلم ينشئ ويعدّل خطط طلابه. صلاحية <b>الخطة التلقائية</b> تسمح له يحوّل الخطة لتلقائية، بشرط إن الطالب نفسه مسموح له من صفحته.</div>
+  <div class="note info">صلاحية <b>إعداد الخطط</b> تسمح للمعلم ينشئ ويعدّل خطط طلابه، يدوية أو تلقائية.</div>
   <section class="card">${ts.length ? `<div class="list">${ts.map(t => { const hs = L('halaqat').filter(h => h.teacherId === t.id); return `<div class="item"><div class="grow"><div class="name">${esc(t.name)}</div><div class="small muted"><span dir="ltr">${esc(t.username)}</span> · ${hs.length ? hs.map(h => esc(h.name)).join('، ') : 'بدون حلقة'}</div></div>
     ${t.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}
     <label class="check"><input type="checkbox" id="tc-plan-${t.id}" data-change="t-perm" data-k="canPlan" data-id="${t.id}" ${t.canPlan ? 'checked' : ''}> إعداد الخطط</label>
-    <label class="check"><input type="checkbox" id="tc-auto-${t.id}" data-change="t-perm" data-k="canAuto" data-id="${t.id}" ${t.canAuto ? 'checked' : ''}> الخطة التلقائية</label>
     <button class="btn sm" data-act="edit-teacher" data-id="${t.id}">تعديل</button></div>`; }).join('')}</div>` : '<div class="empty">ما فيه معلمون بعد. أضف معلمًا ثم أسند له حلقة.</div>'}</section>`;
 }
 
@@ -740,9 +747,9 @@ function tplApplyModal(u) {
   if (!tp.length) return toast('أضف قوالب الخطط من الإعدادات أولًا');
   openModal(`${dlgHead('تطبيق قالب خطة على عدة طلاب')}<form data-form="tpl-apply">
     <label class="fld"><span>القالب</span><select name="tpl">${tp.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>
-    <div class="small muted">يتغير مقدار الحفظ والمراجعة والتثبيت، ويبقى موضع كل طالب كما هو. الطلاب غير المسموح لهم بالخطة التلقائية ما يتغيرون.</div>
+    <div class="small muted">يتغير مقدار الحفظ والمراجعة والتثبيت، ويبقى موضع كل طالب وحفظه السابق كما هو، وتصير خطته تلقائية.</div>
     <div class="row"><button type="button" class="btn ghost sm" data-act="chk-all">تحديد الكل</button></div>
-    <div class="list chk-list">${studs.map(x => `<label class="item check"><input type="checkbox" name="ids" value="${x.id}" ${x.autoAllowed ? '' : 'disabled'}> ${esc(x.name)} ${x.autoAllowed ? '' : '<span class="chip">غير مسموح</span>'}<span class="small muted">${esc(halqaName(x.halqaId))}</span></label>`).join('')}</div>
+    <div class="list chk-list">${studs.map(x => `<label class="item check"><input type="checkbox" name="ids" value="${x.id}"> ${esc(x.name)}<span class="small muted">${esc(halqaName(x.halqaId))}</span></label>`).join('')}</div>
     <div class="dlg-foot"><button class="btn pri" type="submit">تطبيق</button></div></form>`);
 }
 function goalModal(st) {
@@ -1077,7 +1084,7 @@ function teacherModal(t) {
     <div class="fgrid"><label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" autocapitalize="none" value="${esc(t ? t.username : '')}" required pattern="[A-Za-z0-9_.]{3,30}"></label>
     <label class="fld"><span>${isNew ? 'كلمة المرور' : 'كلمة مرور جديدة (اتركها فاضية)'}</span><input name="password" type="password" ${isNew ? 'required minlength="4"' : ''} autocomplete="new-password"></label></div>
     <label class="fld"><span>الجوال</span><input name="phone" type="tel" dir="ltr" value="${esc(t ? t.phone : '')}"></label>
-    <div class="row"><label class="check"><input type="checkbox" name="canPlan" ${!t || t.canPlan ? 'checked' : ''}> إعداد الخطط</label><label class="check"><input type="checkbox" name="canAuto" ${t && t.canAuto ? 'checked' : ''}> الخطة التلقائية</label></div>
+    <div class="row"><label class="check"><input type="checkbox" name="canPlan" ${!t || t.canPlan ? 'checked' : ''}> إعداد الخطط</label></div>
     ${t ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${t.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${t.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${t ? `<button type="button" class="btn danger" data-act="del-user" data-id="${t.id}">حذف المعلم</button>` : ''}</div>
   </form>`);
@@ -1096,30 +1103,38 @@ function halqaModal(h) {
   </form>`);
 }
 function planModal(st) {
-  const u = me(); const p = planOf(st); const allowAuto = canAutoU(u) && st.autoAllowed;
-  const a = p.auto; const dirO = ORD[a.dir] || ORD.bwd; const curG = a.newPos < TOTAL ? dirO.ord[a.newPos] : null;
-  const curS = curG != null ? SUR[curG] + 1 : (a.dir === 'fwd' ? 1 : 114); const curA = curG != null ? curG - SSTART[curS - 1] + 1 : 1;
+  const p = planOf(st); const a = p.auto; const dir = a.dir === 'fwd' ? 'fwd' : 'bwd'; const O = ORD[dir];
+  const at = pos => { if (pos >= TOTAL || pos < 0) return null; const g = O.ord[pos]; const s = SUR[g] + 1; return { s, a: g - SSTART[s - 1] + 1 }; };
+  const np = Math.max(0, Math.min(TOTAL, +a.newPos || 0)); const ms = Math.max(0, Math.min(np, +a.memStart || 0));
+  const hasPrior = p.mode === 'auto' && np > ms;
+  const pf = at(ms) || { s: dir === 'fwd' ? 1 : 114, a: 1 }; const pt = at(np - 1) || pf; const ns = at(np) || pf;
   const man = k => p.manual[k] || {};
   const amtSel = (name, val, opts) => `<select name="${name}">${opts.map(o => `<option value="${o}" ${+val === o ? 'selected' : ''}>${o ? fmtAmt(o) : 'بدون'}</option>`).join('')}</select>`;
-  const autoOn = p.mode === 'auto' && allowAuto;
+  const autoOn = p.mode === 'auto';
+  const posF = (label, sN, aN, sv, av) => `<div class="fld"><span>${label}</span><div class="pos-row"><select name="${sN}" aria-label="${label}: السورة">${surahOptions(sv)}</select><input name="${aN}" type="number" min="1" inputmode="numeric" value="${av}" aria-label="${label}: الآية" placeholder="آية"></div></div>`;
   openModal(`${dlgHead('خطة ' + esc(st.name))}
   <form data-form="plan" data-id="${st.id}">
-    <div class="row"><label class="check"><input type="radio" name="mode" value="manual" data-change="plan-mode" ${autoOn ? '' : 'checked'}> يدوية</label>
-    <label class="check"><input type="radio" name="mode" value="auto" data-change="plan-mode" ${autoOn ? 'checked' : ''} ${allowAuto ? '' : 'disabled'}> تلقائية</label></div>
-    ${allowAuto ? '' : `<div class="note small">${!st.autoAllowed ? 'الخطة التلقائية غير مسموحة لهذا الطالب. يفعّلها المدير من صفحة الطالب.' : 'ما عندك صلاحية الخطة التلقائية. يفعّلها المدير من تبويب المعلمين.'}</div>`}
-    <div id="pm-manual" ${autoOn ? 'hidden' : ''} style="display:grid;gap:12px">
-      ${['new', 'review', 'tath'].map(k => `<div class="fld"><span>${TYPE[k]}</span><div class="fgrid"><select name="m-${k}-s">${surahOptions(man(k).surah)}</select><input name="m-${k}-f" type="number" min="1" placeholder="من آية" value="${man(k).from || ''}"><input name="m-${k}-t" type="number" min="1" placeholder="إلى آية" value="${man(k).to || ''}"></div></div>`).join('')}
-      <div class="small muted">اترك السورة «—» إذا ما فيه مطلوب من هذا النوع.</div>
-      <label class="fld"><span>التثبيت القريب: آخر ما حفظه (يُحسب لحاله إذا ما حددت تثبيت)</span><select name="near">${[0, 0.5, 1, 2, 3, 5].map(o => `<option value="${o}" ${+(p.near || 0) === o ? 'selected' : ''}>${o ? 'آخر ' + fmtAmt(o) : 'بدون'}</option>`).join('')}</select></label>
-    </div>
+    <div class="row"><label class="check"><input type="radio" name="mode" value="auto" data-change="plan-mode" ${autoOn ? 'checked' : ''}> تلقائية</label>
+    <label class="check"><input type="radio" name="mode" value="manual" data-change="plan-mode" ${autoOn ? '' : 'checked'}> يدوية</label></div>
     <div id="pm-auto" ${autoOn ? '' : 'hidden'} style="display:grid;gap:12px">
       ${(SET().planTpls || []).length ? `<label class="fld"><span>قالب جاهز</span><select data-change="ptpl-fill"><option value="">اختر قالب…</option>${SET().planTpls.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>` : ''}
-      <label class="fld"><span>اتجاه الحفظ</span><select name="dir"><option value="bwd" ${a.dir !== 'fwd' ? 'selected' : ''}>من الناس إلى البقرة</option><option value="fwd" ${a.dir === 'fwd' ? 'selected' : ''}>من الفاتحة إلى الناس</option></select></label>
-      <div class="fld"><span>الحفظ الجديد يبدأ من</span><div class="fgrid"><select name="startS">${surahOptions(curS)}</select><input name="startA" type="number" min="1" value="${curA}"></div><span class="small muted" style="font-weight:400">كل ما قبل هذا الموضع (حسب الاتجاه) يُعتبر محفوظًا ويدخل في المراجعة.</span></div>
-      <div class="fgrid"><label class="fld"><span>الحفظ اليومي</span>${amtSel('newAmt', a.newAmt, [0.125, 0.25, 0.5, 0.75, 1, 2])}</label>
+      <label class="fld"><span>اتجاه الحفظ</span><select name="dir"><option value="bwd" ${dir === 'bwd' ? 'selected' : ''}>من الناس إلى البقرة</option><option value="fwd" ${dir === 'fwd' ? 'selected' : ''}>من الفاتحة إلى الناس</option></select></label>
+      <label class="check"><input type="checkbox" name="hasPrior" data-change="prior-toggle" ${hasPrior || !autoOn ? 'checked' : ''}> عنده حفظ سابق</label>
+      <div id="pm-prior" class="prior" ${hasPrior || !autoOn ? '' : 'hidden'}>
+        <div class="small muted">مثال: من الناس آية 1 إلى الملك آية 13. المراجعة تدور على هذا الحفظ من أوله، والحفظ الجديد يكمل بعد آخر آية فيه.</div>
+        <div class="fgrid">${posF('من', 'pFromS', 'pFromA', pf.s, pf.a)}${posF('إلى', 'pToS', 'pToA', pt.s, pt.a)}</div>
+      </div>
+      <div id="pm-start" ${hasPrior || !autoOn ? 'hidden' : ''}>${posF('يبدأ الحفظ الجديد من', 'startS', 'startA', ns.s, ns.a)}</div>
+      <div class="fgrid"><label class="fld"><span>الحفظ اليومي</span>${amtSel('newAmt', a.newAmt, [0, 0.125, 0.25, 0.5, 0.75, 1, 2])}</label>
       <label class="fld"><span>المراجعة اليومية</span>${amtSel('revAmt', a.revAmt, [0, 0.5, 1, 2, 3, 4, 5, 10, 20])}</label>
       <label class="fld"><span>التثبيت القريب (آخر المحفوظ)</span>${amtSel('tathAmt', a.tathAmt, [0, 0.5, 1, 2, 3, 5])}</label></div>
-      <div class="small muted">تتقدم الخطة فقط إذا سمّع الطالب ونجح. إذا غاب أو أعاد يبقى نفس المقطع للحصة الجاية.</div>
+      <div class="small muted">تتقدم الخطة فقط إذا سمّع الطالب ونجح. إذا غاب أو أعاد يبقى نفس المقطع للحصة الجاية. وتقدر تعدّل المقادير في أي وقت.</div>
+    </div>
+    <div id="pm-manual" ${autoOn ? 'hidden' : ''} style="display:grid;gap:12px">
+      <div class="small muted">حدد المقطع من سورة وآية إلى سورة وآية، ويقدر يمتد على أكثر من سورة. مثال: من الناس 1 إلى الملك 13.</div>
+      ${['new', 'review', 'tath'].map(k => { const x = man(k); return `<div class="man-box"><b>${TYPE[k]}</b><div class="fgrid">${posF('من', `m-${k}-s`, `m-${k}-f`, x.surah || '', x.from || '')}${posF('إلى', `m-${k}-ts`, `m-${k}-t`, x.toSurah || x.surah || '', x.to || '')}</div></div>`; }).join('')}
+      <div class="small muted">اترك السورة «—» إذا ما فيه مطلوب من هذا النوع.</div>
+      <label class="fld"><span>التثبيت القريب: آخر ما حفظه (يُحسب لحاله إذا ما حددت تثبيت)</span><select name="near">${[0, 0.5, 1, 2, 3, 5].map(o => `<option value="${o}" ${+(p.near || 0) === o ? 'selected' : ''}>${o ? 'آخر ' + fmtAmt(o) : 'بدون'}</option>`).join('')}</select></label>
     </div>
     <details class="pause" ${p.paused && p.paused.from ? 'open' : ''}><summary>إيقاف الخطة مؤقتًا</summary>
       <div class="fgrid"><label class="fld"><span>من</span><input type="date" name="pzFrom" value="${(p.paused || {}).from || ''}"></label><label class="fld"><span>إلى (اختياري)</span><input type="date" name="pzTo" value="${(p.paused || {}).to || ''}"></label></div>
@@ -1259,6 +1274,7 @@ const CHG = {
   't-perm': el => { delete el.dataset.dirty; act('user.flag', { id: el.dataset.id, k: el.dataset.k, v: el.checked }, 'تم تحديث الصلاحية'); },
   'ptpl-fill': el => { const t = (SET().planTpls || []).find(x => x.id === el.value); if (!t) return; const f = el.closest('form'); [['newAmt', t.newAmt], ['revAmt', t.revAmt], ['tathAmt', t.tathAmt]].forEach(([n, v]) => { const sel = f.querySelector(`[name=${n}]`); if (!sel) return; if (![...sel.options].some(o => +o.value === +v)) sel.add(new Option(fmtAmt(v), v)); sel.value = String(v); [...sel.options].forEach(o => { if (+o.value === +v) o.selected = true; }); }); },
   'goal-term': el => { if (!el.value) return; const [a, b] = el.value.split('|'); const f = el.closest('form'); f.querySelector('[name=from]').value = a; f.querySelector('[name=by]').value = b; },
+  'prior-toggle': el => { $('#pm-prior').hidden = !el.checked; $('#pm-start').hidden = el.checked; },
   'plan-mode': el => { const auto = el.value === 'auto' && el.checked; $('#pm-auto').hidden = !auto; $('#pm-manual').hidden = auto; },
 };
 document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (el && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
@@ -1332,7 +1348,7 @@ const FORMS = {
     if (r) closeModal();
   },
   async teacher(f, d) {
-    const r = await act('teacher.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), phone: d.get('phone'), canPlan: !!d.get('canPlan'), canAuto: !!d.get('canAuto'), status: d.get('status') } }, f.dataset.id ? 'حُفظ' : 'أُضيف المعلم');
+    const r = await act('teacher.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), phone: d.get('phone'), canPlan: !!d.get('canPlan'), status: d.get('status') } }, f.dataset.id ? 'حُفظ' : 'أُضيف المعلم');
     if (r) closeModal();
   },
   async halqa(f, d) {
@@ -1342,10 +1358,24 @@ const FORMS = {
   },
   async plan(f, d) {
     const manual = {};
-    for (const k of ['new', 'review', 'tath']) { const s = +d.get('m-' + k + '-s'); if (!s) continue; const n = AYAS[s - 1]; const fr = +d.get('m-' + k + '-f') || 1, to = +d.get('m-' + k + '-t') || n; if (fr > n || to > n || fr > to) return toast('آيات ' + TYPE[k] + ' غير صحيحة (سورة ' + SN[s - 1] + ': ' + n + ' آية)'); manual[k] = { surah: s, from: fr, to }; }
+    for (const k of ['new', 'review', 'tath']) {
+      const s1 = +d.get('m-' + k + '-s'); if (!s1) continue;
+      const s2 = +d.get('m-' + k + '-ts') || s1; const a1 = +d.get('m-' + k + '-f') || 1; const a2 = +d.get('m-' + k + '-t') || AYAS[s2 - 1];
+      if (a1 > AYAS[s1 - 1] || a2 > AYAS[s2 - 1] || (s1 === s2 && a1 > a2)) return toast('آيات ' + TYPE[k] + ' غير صحيحة');
+      manual[k] = { surah: s1, from: a1, toSurah: s2, to: a2 };
+    }
     const pz = d.get('pzFrom') ? { from: d.get('pzFrom'), to: d.get('pzTo') || '', reason: d.get('pzReason') || '' } : null;
     if (pz && pz.to && pz.to < pz.from) return toast('تاريخ نهاية الإيقاف قبل بدايته');
-    const r = await act('plan.save', { id: f.dataset.id, mode: d.get('mode'), near: +d.get('near') || 0, paused: pz, manual, auto: { dir: d.get('dir'), startS: +d.get('startS'), startA: +d.get('startA'), newAmt: +d.get('newAmt'), revAmt: +d.get('revAmt'), tathAmt: +d.get('tathAmt') } }, 'حُفظت الخطة');
+    const auto = { dir: d.get('dir'), hasPrior: !!d.get('hasPrior'), pFromS: +d.get('pFromS'), pFromA: +d.get('pFromA'), pToS: +d.get('pToS'), pToA: +d.get('pToA'), startS: +d.get('startS'), startA: +d.get('startA'), newAmt: +d.get('newAmt'), revAmt: +d.get('revAmt'), tathAmt: +d.get('tathAmt') };
+    if (d.get('mode') === 'auto') {
+      const O = ORD[auto.dir === 'fwd' ? 'fwd' : 'bwd'];
+      const ok = (sv, av) => sv >= 1 && sv <= 114 && av >= 1 && av <= AYAS[sv - 1];
+      if (auto.hasPrior) {
+        if (!ok(auto.pFromS, auto.pFromA) || !ok(auto.pToS, auto.pToA)) return toast('تأكد من سور وآيات الحفظ السابق');
+        if (O.pos[gOf(auto.pToS, auto.pToA)] < O.pos[gOf(auto.pFromS, auto.pFromA)]) return toast('نهاية الحفظ السابق قبل بدايته حسب اتجاه الحفظ');
+      } else if (!ok(auto.startS, auto.startA)) return toast('تأكد من موضع بداية الحفظ');
+    }
+    const r = await act('plan.save', { id: f.dataset.id, mode: d.get('mode'), near: +d.get('near') || 0, paused: pz, manual, auto }, 'حُفظت الخطة');
     if (r) closeModal();
   },
   async settings(f, d) {

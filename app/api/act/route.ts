@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 const isAdmin = (u: Me) => u.role === "admin";
 const ATT = ["p", "l", "a", "e"];
 const AMT = (v: unknown, max = 40) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= max ? n : 0; };
-const defPlan = () => ({ mode: "manual", manual: {}, auto: { dir: "bwd", newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
+const defPlan = () => ({ mode: "manual", manual: {}, auto: { dir: "bwd", memStart: 0, newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
 const planOf = (u: any) => { const p: any = u.plan || {}; const d = defPlan(); return { ...d, ...p, manual: p.manual || {}, auto: { ...d.auto, ...(p.auto || {}) } }; };
 
 const PERMS = ["req", "students", "teachers", "halaqat", "anns", "reports", "settings", "logs"];
@@ -377,13 +377,13 @@ const A: Record<string, H> = {
     await prisma.rec.createMany({ data: rows });
     // تقدّم الخطة التلقائية بعد النجاح فقط
     const p = planOf(st); let moved = false;
-    if (p.mode === "auto" && st.autoAllowed) {
+    if (p.mode === "auto") {
       const dir = p.auto.dir === "fwd" ? "fwd" : "bwd";
       for (const r of rows) {
         if (!r.pass || (r.type !== "new" && r.type !== "review")) continue;
         const pos = ORD[dir].pos[gOf(r.surah, r.toA)];
         if (r.type === "new" && pos + 1 > p.auto.newPos) { p.auto.newPos = pos + 1; moved = true; }
-        if (r.type === "review") { let np = pos + 1; if (np >= p.auto.newPos) np = 0; p.auto.revPos = np; moved = true; }
+        if (r.type === "review") { let np = pos + 1; if (np >= p.auto.newPos || np < (p.auto.memStart || 0)) np = p.auto.memStart || 0; p.auto.revPos = np; moved = true; }
       }
       if (moved) await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
     }
@@ -417,38 +417,50 @@ const A: Record<string, H> = {
   async "plan.save"(u, b) {
     const st = await studentFor(u, str(b.id));
     if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
-    const canAuto = (isAdmin(u) || u.canAuto) && st.autoAllowed;
-    const mode = b.mode === "auto" && canAuto ? "auto" : "manual";
+    const mode = b.mode === "auto" ? "auto" : "manual";
     const old = planOf(st);
     const manual: any = {};
     for (const k of ["new", "review", "tath"]) {
       const m = b.manual?.[k]; if (!m || !int(m.surah)) continue;
-      const s = int(m.surah); const n = AYAS[s - 1]; const fr = int(m.from) || 1, to = int(m.to) || n;
-      if (!validRange(s, fr, to)) fail("آيات المقطع غير صحيحة");
-      manual[k] = { surah: s, from: fr, to };
+      const s = int(m.surah); const ts = int(m.toSurah) || s;
+      if (ts < 1 || ts > 114) fail("السورة غير صحيحة");
+      const fr = int(m.from) || 1, to = int(m.to) || AYAS[ts - 1];
+      if (ts === s ? !validRange(s, fr, to) : (fr < 1 || fr > AYAS[s - 1] || to < 1 || to > AYAS[ts - 1])) fail("آيات المقطع غير صحيحة");
+      manual[k] = { surah: s, from: fr, toSurah: ts, to };
     }
     let auto = old.auto;
     if (mode === "auto") {
       const a = b.auto || {}; const dir = a.dir === "fwd" ? "fwd" : "bwd";
-      const ss = int(a.startS), sa = int(a.startA) || 1;
-      if (!(ss >= 1 && ss <= 114 && sa >= 1 && sa <= AYAS[ss - 1])) fail("تأكد من موضع بداية الحفظ");
-      const np = Math.min(TOTAL, ORD[dir].pos[gOf(ss, sa)]);
-      auto = { dir, newPos: np, revPos: dir === old.auto.dir && np === old.auto.newPos ? old.auto.revPos : 0, newAmt: AMT(a.newAmt, 5), revAmt: AMT(a.revAmt), tathAmt: AMT(a.tathAmt, 10) };
+      const okPos = (sv: number, av: number) => sv >= 1 && sv <= 114 && av >= 1 && av <= AYAS[sv - 1];
+      let ms: number, np: number;
+      if (a.hasPrior) {
+        // الحفظ السابق: من (سورة، آية) إلى (سورة، آية) حسب اتجاه الحفظ
+        const fs = int(a.pFromS), fa = int(a.pFromA) || 1, ts = int(a.pToS), ta = int(a.pToA) || 1;
+        if (!okPos(fs, fa) || !okPos(ts, ta)) fail("تأكد من سور وآيات الحفظ السابق");
+        ms = ORD[dir].pos[gOf(fs, fa)]; const me = ORD[dir].pos[gOf(ts, ta)];
+        if (me < ms) fail("نهاية الحفظ السابق قبل بدايته حسب اتجاه الحفظ");
+        np = Math.min(TOTAL, me + 1);
+      } else {
+        const ss = int(a.startS), sa = int(a.startA) || 1;
+        if (!okPos(ss, sa)) fail("تأكد من موضع بداية الحفظ");
+        np = ORD[dir].pos[gOf(ss, sa)]; ms = np;
+      }
+      const same = dir === old.auto.dir && np === old.auto.newPos && ms === (old.auto.memStart || 0);
+      auto = { dir, memStart: ms, newPos: np, revPos: same ? old.auto.revPos : ms, newAmt: AMT(a.newAmt, 5), revAmt: AMT(a.revAmt), tathAmt: AMT(a.tathAmt, 10) };
     }
     const near = AMT(b.near, 10);
     const pz = b.paused && validDate(str(b.paused.from)) ? { from: str(b.paused.from), to: validDate(str(b.paused.to)) ? str(b.paused.to) : "", reason: str(b.paused.reason, 100) } : null;
     const plan = { mode, manual, auto, near, paused: pz };
     await prisma.user.update({ where: { id: st.id }, data: { plan } });
-    const desc = (p: any) => p.mode === "auto" ? `تلقائية: حفظ ${p.auto.newAmt} ومراجعة ${p.auto.revAmt} وتثبيت ${p.auto.tathAmt} وجه` : `يدوية${Object.keys(p.manual || {}).length ? " (" + Object.entries(p.manual).map(([k, v]: any) => `${({ new: "حفظ", review: "مراجعة", tath: "تثبيت" } as any)[k]} ${v.surah}:${v.from}-${v.to}`).join("، ") + ")" : ""}`;
+    const desc = (p: any) => p.mode === "auto" ? `تلقائية: حفظ ${p.auto.newAmt} ومراجعة ${p.auto.revAmt} وتثبيت ${p.auto.tathAmt} وجه` : `يدوية${Object.keys(p.manual || {}).length ? " (" + Object.entries(p.manual).map(([k, v]: any) => `${({ new: "حفظ", review: "مراجعة", tath: "تثبيت" } as any)[k]} ${v.surah}:${v.from}-${v.toSurah && v.toSurah !== v.surah ? v.toSurah + ":" : ""}${v.to}`).join("، ") + ")" : ""}`;
     await audit(u, "plan", st.id, `${st.name}: ${desc(old)} ← ${desc(plan)}${pz ? ` · موقوفة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : ""}`, { before: old, after: plan });
   },
   async "plan.applyTpl"(u, b) {
-    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan && u.canAuto))) fail("ما عندك صلاحية الخطط التلقائية", 403);
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
     const t = b.tpl || {}; const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 200);
     let done = 0, skipped = 0;
     for (const id of ids) {
       const st = await studentFor(u, id);
-      if (!st.autoAllowed) { skipped++; continue; }
       const p = planOf(st);
       p.mode = "auto"; p.auto = { ...p.auto, newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) };
       await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
