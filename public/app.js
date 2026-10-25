@@ -336,9 +336,45 @@ function view() {
 }
 const banner = () => OFFLINE ? `<div class="banner">ما فيه اتصال، تعرض آخر نسخة محفوظة. التعديلات تحتاج إنترنت.</div>` : '';
 function fieldHtml(f, val, pre, opt = {}) {
-  const t = f.type || 'text'; const req = opt.forceReq ?? f.req;
-  return `<label class="fld"><span>${esc(f.label)}${req ? ' <i>*</i>' : ''}</span><input id="${pre}${f.k}" name="${f.k}" type="${t}" ${t === 'tel' ? 'inputmode="tel" dir="ltr"' : ''} ${t === 'number' ? 'inputmode="numeric" min="0"' : ''} value="${esc(val ?? '')}" placeholder="${esc(f.ph || '')}" ${req ? 'required' : ''}></label>`;
+  const t = f.type || 'text'; const req = opt.forceReq ?? f.req; const lab = `${esc(f.label)}${req ? ' <i>*</i>' : ''}`;
+  if (t === 'choice') {
+    const opts = f.options || []; const cur = String(val || '').split('،').map(x => x.trim());
+    if (f.multi) return `<div class="fld fld-wide"><span>${lab} <span class="hint">(تقدر تختار أكثر من خيار)</span></span><div class="days">${opts.map((o, i) => `<label><input type="checkbox" id="${pre}${f.k}-${i}" name="${f.k}" value="${esc(o)}" ${cur.includes(o) ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</div></div>`;
+    return `<label class="fld"><span>${lab}</span><select id="${pre}${f.k}" name="${f.k}" ${req ? 'required' : ''}><option value="">اختر…</option>${opts.map(o => `<option ${cur[0] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+  }
+  if (t === 'memo') {
+    const m = /^(\d+):(\d+)>(\d+):(\d+)$/.exec(val || ''); const none = val === 'none';
+    const [fs, fa, ts, ta] = m ? m.slice(1).map(Number) : [114, 1, '', ''];
+    return `<div class="fld fld-wide memo-fld"><span>${lab}</span>
+      <label class="check small"><input type="checkbox" id="${pre}${f.k}-none" name="${f.k}__none" data-change="memo-none" ${none ? 'checked' : ''}> ما يحفظ شيء بعد</label>
+      <div class="memo-rows" ${none ? 'hidden' : ''}><div class="pos-row"><select id="${pre}${f.k}-fs" name="${f.k}__fs" aria-label="من سورة">${surahOptions(fs)}</select><input id="${pre}${f.k}-fa" name="${f.k}__fa" type="number" min="1" inputmode="numeric" value="${fa}" aria-label="من آية" placeholder="آية"></div>
+      <div class="small muted">إلى</div><div class="pos-row"><select id="${pre}${f.k}-ts" name="${f.k}__ts" aria-label="إلى سورة">${surahOptions(ts)}</select><input id="${pre}${f.k}-ta" name="${f.k}__ta" type="number" min="1" inputmode="numeric" value="${ta}" aria-label="إلى آية" placeholder="آية"></div>
+      <span class="hint">مثال: من الناس آية 1 إلى الملك آية 13. تقدر تتركه فاضي ويحدده المعلم.</span></div></div>`;
+  }
+  return `<label class="fld"><span>${lab}</span><input id="${pre}${f.k}" name="${f.k}" type="${t}" ${t === 'tel' ? 'inputmode="tel" dir="ltr"' : ''} ${t === 'number' ? 'inputmode="numeric" min="0"' : ''} value="${esc(val ?? '')}" placeholder="${esc(f.ph || '')}" ${req ? 'required' : ''}></label>`;
 }
+/* قراءة قيم الحقول من النموذج حسب نوعها */
+function collectInfo(d, fields) {
+  const info = {};
+  for (const x of fields) {
+    if (x.type === 'choice' && x.multi) info[x.k] = d.getAll(x.k).join('، ');
+    else if (x.type === 'memo') {
+      if (d.get(x.k + '__none')) { info[x.k] = 'none'; continue; }
+      const fs = +d.get(x.k + '__fs'), fa = +d.get(x.k + '__fa'), ts = +d.get(x.k + '__ts'), ta = +d.get(x.k + '__ta');
+      if (!ts) { info[x.k] = ''; continue; }
+      if (!fs || !fa || !ta || fa > AYAS[fs - 1] || ta > AYAS[ts - 1]) return { _err: 'تأكد من سور وآيات «' + x.label + '»' };
+      info[x.k] = `${fs}:${fa}>${ts}:${ta}`;
+    } else info[x.k] = (d.get(x.k) || '').trim();
+    if (x.req && !info[x.k]) return { _err: 'الحقل مطلوب: ' + x.label };
+  }
+  return info;
+}
+/* عرض قيمة حقل */
+function fmtField(f, v) {
+  if (f.type === 'memo') { if (v === 'none') return 'ما يحفظ بعد'; const m = /^(\d+):(\d+)>(\d+):(\d+)$/.exec(v || ''); return m ? `من ${SN[m[1] - 1]} ${m[2]} إلى ${SN[m[3] - 1]} ${m[4]}` : esc(v); }
+  return esc(v);
+}
+const FTYPE = { text: 'نص', tel: 'جوال', number: 'رقم', choice: 'اختيار من متعدد', memo: 'مقدار الحفظ' };
 
 function loginV() {
   if (!ST.regInfo) loadRegInfo();
@@ -369,7 +405,8 @@ function regV(hid) {
       ${pwField('rg-password', 'password', 'كلمة المرور <i>*</i>', 'new-password', 'minlength="4"')}
     </div>
     ${tip('احفظ اسم المستخدم وكلمة المرور عندك. بعد الإرسال نعطيك زر تنسخها فيه أو ترسلها لنفسك بالواتساب.')}
-    <div class="fgrid">${info.fields.map(f => fieldHtml(f, '', 'rg-')).join('')}</div>
+    <div class="fgrid">${info.fields.filter(f => f.type !== 'memo').map(f => fieldHtml(f, '', 'rg-')).join('')}</div>
+    ${info.fields.filter(f => f.type === 'memo').map(f => fieldHtml(f, '', 'rg-')).join('')}
     ${!fixedH && hs.length ? `<label class="fld"><span>الحلقة المطلوبة</span><select id="rg-halqa" name="reqHalqa"><option value="">تحددها الإدارة</option>${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label>` : ''}
     <button class="btn pri big" type="submit">إرسال الطلب</button>
     <div class="small muted">بعد الإرسال تراجع الإدارة طلبك وتعتمده، وبعدها تدخل باسم المستخدم وكلمة المرور.</div>
@@ -425,7 +462,7 @@ function reqV() {
     `<div class="grid2">${pend.map(p => `<div class="card" style="display:grid;gap:12px">
       <div class="sec-head"><h3>${esc(p.name)}</h3><span class="chip gold">ينتظر الاعتماد</span></div>
       <dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right">${esc(p.username)}</dd>
-      ${fields.filter(f => p[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${esc(p[f.k])}</dd>`).join('')}
+      ${fields.filter(f => p[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${fmtField(f, p[f.k])}</dd>`).join('')}
       <dt>تاريخ الطلب</dt><dd>${p.createdAt ? fmtDate(isoDate(new Date(p.createdAt))) : '—'}</dd></dl>
       <label class="fld"><span>الحلقة</span><select id="ap-h-${p.id}">${hs.map(h => `<option value="${h.id}" ${h.id === p.reqHalqa ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select></label>
       <div class="row"><button class="btn pri" data-act="approve" data-id="${p.id}" ${hs.length ? '' : 'disabled'}>اعتماد</button><button class="btn danger" data-act="reject" data-id="${p.id}">رفض وحذف</button></div>
@@ -562,7 +599,7 @@ function profileV(u) {
 </section>
   <section class="card" style="display:grid;gap:12px"><h2>نقاط وأوسمة</h2><div class="stats"><div class="stat"><b>${ptsOf(st, weekStartC(today()), today())}</b><span>نقاط هالأسبوع</span></div><div class="stat"><b>${attendStreak(st)}</b><span>حصص متتالية</span></div></div>${(b => b.length ? `<div class="badges">${b.map(x => `<span class="badge"><b>${esc(x.t)}</b><span>${esc(x.d)}</span></span>`).join('')}</div>` : '')(badgesOf(st))}
     <div class="small muted" style="font-weight:600">الورد في البيت، آخر 7 أيام</div><div class="wgrid">${[...Array(7).keys()].reverse().map(i => { const d = addDays(today(), -i); const w = wirdOf(st.id, d); const n = w ? (w.items || []).filter(x => x.done).length : 0; return `<div class="wday ${w ? 'on' : ''}" title="${fmtDate(d)}"><span>${['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'][new Date(d + 'T00:00').getDay()]} ${new Date(d + 'T00:00').getDate()}</span><b>${w ? n + '/' + (w.items || []).length : '—'}</b>${w && w.read ? `<span>${w.read} و</span>` : ''}</div>`; }).join('')}</div></section>
-  <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${esc(st[f.k])}</dd>`).join('') || '<dt>—</dt><dd></dd>'}</dl></section></div>
+  <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${fmtField(f, st[f.k])}</dd>`).join('') || '<dt>—</dt><dd></dd>'}</dl></section></div>
   <section class="card"><h2>سجل التسميع</h2>${historyTable(inRange, true)}</section>`;
 }
 function historyTable(rs, editable, noDate) {
@@ -633,8 +670,8 @@ function settingsV() {
       ${(st.planTpls || []).map((t, i) => `<tr><td><input id="pt-n-${i}" name="ptn-${i}" value="${esc(t.name)}" style="min-width:160px"></td><td><input id="pt-a-${i}" name="pta-${i}" type="number" min="0" step="0.125" value="${t.newAmt}" style="width:80px"></td><td><input id="pt-r-${i}" name="ptr-${i}" type="number" min="0" step="0.5" value="${t.revAmt}" style="width:80px"></td><td><input id="pt-t-${i}" name="ptt-${i}" type="number" min="0" step="0.5" value="${t.tathAmt}" style="width:80px"></td><td><button type="button" class="btn ghost sm" data-act="ptpl-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="small muted" style="font-weight:400">المقادير بالأوجه: 0.25 ربع وجه، 0.5 نصف وجه.</span></div>
     <div class="fld"><span>حقول التسجيل</span><div class="small muted" style="font-weight:400">الاسم واسم المستخدم وكلمة المرور ثابتة دائمًا.</div>
-      <div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الحقل</th><th class="num">ظاهر</th><th class="num">إجباري</th><th></th></tr></thead><tbody>
-      ${st.fields.map(f => `<tr><td><input id="sf-lb-${f.k}" name="lb-${f.k}" value="${esc(f.label)}" style="min-width:140px"></td><td class="num"><input type="checkbox" id="sf-on-${f.k}" name="on-${f.k}" ${f.on ? 'checked' : ''}></td><td class="num"><input type="checkbox" id="sf-req-${f.k}" name="req-${f.k}" ${f.req ? 'checked' : ''}></td><td>${f.custom ? `<button type="button" class="btn ghost sm" data-act="sf-del" data-k="${f.k}">حذف</button>` : ''}</td></tr>`).join('')}
+      <div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الحقل</th><th>النوع</th><th class="num">ظاهر</th><th class="num">إجباري</th><th></th></tr></thead><tbody>
+      ${st.fields.map(f => `<tr><td><input id="sf-lb-${f.k}" name="lb-${f.k}" value="${esc(f.label)}" style="min-width:140px">${f.type === 'choice' ? `<input id="sf-op-${f.k}" name="opt-${f.k}" value="${esc((f.options || []).join('، '))}" placeholder="الخيارات مفصولة بفاصلة" style="margin-top:4px;min-width:140px"><label class="check small"><input type="checkbox" name="multi-${f.k}" ${f.multi ? 'checked' : ''}> أكثر من خيار</label>` : ''}</td><td class="small">${FTYPE[f.type || 'text'] || 'نص'}</td><td class="num"><input type="checkbox" id="sf-on-${f.k}" name="on-${f.k}" ${f.on ? 'checked' : ''}></td><td class="num"><input type="checkbox" id="sf-req-${f.k}" name="req-${f.k}" ${f.req ? 'checked' : ''}></td><td><button type="button" class="btn ghost sm" data-act="sf-del" data-k="${f.k}">حذف</button></td></tr>`).join('')}
       </tbody></table></div><div><button type="button" class="btn sm" data-act="sf-add">إضافة حقل</button></div></div>
     <div class="fld"><span>رسائل واتساب لولي الأمر</span><span class="small muted" style="font-weight:400">استخدم {الطالب} و{الحلقة} و{التاريخ} وتنعبّى تلقائيًا.</span>
       <label class="fld"><span>رسالة الغياب</span><textarea id="sg-tA" name="absent" rows="3">${esc(st.tpl.absent)}</textarea></label>
@@ -1388,7 +1425,10 @@ const ACT = {
   'edit-halqa': el => halqaModal({ ...S.halaqat[el.dataset.id], id: el.dataset.id }),
   'del-halqa': el => confirmBox('تحذف الحلقة؟', 'حذف', () => act('halqa.delete', { id: el.dataset.id }, 'حُذفت الحلقة')),
   'edit-plan': el => planModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
-  'sf-add': () => openModal(`${dlgHead('إضافة حقل تسجيل')}<form data-form="sf-add"><label class="fld"><span>اسم الحقل</span><input name="label" required placeholder="مثال: الحي"></label><label class="fld"><span>النوع</span><select name="type"><option value="text">نص</option><option value="tel">رقم جوال</option><option value="number">رقم</option></select></label><label class="check"><input type="checkbox" name="req"> إجباري</label><div class="dlg-foot"><button class="btn pri" type="submit">إضافة</button></div></form>`),
+  'sf-add': () => { const hasMemo = SET().fields.some(f => f.type === 'memo'); openModal(`${dlgHead('إضافة حقل تسجيل')}<form data-form="sf-add"><label class="fld"><span>النوع</span><select name="type" data-change="sf-type"><option value="text">نص</option><option value="tel">رقم جوال</option><option value="number">رقم</option><option value="choice">اختيار من متعدد</option>${hasMemo ? '' : '<option value="memo">مقدار الحفظ (من سورة وآية إلى سورة وآية)</option>'}</select></label>
+    <label class="fld"><span>اسم الحقل</span><input name="label" required placeholder="مثال: المرحلة الدراسية"></label>
+    <div id="sf-choice" hidden style="display:grid;gap:8px"><label class="fld"><span>الخيارات (كل خيار في سطر)</span><textarea name="options" rows="4" placeholder="ابتدائي\nمتوسط\nثانوي"></textarea></label><label class="check"><input type="checkbox" name="multi"> يقدر يختار أكثر من خيار</label></div>
+    <label class="check"><input type="checkbox" name="req"> إجباري</label><div class="dlg-foot"><button class="btn pri" type="submit">إضافة</button></div></form>`); },
   'sf-del': el => saveSettingsWith(d => { d.fields = d.fields.filter(f => f.k !== el.dataset.k); }, 'حُذف الحقل'),
 };
 document.addEventListener('click', e => {
@@ -1405,6 +1445,8 @@ const CHG = {
   'ptpl-fill': el => { const t = (SET().planTpls || []).find(x => x.id === el.value); if (!t) return; const f = el.closest('form'); [['newAmt', t.newAmt], ['revAmt', t.revAmt], ['tathAmt', t.tathAmt]].forEach(([n, v]) => { const sel = f.querySelector(`[name=${n}]`); if (!sel) return; if (![...sel.options].some(o => +o.value === +v)) sel.add(new Option(fmtAmt(v), v)); sel.value = String(v); [...sel.options].forEach(o => { if (+o.value === +v) o.selected = true; }); }); },
   'goal-term': el => { if (!el.value) return; const [a, b] = el.value.split('|'); const f = el.closest('form'); f.querySelector('[name=from]').value = a; f.querySelector('[name=by]').value = b; },
   'prior-toggle': el => { $('#pm-prior').hidden = !el.checked; $('#pm-start').hidden = el.checked; },
+  'sf-type': el => { const c = $('#sf-choice'); if (c) c.hidden = el.value !== 'choice'; const lb = el.form.querySelector('[name=label]'); if (el.value === 'memo' && !lb.value) lb.value = 'مقدار الحفظ السابق'; },
+  'memo-none': el => { const r = el.closest('.memo-fld').querySelector('.memo-rows'); if (r) r.hidden = el.checked; },
   'plan-mode': el => { const auto = el.value === 'auto' && el.checked; $('#pm-auto').hidden = !auto; $('#pm-manual').hidden = auto; },
 };
 document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (el && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
@@ -1427,7 +1469,8 @@ document.addEventListener('input', e => { const el = e.target.closest('[data-inp
 
 function settingsData(f) {
   const d = new FormData(f); const st = SET();
-  const fields = st.fields.map(x => ({ ...x, label: (d.get('lb-' + x.k) || x.label).trim() || x.label, on: !!d.get('on-' + x.k), req: !!d.get('req-' + x.k) && !!d.get('on-' + x.k) }));
+  const fields = st.fields.map(x => ({ ...x, label: (d.get('lb-' + x.k) || x.label).trim() || x.label, on: !!d.get('on-' + x.k), req: !!d.get('req-' + x.k) && !!d.get('on-' + x.k),
+    ...(x.type === 'choice' ? { options: String(d.get('opt-' + x.k) ?? (x.options || []).join('،')).split(/[،,\n]/).map(o => o.trim()).filter(Boolean), multi: d.has('opt-' + x.k) ? !!d.get('multi-' + x.k) : !!x.multi } : {}) }));
   const tpls = (st.tpls || []).map((t, i) => ({ id: t.id, name: (d.get('tpn-' + i) ?? t.name), text: (d.get('tpt-' + i) ?? t.text) }));
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
@@ -1446,7 +1489,7 @@ const FORMS = {
     catch (e) { toast(e.message); }
   },
   async register(f, d) {
-    const info = {}; (ST.regInfo?.fields || []).forEach(x => { info[x.k] = (d.get(x.k) || '').trim(); });
+    const info = collectInfo(d, ST.regInfo?.fields || []); if (info._err) return toast(info._err);
     try {
       await api('/api/register', { name: d.get('name'), username: d.get('username'), password: d.get('password'), info, reqHalqa: f.dataset.hid || d.get('reqHalqa') || '' });
       ST.regCred = { name: d.get('name'), user: String(d.get('username')).trim().toLowerCase(), pw: d.get('password') };
@@ -1474,7 +1517,7 @@ const FORMS = {
     const st = SET(); if (await act('holidays.save', { list: [...(st.holidays || []), { name: d.get('name'), from, to }] }, 'أُضيفت الإجازة')) { f.reset(); clean(); }
   },
   async student(f, d) {
-    const info = {}; SET().fields.forEach(x => { info[x.k] = (d.get(x.k) || '').trim(); });
+    const info = collectInfo(d, SET().fields.map(x => ({ ...x, req: false }))); if (info._err) return toast(info._err);
     const r = await act('student.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), halqaId: d.get('halqaId'), status: d.get('status'), info } }, f.dataset.id ? 'حُفظت البيانات' : 'أُضيف الطالب');
     if (r) closeModal();
   },
@@ -1518,7 +1561,9 @@ const FORMS = {
     if (await act('settings.save', { data }, 'حُفظت الإعدادات')) clean();
   },
   async 'sf-add'(f, d) {
-    const nf = { k: 'c_' + Date.now().toString(36), label: d.get('label').trim(), type: d.get('type'), on: true, req: !!d.get('req'), custom: true };
+    const type = d.get('type'); const opts = String(d.get('options') || '').split(/\n|،|,/).map(o => o.trim()).filter(Boolean);
+    if (type === 'choice' && opts.length < 2) return toast('اكتب خيارين على الأقل');
+    const nf = { k: type === 'memo' ? 'memo' : 'c_' + Date.now().toString(36), label: d.get('label').trim(), type, on: true, req: !!d.get('req'), custom: true, ...(type === 'choice' ? { options: opts, multi: !!d.get('multi') } : {}) };
     closeModal(); await saveSettingsWith(x => x.fields.push(nf), 'أُضيف الحقل');
   },
   async ann(f, d) {

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
+import { getSettings, cleanFieldValue } from "@/lib/settings";
 import { handle, fail, cleanUsername, USERNAME_RE, str } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const s = await getSettings();
     const info: Record<string, string> = {};
     for (const f of s.fields.filter((x) => x.on)) {
-      const v = str(b.info?.[f.k], 200);
+      const v = cleanFieldValue(f, b.info?.[f.k]);
       if (f.req && !v) fail("الحقل مطلوب: " + f.label);
       if (v) info[f.k] = v;
     }

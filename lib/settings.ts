@@ -1,5 +1,24 @@
 import { prisma } from "./db";
-export type Field = { k: string; label: string; on: boolean; req: boolean; type?: string; ph?: string; custom?: boolean };
+import { AYAS } from "./quran";
+/** type: text | tel | number | choice (اختيار من متعدد) | memo (مقدار الحفظ: من سورة وآية إلى سورة وآية) */
+export type Field = { k: string; label: string; on: boolean; req: boolean; type?: string; ph?: string; custom?: boolean; options?: string[]; multi?: boolean };
+export const MEMO_FIELD: Field = { k: "memo", label: "مقدار الحفظ السابق", on: true, req: false, type: "memo", custom: true };
+/** تنظيف قيمة حقل تسجيل حسب نوعه */
+export function cleanFieldValue(f: Field, v: unknown): string {
+  if (f.type === "choice") {
+    const opts = f.options || [];
+    const arr = (Array.isArray(v) ? v : String(v ?? "").split("،")).map((x) => String(x).trim()).filter((x) => opts.includes(x));
+    return f.multi ? [...new Set(arr)].join("، ") : arr[0] || "";
+  }
+  if (f.type === "memo") {
+    const m = /^(\d{1,3}):(\d{1,3})>(\d{1,3}):(\d{1,3})$/.exec(String(v ?? "").trim());
+    if (!m) return String(v ?? "").trim() === "none" ? "none" : "";
+    const [fs, fa, ts, ta] = m.slice(1).map(Number);
+    if (fs < 1 || fs > 114 || ts < 1 || ts > 114 || fa < 1 || fa > AYAS[fs - 1] || ta < 1 || ta > AYAS[ts - 1]) return "";
+    return `${fs}:${fa}>${ts}:${ta}`;
+  }
+  return String(v ?? "").trim().slice(0, 200);
+}
 export const DEF_FIELDS: Field[] = [
   { k: "phone", label: "جوال الطالب", on: true, req: false, type: "tel" },
   { k: "parentName", label: "اسم ولي الأمر", on: true, req: true },
@@ -43,6 +62,9 @@ export async function getSettings(): Promise<Settings> {
   const m = ((row?.value as any) || {}) as Partial<Settings>;
   // الاسم القديم المحفوظ قبل تغيير الاسم يتحول للاسم الجديد
   if (!m.center || m.center === "حلقات التسميع") m.center = DEF.center;
+  const fields = ((m.fields as Field[]) || DEF_FIELDS).slice();
+  if (!fields.some((f) => f.type === "memo") && !(m as any).memoRemoved) fields.push(MEMO_FIELD);
+  m.fields = fields;
   return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, points: { ...DEF.points, ...(m.points || {}) }, tpl: { ...DEF.tpl, ...(m.tpl || {}) }, fields: (m.fields as Field[]) || DEF_FIELDS };
 }
 export function gradeOf(s: Settings, m: number, al: number) {

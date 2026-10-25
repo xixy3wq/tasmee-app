@@ -259,3 +259,6 @@ main.wrap:has(~ * .sticky-join), .wrap:has(.sticky-join){padding-bottom:110px}
 .pg{font-size:.75rem;color:var(--muted);font-weight:500}
 @media (max-width:560px){.join-card .btn.big{width:100%}.join-actions{width:100%}.who{gap:4px}.who .btn.sm{padding:4px 8px}}
 .cur-acc{background:var(--accent-soft);border-radius:8px}
+.fld-wide{grid-column:1/-1}
+.memo-fld,.memo-rows{display:grid;gap:6px}
+.memo-fld{padding:10px;border-radius:8px;background:var(--sunk)}

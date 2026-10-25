@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { currentUser, handle, fail, cleanUsername, USERNAME_RE, str, int, type Me } from "@/lib/auth";
-import { getSettings, gradeOf, GRADES, localDate, type Field } from "@/lib/settings";
+import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } from "@/lib/settings";
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
@@ -50,7 +50,7 @@ async function uniqueUsername(username: string, exceptId?: string) {
 }
 function cleanInfo(fields: Field[], src: any) {
   const info: Record<string, string> = {};
-  for (const f of fields) { const v = str(src?.[f.k], 200); if (v) info[f.k] = v; }
+  for (const f of fields) { const v = cleanFieldValue(f, src?.[f.k]); if (v) info[f.k] = v; }
   return info;
 }
 const validDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -69,15 +69,17 @@ const A: Record<string, H> = {
     const fields: Field[] = (Array.isArray(d.fields) ? d.fields : []).slice(0, 30).map((f: any) => ({
       k: str(f.k, 40).replace(/[^A-Za-z0-9_]/g, "") || "c_" + Math.random().toString(36).slice(2, 8),
       label: str(f.label, 60) || "حقل", on: !!f.on, req: !!f.req && !!f.on,
-      type: ["tel", "number", "text"].includes(f.type) ? f.type : "text", ph: str(f.ph, 80), custom: !!f.custom,
+      type: ["tel", "number", "text", "choice", "memo"].includes(f.type) ? f.type : "text", ph: str(f.ph, 80), custom: !!f.custom,
+      ...(f.type === "choice" ? { options: (Array.isArray(f.options) ? f.options : []).map((o: any) => str(o, 60)).filter(Boolean).slice(0, 30), multi: !!f.multi } : {}),
     }));
+    const memoRemoved = !fields.some((f) => f.type === "memo");
     const cur = await getSettings();
     const tpls = Array.isArray(d.tpls) ? d.tpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "x" + i, name: str(t.name, 40) || "رسالة", text: str(t.text, 800) })).filter((t: any) => t.text) : cur.tpls;
     const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
     const pp = d.points || {}; const points = { present: AMT(pp.present ?? cur.points.present, 100), late: AMT(pp.late ?? cur.points.late, 100), ex: AMT(pp.ex ?? cur.points.ex, 100), vg: AMT(pp.vg ?? cur.points.vg, 100), gd: AMT(pp.gd ?? cur.points.gd, 100), page: AMT(pp.page ?? cur.points.page, 100) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
     await audit(u, "settings", null, "تعديل الإعدادات");
   },
@@ -110,7 +112,18 @@ const A: Record<string, H> = {
     const s = await prisma.user.findUnique({ where: { id: str(b.id) } });
     if (!s || s.status !== "pending") fail("الطلب غير موجود");
     if (!(await prisma.halqa.findUnique({ where: { id: str(b.halqaId) } }))) fail("اختر الحلقة");
-    await prisma.user.update({ where: { id: s!.id }, data: { status: "active", halqaId: str(b.halqaId), approvedAt: new Date(), plan: s!.plan ?? defPlan() } });
+    // إذا حدد الطالب حفظه السابق عند التسجيل: تنضبط خطته التلقائية عليه
+    let plan: any = s!.plan ?? defPlan();
+    const memo = String(((s!.info as any) || {}).memo || "");
+    const mm = /^(\d+):(\d+)>(\d+):(\d+)$/.exec(memo);
+    if (mm && !s!.plan) {
+      const [fs, fa, ts, ta] = mm.slice(1).map(Number);
+      const tryDir = (dir: "fwd" | "bwd") => { const a = ORD[dir].pos[gOf(fs, fa)], z = ORD[dir].pos[gOf(ts, ta)]; return z >= a ? { dir, ms: a, np: Math.min(TOTAL, z + 1) } : null; };
+      const r = (fs === 114 || fs > ts ? tryDir("bwd") : tryDir("fwd")) || tryDir("bwd") || tryDir("fwd");
+      const st = await getSettings(); const t0 = (st.planTpls || [])[0];
+      if (r) plan = { mode: "auto", manual: {}, auto: { dir: r.dir, memStart: r.ms, newPos: r.np, revPos: r.ms, newAmt: t0 ? t0.newAmt : 0.25, revAmt: t0 ? t0.revAmt : 2, tathAmt: t0 ? t0.tathAmt : 1 } };
+    }
+    await prisma.user.update({ where: { id: s!.id }, data: { status: "active", halqaId: str(b.halqaId), approvedAt: new Date(), plan } });
     await audit(u, "approve", s!.id, `اعتماد ${s!.name}`);
   },
   async "user.delete"(u, b) {
