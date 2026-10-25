@@ -55,3 +55,17 @@ app/api/login|logout|register|data|act|pages
 public/app.js             ← الواجهة كاملة
 app/globals.css           ← التصميم (فاتح وداكن)
 ```
+
+## متغيرات اختيارية (للمزايا الإضافية)
+
+| المتغير | الفائدة |
+|---|---|
+| `VAPID_PUBLIC_KEY` و `VAPID_PRIVATE_KEY` | إشعارات الجوال (دورك قرب، الإعلانات، تذكير الحصة) |
+| `VAPID_SUBJECT` | بريد للتواصل بصيغة `mailto:you@example.com` (اختياري) |
+| `CRON_SECRET` | النسخ الاحتياطي الأسبوعي التلقائي، وتذكير الحصة |
+| `APP_TZ_OFFSET_MIN` | فرق التوقيت بالدقائق (الافتراضي 180 = السعودية) |
+
+**تذكير قبل الحصة:** سجّل في cron-job.org وأضف مهمة كل 5 دقائق على:
+`https://رابط-الموقع/api/cron/remind?key=CRON_SECRET`
+
+**Google Sheets:** من الإعدادات ولّد مفتاح التصدير، ثم في Sheets: `=IMPORTDATA("https://رابط-الموقع/api/export/students?key=المفتاح")` (أو attendance أو recs).
