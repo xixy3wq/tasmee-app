@@ -578,8 +578,9 @@ const A: Record<string, H> = {
       tplPresent: str(d.tplPresent, 800) || WA_DEF.tplPresent, tplLate: str(d.tplLate, 800) || WA_DEF.tplLate, tplRec: str(d.tplRec, 800) || WA_DEF.tplRec,
     };
     if (value.url && !/^https:\/\//i.test(value.url)) fail("رابط الإرسال لازم يبدأ بـ https://");
-    if (value.enabled && !value.url.includes("{message}") && !value.body.includes("{message}")) fail("لازم يحتوي الرابط أو نص الطلب على {message}");
-    if (value.enabled && !(value.url + value.body).match(/\{phone0?\}/)) fail("لازم يحتوي الرابط أو نص الطلب على {phone}");
+    const HOW = "اطلع لأول قسم «ربط الواتساب»، في مربع «الربط السريع» اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، وبعدها اضغط حفظ.";
+    if (value.enabled && !value.url) fail("ما تم الربط بعد. " + HOW);
+    if (value.enabled && (!(value.url + value.body).includes("{message}") || !(value.url + value.body).match(/\{phone0?\}/))) fail("رابط الإرسال المكتوب غلط (غالبًا رابط صفحة الشرح). " + HOW);
     await prisma.setting.upsert({ where: { key: "wa" }, create: { key: "wa", value }, update: { value } });
     await audit(u, "wa.save", null, `إعدادات الواتساب: ${value.enabled ? "مفعّل" : "متوقف"}`);
   },
