@@ -5,7 +5,7 @@ import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } 
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
-import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone } from "@/lib/wa";
+import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
@@ -576,6 +576,7 @@ const A: Record<string, H> = {
       autoAbsent: !!d.autoAbsent, autoPresent: !!d.autoPresent, autoLate: !!d.autoLate, autoRec: !!d.autoRec,
       delayMin: Math.min(240, Math.max(0, int(d.delayMin, 10))),
       tplPresent: str(d.tplPresent, 800) || WA_DEF.tplPresent, tplLate: str(d.tplLate, 800) || WA_DEF.tplLate, tplRec: str(d.tplRec, 800) || WA_DEF.tplRec,
+      autoWeek: !!d.autoWeek, weekDay: Math.min(6, Math.max(0, int(d.weekDay, 4))), weekHour: Math.min(23, Math.max(0, int(d.weekHour, 20))), tplWeek: str(d.tplWeek, 1200) || WA_DEF.tplWeek,
     };
     if (value.url && !/^https:\/\//i.test(value.url)) fail("رابط الإرسال لازم يبدأ بـ https://");
     const HOW = "اطلع لأول قسم «ربط الواتساب»، في مربع «الربط السريع» اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، وبعدها اضغط حفظ.";
@@ -621,6 +622,18 @@ const A: Record<string, H> = {
     } catch {}
     if (!devices.length) devices = [...new Set(d.t.match(/\b[a-f0-9]{24}\b/gi) || [])].map((id) => ({ id, name: "", status: "" }));
     return { jwt, devices, raw: devices.length ? "" : (d.status + " " + d.t.slice(0, 300)) };
+  },
+  // إرسال التقرير الأسبوعي الآن عبر الواتساب (لكل الحلقات أو لحلقة وحدة)
+  async "wa.weekNow"(u, b) {
+    const hid = str(b.halqaId);
+    if (hid) {
+      const h = await prisma.halqa.findUnique({ where: { id: hid } }); if (!h) fail("الحلقة غير موجودة", 404);
+      if (u.role !== "admin" && h!.teacherId !== u.id) fail("ما عندك صلاحية على هذه الحلقة", 403);
+    } else if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أول من الإعدادات");
+    const n = await queueWeekly(hid || undefined);
+    await audit(u, "wa.week", null, `إرسال التقرير الأسبوعي (${n} رسالة)`);
+    return { n };
   },
   async "wa.retry"(u, b) {
     if (!isFull(u)) fail("للمدير الكامل فقط", 403);

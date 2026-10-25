@@ -643,7 +643,7 @@ function reportsV(u) {
   const rows = studs.map(st => { const a = attStats(st, ST.range); const rs = recsOf(st.id).filter(r => !from || r.date >= from); const rep = rs.filter(r => r.pass === false).length; const sc = rs.filter(r => !r.quick); const avg = sc.length ? (sc.reduce((x, r) => x + (+r.mistakes || 0), 0) / sc.length).toFixed(1) : '—'; return { st, a, n: rs.length, rep, avg, pg: pagesSum(rs) }; });
   const tot = rows.reduce((x, r) => ({ p: x.p + r.a.p + r.a.l, m: x.m + r.a.p + r.a.l + r.a.a + r.a.e, n: x.n + r.n, pn: x.pn + r.pg.new, pr: x.pr + r.pg.review + r.pg.tath }), { p: 0, m: 0, n: 0, pn: 0, pr: 0 });
   const wk = weekStartC(today()); const board = studs.map(st => ({ st, p: ptsOf(st, wk, today()) })).sort((a, b) => b.p - a.p).slice(0, 5);
-  return `<div class="sec-head"><h1>التقارير</h1><button class="btn wa" data-act="wa-week" data-h="${hid}">التقرير الأسبوعي لأولياء الأمور</button></div>
+  return `<div class="sec-head"><h1>التقارير</h1><div class="row">${S.waOn ? `<button class="btn pri" data-act="wa-week-h" data-h="${hid}">أرسل التقرير الأسبوعي تلقائيًا</button>` : ''}<button class="btn wa" data-act="wa-week" data-h="${hid}">${S.waOn ? 'إرسال يدوي' : 'التقرير الأسبوعي لأولياء الأمور'}</button></div></div>
   <div class="row"><select id="rp-h" data-change="filter-h" style="flex:0 1 220px">${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>
   ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}${(SET().terms || []).map(tm => `<button class="btn sm ${ST.range === 'T' + tm.id ? 'pri' : ''}" data-act="range" data-d="T${tm.id}">${esc(tm.name)}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${nSess}</b><span>حصة</span></div><div class="stat"><b>${tot.m ? Math.round(tot.p / tot.m * 100) + '٪' : '—'}</b><span>نسبة حضور الحلقة</span></div><div class="stat"><b>${tot.n}</b><span>تسميع مسجّل</span></div><div class="stat"><b>${fmtPages(tot.pn)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(tot.pr)}</b><span>أوجه مراجعة</span></div></div>
@@ -654,44 +654,68 @@ function reportsV(u) {
 }
 
 /* ---- admin: settings ---- */
+const SET_TABS = [
+  ['rec', 'التسميع والتقدير', 'سلّم التقدير، قوالب الخطط، النقاط ولوحة الشرف'],
+  ['days', 'الدوام والحضور', 'أيام الدوام، الفصول الدراسية، الإجازات وتنبيه الغياب'],
+  ['reg', 'التسجيل', 'حقول نموذج تسجيل الطلاب الجدد'],
+  ['msg', 'الرسائل والواتساب', 'نصوص الرسائل لأولياء الأمور وربط الواتس الذكي'],
+  ['site', 'إعدادات الموقع', 'الاسم، جهة التواصل، النسخ الاحتياطي، Google Sheets'],
+];
 function settingsV() {
   const st = SET(); const hol = [...(st.holidays || [])].sort((a, b) => a.from.localeCompare(b.from));
+  const full = isFullAdmin(me());
+  const cur = SET_TABS.some(t => t[0] === ST.setTab) ? ST.setTab : 'rec';
+  const P = k => k === cur ? '' : 'hidden';
+  const H = (t, d) => `<div class="set-h"><h2>${t}</h2>${d ? `<span class="small muted">${d}</span>` : ''}</div>`;
+  const saveBtn = `<div class="set-save"><button class="btn pri" type="submit">حفظ الإعدادات</button></div>`;
   return `<h1>الإعدادات</h1>
+  <nav class="set-tabs" aria-label="أقسام الإعدادات">${SET_TABS.map(([k, t, d]) => `<button type="button" class="set-tab ${k === cur ? 'on' : ''}" data-act="set-tab" data-k="${k}" aria-pressed="${k === cur}"><b>${t}</b><span>${d}</span></button>`).join('')}</nav>
   <form class="card" data-form="settings" style="gap:18px">
-    <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="sg-center" name="center" value="${esc(st.center)}" required></label>
-    <div class="fgrid"><label class="fld"><span>جهة التواصل للطلاب وأولياء الأمور</span><input id="sg-sn" name="supportName" value="${esc(st.supportName || '')}" placeholder="مثال: إدارة الحلقة"></label><label class="fld"><span>رقم الواتساب للتواصل</span><input id="sg-sp" name="supportPhone" type="tel" dir="ltr" value="${esc(st.supportPhone || '')}" placeholder="05xxxxxxxx"></label></div>
-    <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div><span class="small muted" style="font-weight:400">تقدر تغيّرها لكل حلقة من تبويب الحلقات.</span></div>
+    <div class="set-pane" ${P('rec')}>${H('التسميع والتقدير', 'كيف يُحسب التقدير، ومقادير الخطط الجاهزة، ونقاط الطلاب')}
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
       <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
       <span class="small muted" style="font-weight:400">ما فوق «جيد» يكون «يعاد»، ولا تتقدم الخطة التلقائية إلا بعد النجاح.</span></div>
-    <label class="fld" style="max-width:320px"><span>تنبيه الغياب المتكرر بعد كم غياب متتالي</span><input id="sg-abs" name="absentAlert" type="number" min="2" max="20" value="${st.absentAlert || 3}"></label>
-    <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
-    <label class="fld" style="max-width:320px"><span>لوحة الشرف عند الطلاب</span><select id="sg-board" name="board"><option value="show" ${st.board === 'show' ? 'selected' : ''}>أفضل 5 مع ترتيب الطالب</option><option value="top3" ${st.board === 'top3' ? 'selected' : ''}>أفضل 3 فقط</option><option value="hide" ${st.board === 'hide' ? 'selected' : ''}>مخفية: كل طالب يشوف نقاطه بس</option></select></label>
     <div class="fld"><span>قوالب الخطط التلقائية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th class="num">حفظ</th><th class="num">مراجعة</th><th class="num">تثبيت</th><th></th></tr></thead><tbody>
       ${(st.planTpls || []).map((t, i) => `<tr><td><input id="pt-n-${i}" name="ptn-${i}" value="${esc(t.name)}" style="min-width:160px"></td><td><input id="pt-a-${i}" name="pta-${i}" type="number" min="0" step="0.125" value="${t.newAmt}" style="width:80px"></td><td><input id="pt-r-${i}" name="ptr-${i}" type="number" min="0" step="0.5" value="${t.revAmt}" style="width:80px"></td><td><input id="pt-t-${i}" name="ptt-${i}" type="number" min="0" step="0.5" value="${t.tathAmt}" style="width:80px"></td><td><button type="button" class="btn ghost sm" data-act="ptpl-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="small muted" style="font-weight:400">المقادير بالأوجه: 0.25 ربع وجه، 0.5 نصف وجه.</span></div>
+    <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
+    <label class="fld" style="max-width:320px"><span>لوحة الشرف عند الطلاب</span><select id="sg-board" name="board"><option value="show" ${st.board === 'show' ? 'selected' : ''}>أفضل 5 مع ترتيب الطالب</option><option value="top3" ${st.board === 'top3' ? 'selected' : ''}>أفضل 3 فقط</option><option value="hide" ${st.board === 'hide' ? 'selected' : ''}>مخفية: كل طالب يشوف نقاطه بس</option></select></label>
+    </div>
+    <div class="set-pane" ${P('days')}>${H('الدوام والحضور', 'الأيام الافتراضية للحلقات وفترات الدراسة')}
+    <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div><span class="small muted" style="font-weight:400">تقدر تغيّرها لكل حلقة من تبويب الحلقات.</span></div>
+    <label class="fld" style="max-width:320px"><span>تنبيه الغياب المتكرر بعد كم غياب متتالي</span><input id="sg-abs" name="absentAlert" type="number" min="2" max="20" value="${st.absentAlert || 3}"></label>
+    <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
+      ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
+    </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div><span class="small muted" style="font-weight:400">تطلع الفصول كفترات في التقارير، وفي تحديد أهداف الطلاب.</span></div>
+    </div>
+    <div class="set-pane" ${P('reg')}>${H('نموذج التسجيل', 'وش يعبّي الطالب لما يسجل من رابط التسجيل')}
     <div class="fld"><span>حقول التسجيل</span><div class="small muted" style="font-weight:400">الاسم واسم المستخدم وكلمة المرور ثابتة دائمًا.</div>
       <div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الحقل</th><th>النوع</th><th class="num">ظاهر</th><th class="num">إجباري</th><th></th></tr></thead><tbody>
       ${st.fields.map(f => `<tr><td><input id="sf-lb-${f.k}" name="lb-${f.k}" value="${esc(f.label)}" style="min-width:140px">${f.type === 'choice' ? `<input id="sf-op-${f.k}" name="opt-${f.k}" value="${esc((f.options || []).join('، '))}" placeholder="الخيارات مفصولة بفاصلة" style="margin-top:4px;min-width:140px"><label class="check small"><input type="checkbox" name="multi-${f.k}" ${f.multi ? 'checked' : ''}> أكثر من خيار</label>` : ''}</td><td class="small">${FTYPE[f.type || 'text'] || 'نص'}</td><td class="num"><input type="checkbox" id="sf-on-${f.k}" name="on-${f.k}" ${f.on ? 'checked' : ''}></td><td class="num"><input type="checkbox" id="sf-req-${f.k}" name="req-${f.k}" ${f.req ? 'checked' : ''}></td><td><button type="button" class="btn ghost sm" data-act="sf-del" data-k="${f.k}">حذف</button></td></tr>`).join('')}
       </tbody></table></div><div><button type="button" class="btn sm" data-act="sf-add">إضافة حقل</button></div></div>
+    </div>
+    <div class="set-pane" ${P('msg')}>${H('نصوص الرسائل', 'الرسائل الجاهزة اللي يرسلها المعلم لولي الأمر')}
     <div class="fld"><span>رسائل واتساب لولي الأمر</span><span class="small muted" style="font-weight:400">استخدم {الطالب} و{الحلقة} و{التاريخ} وتنعبّى تلقائيًا.</span>
       <label class="fld"><span>رسالة الغياب</span><textarea id="sg-tA" name="absent" rows="3">${esc(st.tpl.absent)}</textarea></label>
       <label class="fld"><span>رسالة التميّز</span><textarea id="sg-tE" name="excellent" rows="3">${esc(st.tpl.excellent)}</textarea></label>
       ${(st.tpls || []).map((t, i) => `<div class="tpl-ed"><div class="row"><input id="tp-n-${i}" name="tpn-${i}" value="${esc(t.name)}" style="flex:0 1 200px" aria-label="اسم الرسالة"><button type="button" class="btn ghost sm" data-act="tpl-del" data-i="${i}">حذف</button></div><textarea id="tp-t-${i}" name="tpt-${i}" rows="2" aria-label="نص الرسالة">${esc(t.text)}</textarea></div>`).join('')}
       <div><button type="button" class="btn sm" data-act="tpl-add">إضافة رسالة جاهزة</button></div></div>
-    <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
-      ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
-    </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div><span class="small muted" style="font-weight:400">تطلع الفصول كفترات في التقارير، وفي تحديد أهداف الطلاب.</span></div>
-    <div><button class="btn pri" type="submit">حفظ الإعدادات</button></div>
+    </div>
+    <div class="set-pane" ${P('site')}>${H('معلومات الموقع', 'تظهر للطلاب وأولياء الأمور')}
+    <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="sg-center" name="center" value="${esc(st.center)}" required></label>
+    <div class="fgrid"><label class="fld"><span>جهة التواصل للطلاب وأولياء الأمور</span><input id="sg-sn" name="supportName" value="${esc(st.supportName || '')}" placeholder="مثال: إدارة الحلقة"></label><label class="fld"><span>رقم الواتساب للتواصل</span><input id="sg-sp" name="supportPhone" type="tel" dir="ltr" value="${esc(st.supportPhone || '')}" placeholder="05xxxxxxxx"></label></div>
+    </div>
+    ${saveBtn}
   </form>
-  ${isFullAdmin(me()) ? waSettingsHtml() : ''}
-  ${isFullAdmin(me()) ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
-    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
-  <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
-  <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الإجازات</h2><span class="small muted">ما تنشأ فيها حصص، والحصص التلقائية فيها تُلغى</span></div>
+    <section class="card" ${P('days')} style="display:grid;gap:12px"><div class="sec-head"><h2>الإجازات</h2><span class="small muted">ما تنشأ فيها حصص، والحصص التلقائية فيها تُلغى</span></div>
     ${hol.length ? `<div class="list">${hol.map((h, i) => `<div class="item"><div class="grow"><b>${esc(h.name)}</b> <span class="small muted">${fmtDateH(h.from)}${h.to !== h.from ? ' إلى ' + fmtDateH(h.to) : ''}</span></div>${h.to < today() ? '<span class="chip">انتهت</span>' : ''}<button class="btn ghost sm" data-act="hol-del" data-from="${h.from}" data-to="${h.to}">حذف</button></div>`).join('')}</div>` : '<div class="empty small">ما فيه إجازات مسجلة.</div>'}
     <form data-form="hol-add" class="fgrid" style="align-items:end"><label class="fld"><span>اسم الإجازة</span><input id="hl-name" name="name" required placeholder="مثال: إجازة عيد الفطر"></label><label class="fld"><span>من</span><input id="hl-from" name="from" type="date" required></label><label class="fld"><span>إلى</span><input id="hl-to" name="to" type="date"></label><button class="btn" type="submit">إضافة إجازة</button></form>
-  </section>`;
+  </section>
+  ${full && cur === 'msg' ? waSettingsHtml() : ''}
+  ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
+    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
+  <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
+  ${!full && (cur === 'msg' || cur === 'site') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
 }
 
 /* ---- student / parent home ---- */
@@ -1031,7 +1055,7 @@ function homeEn(u) {
 
 /* ---------------- الواتساب التلقائي (الواتس الذكي) ---------------- */
 const WA_STATUS = { pending: ['warn', 'بانتظار الإرسال'], sending: ['info', 'يُرسل الآن'], sent: ['ok', 'أُرسلت'], failed: ['bad', 'فشلت'], cancelled: ['', 'أُلغيت'] };
-const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع' };
+const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع', week: 'تقرير أسبوعي' };
 function waSettingsHtml() {
   if (!ST.wa && !ST.waLoading) { ST.waLoading = true; act('wa.get', {}).then(r => { ST.waLoading = false; ST.wa = r || { cfg: {}, log: [], counts: {} }; render(); }); }
   if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
@@ -1057,6 +1081,13 @@ function waSettingsHtml() {
       <label class="fld"><span>رسالة الحضور</span><textarea id="wa-tplPresent" name="tplPresent" rows="2">${esc(c.tplPresent || '')}</textarea></label>
       <label class="fld"><span>رسالة التأخر</span><textarea id="wa-tplLate" name="tplLate" rows="2">${esc(c.tplLate || '')}</textarea></label>
       <label class="fld"><span>رسالة نتيجة التسميع</span><textarea id="wa-tplRec" name="tplRec" rows="3">${esc(c.tplRec || '')}</textarea></label></div></details>
+    <div class="seg-box"><b>التقرير الأسبوعي لأولياء الأمور</b>
+      <label class="check"><input type="checkbox" id="wa-autoWeek" name="autoWeek" ${c.autoWeek ? 'checked' : ''}> يرسل تلقائيًا كل أسبوع</label>
+      <div class="fgrid"><label class="fld"><span>اليوم</span><select id="wa-weekDay" name="weekDay">${DAYN.map((d, i) => `<option value="${i}" ${(c.weekDay ?? 4) === i ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+      <label class="fld"><span>الساعة</span><select id="wa-weekHour" name="weekHour">${[...Array(24).keys()].map(h => `<option value="${h}" ${(c.weekHour ?? 20) === h ? 'selected' : ''}>${fmtTime(pad(h) + ':00')}</option>`).join('')}</select></label></div>
+      <details><summary class="small">نص التقرير</summary><label class="fld" style="margin-top:8px"><textarea id="wa-tplWeek" name="tplWeek" rows="8">${esc(c.tplWeek || '')}</textarea><span class="hint">المتغيرات: {الطالب} {الحلقة} {الحضور} {الغياب} {الحفظ} {المراجعة} {التسميع} {النقاط}</span></label></details>
+      <div class="row"><button type="button" class="btn" data-act="wa-week-now">أرسل تقرير هالأسبوع الآن لكل الحلقات</button></div>
+      <span class="small muted">يحسب من بداية الأسبوع (الأحد) لين يوم الإرسال. ولي الأمر ما يوصله نفس التقرير مرتين في نفس الأسبوع.</span></div>
     <div class="row"><button class="btn pri" type="submit">حفظ ربط الواتساب</button></div>
     <div class="test-box"><b>تجربة الإرسال</b><div class="row"><input id="wa-test-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" style="flex:1 1 160px"><button type="button" class="btn" data-act="wa-test">أرسل رسالة تجريبية</button></div><div id="wa-test-out" class="small ${ST.waTest ? (ST.waTest.ok ? 'c-ok' : 'c-bad') : 'muted'}" dir="auto">${ST.waTest ? esc(ST.waTest.msg) : ''}</div></div>
   </form>
@@ -1405,6 +1436,8 @@ const ACT = {
   'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
   'tour': () => showTour(0),
   'wa-refresh': () => { ST.wa = null; render(); },
+  'wa-week-now': async () => { const f = document.querySelector('form[data-form=wa]'); if (f) { const ok = await act('wa.save', { data: waFormData(f) }); if (ok === null) return; } act('wa.weekNow', {}, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال').then(() => { ST.wa = null; render(); }); },
+  'wa-week-h': el => act('wa.weekNow', { halqaId: el.dataset.h }, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال عبر الواتساب'),
   'wa-smart': async () => {
     const ph = ($('#wa-sl-phone') || {}).value, pw = ($('#wa-sl-pw') || {}).value; const out = $('#wa-sl-out');
     if (!ph || !pw) return toast('اكتب الرقم وكلمة المرور');
@@ -1473,6 +1506,7 @@ const ACT = {
   'confirm-yes': async () => { const f = CONFIRM; CONFIRM = null; closeModal(); if (f) await f(); },
   'my-pw': () => pwModal(),
   'filter-h': el => { ST.halqa = el.dataset.h; render(); },
+  'set-tab': el => { ST.setTab = el.dataset.k; render(); window.scrollTo({ top: 0 }); },
   'range': el => { ST.range = el.dataset.d[0] === 'T' ? el.dataset.d : +el.dataset.d; render(); },
   'open-session': el => go('session', { sid: el.dataset.id }),
   'open-student': el => go('student', { uid: el.dataset.id }),
@@ -1582,7 +1616,7 @@ function waSmartFill(dev) {
 }
 function waFormData(f) {
   const d = new FormData(f); const b = k => !!d.get(k);
-  return { enabled: b('enabled'), method: d.get('method'), url: (d.get('url') || '').trim(), body: (d.get('body') || '').trim(), okWord: (d.get('okWord') || '').trim(), autoAbsent: b('autoAbsent'), autoLate: b('autoLate'), autoPresent: b('autoPresent'), autoRec: b('autoRec'), delayMin: +d.get('delayMin') || 0, tplPresent: d.get('tplPresent'), tplLate: d.get('tplLate'), tplRec: d.get('tplRec') };
+  return { enabled: b('enabled'), method: d.get('method'), url: (d.get('url') || '').trim(), body: (d.get('body') || '').trim(), okWord: (d.get('okWord') || '').trim(), autoAbsent: b('autoAbsent'), autoLate: b('autoLate'), autoPresent: b('autoPresent'), autoRec: b('autoRec'), delayMin: +d.get('delayMin') || 0, autoWeek: b('autoWeek'), weekDay: +d.get('weekDay'), weekHour: +d.get('weekHour'), tplWeek: d.get('tplWeek'), tplPresent: d.get('tplPresent'), tplLate: d.get('tplLate'), tplRec: d.get('tplRec') };
 }
 function settingsData(f) {
   const d = new FormData(f); const st = SET();

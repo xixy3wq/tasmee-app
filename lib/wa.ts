@@ -1,10 +1,14 @@
 import { prisma } from "./db";
+import { getSettings, localDate, weekStart, isHoliday } from "./settings";
+import { halqaPoints } from "./points";
+import { rangePages } from "./pages";
 // ربط الواتساب عبر مزوّد خارجي (مثل الواتس الذكي smart-whats.com).
 // الإعداد في جدول Setting بالمفتاح "wa" ولا يُرسل للواجهة إلا للمدير الكامل.
 export type WaCfg = {
   enabled: boolean; method: "GET" | "POST_FORM" | "POST_JSON"; url: string; body: string; okWord: string;
   autoAbsent: boolean; autoPresent: boolean; autoLate: boolean; autoRec: boolean; delayMin: number;
   tplPresent: string; tplLate: string; tplRec: string;
+  autoWeek: boolean; weekDay: number; weekHour: number; tplWeek: string;
 };
 export const WA_DEF: WaCfg = {
   enabled: false, method: "GET", url: "", body: "", okWord: "",
@@ -12,6 +16,8 @@ export const WA_DEF: WaCfg = {
   tplPresent: "السلام عليكم ورحمة الله، نفيدكم بحضور ابنكم {الطالب} حلقة {الحلقة} اليوم {التاريخ}. جزاكم الله خيرًا.",
   tplLate: "السلام عليكم ورحمة الله، نفيدكم بتأخر ابنكم {الطالب} عن حلقة {الحلقة} اليوم {التاريخ}.",
   tplRec: "السلام عليكم ورحمة الله، تسميع ابنكم {الطالب} في حلقة {الحلقة} يوم {التاريخ}:\n{التسميع}",
+  autoWeek: false, weekDay: 4, weekHour: 20,
+  tplWeek: "السلام عليكم ورحمة الله، تقرير ابنكم {الطالب} في {الحلقة} لهذا الأسبوع:\n- الحضور: {الحضور}\n- الحفظ: {الحفظ} وجه\n- المراجعة والتثبيت: {المراجعة} وجه\n- التسميع: {التسميع}\n- النقاط: {النقاط}\nجزاكم الله خيرًا على المتابعة.",
 };
 export async function waCfg(): Promise<WaCfg> {
   const r = await prisma.setting.findUnique({ where: { key: "wa" } });
@@ -74,6 +80,7 @@ export async function processQueue(limit = 8) {
   if (busy) return 0; busy = true;
   try {
     const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) return 0;
+    try { await maybeWeekly(cfg); } catch (e) { console.error("wa weekly", e); }
     const due = await prisma.outMsg.findMany({ where: { status: "pending", sendAfter: { lte: new Date() } }, orderBy: { sendAfter: "asc" }, take: limit });
     let n = 0;
     for (const m of due) {
@@ -87,4 +94,52 @@ export async function processQueue(limit = 8) {
     return n;
   } catch (e) { console.error("wa queue", e); return 0; }
   finally { busy = false; }
+}
+
+/* ---------------- التقرير الأسبوعي لأولياء الأمور ---------------- */
+const fmtPg = (n: number) => { const r = Math.round(n * 4) / 4; return r % 1 === 0.25 ? (Math.floor(r) ? Math.floor(r) + " وربع" : "ربع") : r % 1 === 0.5 ? (Math.floor(r) ? Math.floor(r) + " ونصف" : "نصف") : r % 1 === 0.75 ? (Math.floor(r) ? Math.floor(r) + " وثلاثة أرباع" : "ثلاثة أرباع") : String(r); };
+/** يجهّز رسائل التقرير الأسبوعي لكل طلاب الحلقات (أو حلقة وحدة) ويحطها في الطابور */
+export async function queueWeekly(halqaId?: string) {
+  const cfg = await waCfg(); const s = await getSettings();
+  const to = localDate(); const from = weekStart(to);
+  const halaqat = await prisma.halqa.findMany({ where: halqaId ? { id: halqaId } : {} });
+  let n = 0;
+  for (const h of halaqat) {
+    const studs = await prisma.user.findMany({ where: { halqaId: h.id, role: "student", status: "active" } });
+    if (!studs.length) continue;
+    const lessons = (await prisma.lesson.findMany({ where: { halqaId: h.id, cancelled: false, date: { gte: from, lte: to } } })).filter((l) => !isHoliday(s, l.date));
+    const pts = await halqaPoints(h.id, from, to, s);
+    const recs = await prisma.rec.findMany({ where: { userId: { in: studs.map((x) => x.id) }, date: { gte: from, lte: to } } });
+    for (const st of studs) {
+      const info = (st.info as any) || {}; const phone = String(info.parentPhone || info.phone || "");
+      if (!intlPhone(phone)) continue;
+      const att = lessons.map((l) => ((l.att as any) || {})[st.id]);
+      const pres = att.filter((v) => v === "p" || v === "l").length; const abs = att.filter((v) => v === "a").length;
+      const rs = recs.filter((r) => r.userId === st.id);
+      let pNew = 0, pRev = 0;
+      for (const r of rs) { const pg = await rangePages(r.surah, r.fromA, r.toA); if (r.type === "new") pNew += pg; else pRev += pg; }
+      const cnt = (g: string) => rs.filter((r) => r.grade === g).length;
+      const recTxt = rs.length ? `${rs.length} (ممتاز ${cnt("ممتاز")}، جيد جدًا ${cnt("جيد جدًا")}، جيد ${cnt("جيد")}، إعادة ${cnt("يعاد")})` : "لا يوجد";
+      const text = fillVars(cfg.tplWeek || WA_DEF.tplWeek, { student: st.name, halqa: h.name, date: to, rec: recTxt })
+        .replace(/\{الحضور\}/g, `${pres} من ${lessons.length}${abs ? ` (غاب ${abs})` : ""}`)
+        .replace(/\{الغياب\}/g, String(abs))
+        .replace(/\{الحفظ\}/g, fmtPg(pNew)).replace(/\{المراجعة\}/g, fmtPg(pRev))
+        .replace(/\{النقاط\}/g, String(pts.find((x) => x.id === st.id)?.pts ?? 0));
+      await queueMsg(`week-${st.id}-${from}`, "week", phone, text, 0, { userId: st.id });
+      n++;
+    }
+  }
+  return n;
+}
+/** يتحقق هل جا وقت التقرير الأسبوعي التلقائي (مرة وحدة كل أسبوع) */
+async function maybeWeekly(cfg: WaCfg) {
+  if (!cfg.autoWeek) return;
+  const off = Number(process.env.APP_TZ_OFFSET_MIN ?? 180);
+  const now = new Date(Date.now() + off * 60000);
+  if (now.getUTCDay() !== cfg.weekDay || now.getUTCHours() < cfg.weekHour) return;
+  const wk = weekStart(localDate());
+  const flag = await prisma.setting.findUnique({ where: { key: "waWeek" } });
+  if ((flag?.value as any)?.wk === wk) return;
+  await prisma.setting.upsert({ where: { key: "waWeek" }, create: { key: "waWeek", value: { wk } }, update: { value: { wk } } });
+  await queueWeekly();
 }
