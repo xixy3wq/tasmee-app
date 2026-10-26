@@ -38,7 +38,10 @@ export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string;
       aud: "jitsi", iss: "chat", sub: c.jaasApp, room,
       context: { user: { id: user.id, name: user.name, avatar: "", email: "", moderator: moderator ? "true" : "false" }, features: { livestreaming: "false", recording: "false", transcription: "false", "outbound-call": "false" } },
     }).setProtectedHeader({ alg: "RS256", kid: c.jaasKid, typ: "JWT" }).setExpirationTime(exp).setNotBefore(Math.floor(Date.now() / 1000) - 10).sign(key);
-    const cfg = ["config.prejoinConfig.enabled=false", "config.defaultLanguage=%22ar%22", "config.disableDeepLinking=true", `userInfo.displayName=%22${encodeURIComponent(user.name)}%22`].join("&");
+    // إعدادات تخفف الحمل على الجوالات والنت الضعيف: جودة 360، استقبال 4 كاميرات بالكثير، والطلاب يدخلون والكاميرا مقفلة (الأهم الصوت)
+    const cfg = ["config.prejoinConfig.enabled=false", "config.defaultLanguage=%22ar%22", "config.disableDeepLinking=true", `userInfo.displayName=%22${encodeURIComponent(user.name)}%22`,
+      "config.channelLastN=4", "config.resolution=360", "config.constraints.video.height.ideal=360", "config.constraints.video.height.max=480", "config.disableAudioLevels=true", "config.enableNoisyMicDetection=false",
+      ...(moderator ? [] : ["config.startWithVideoMuted=true"])].join("&");
     return `https://8x8.vc/${encodeURIComponent(c.jaasApp)}/${room}?jwt=${jwt}#${cfg}`;
   }
   if (c.provider === "daily") {

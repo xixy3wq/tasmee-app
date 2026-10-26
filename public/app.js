@@ -81,8 +81,9 @@ async function load() {
       const r0 = await fetch('/api/data', { cache: 'no-store' });
       if (!r0.ok && r0.status !== 200) throw new Error('net');
       const d = await r0.json();
-      // نسخة جديدة من الموقع انرفعت: حدّث الصفحة مرة وحدة تلقائيًا
-      if (d.appV && MY_V && d.appV !== MY_V) { let done = ''; try { done = sessionStorage.getItem('irtaq-upd') || ''; } catch {} if (done !== d.appV) { try { sessionStorage.setItem('irtaq-upd', d.appV); } catch {} location.reload(); return; } }
+      // نسخة جديدة من الموقع انرفعت: حدّث الصفحة مرة وحدة تلقائيًا — بس مو وهو داخل الحصة أو يسجّل تسميع أو يكتب، نأجلها لين يطلع
+      const busyNow = window.__inRoom || ST.fs || ST.rec || !$('#modal').hidden || (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
+      if (d.appV && MY_V && d.appV !== MY_V && !busyNow) { let done = ''; try { done = sessionStorage.getItem('irtaq-upd') || ''; } catch {} if (done !== d.appV) { try { sessionStorage.setItem('irtaq-upd', d.appV); } catch {} location.reload(); return; } }
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
@@ -2229,13 +2230,14 @@ async function openRoom(sid, alt) {
   if (!r || !r.url) return;
   const el = roomEl(); Object.assign(ROOM, { sid, mode: 'full', url: r.url, provider: r.provider, hasAlt: !!r.hasAlt, alt: !!r.alt, movedToast: 0 });
   el.querySelector('.room-frame').innerHTML = `<iframe src="${esc(r.url)}" allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write; screen-wake-lock" allowfullscreen title="غرفة الحصة"></iframe>`;
-  el.hidden = false; wake(true); buzz(20); $('#toast').hidden = true; roomBar(); load();
+  el.hidden = false; window.__inRoom = true; wake(true); buzz(20); $('#toast').hidden = true; roomBar(); load();
 }
 function closeRoom(silent) {
   const el = document.getElementById('room'); if (!el) return;
   const sid = ROOM.sid; el.querySelector('.room-frame').innerHTML = ''; el.hidden = true;
-  Object.assign(ROOM, { sid: null, url: '', mode: 'full' });
+  Object.assign(ROOM, { sid: null, url: '', mode: 'full' }); window.__inRoom = false;
   document.body.classList.remove('room-full', 'room-mini'); if (!ST.fs) wake(false);
+  if (!silent) { render(); load(); }
   const u = me(); if (!silent && u && u.role === 'student' && sid && sid !== 'test') act('leave', { lessonId: sid });
 }
 window.addEventListener('beforeunload', () => { if (ROOM.sid && ROOM.sid !== 'test') { const u = me(); if (u && u.role === 'student') try { navigator.sendBeacon('/api/act', new Blob([JSON.stringify({ t: 'leave', lessonId: ROOM.sid })], { type: 'application/json' })); } catch {} } });
@@ -2247,7 +2249,7 @@ document.addEventListener('click', e => {
 }, true);
 Object.assign(ACT, {
   'room-close': () => { if (me() && me().role !== 'student') return confirmBox('تطلع من الحصة؟ المكالمة تنقفل عندك بس، والطلاب يكملون.', 'اطلع', async () => closeRoom()); closeRoom(); },
-  'room-mini': () => { ROOM.mode = 'mini'; roomBar(); },
+  'room-mini': () => { ROOM.mode = 'mini'; if (ROOM.stale) render(); else roomBar(); },
   'room-full': () => { ROOM.mode = 'full'; roomBar(); },
   'room-tool': el => { const k = el.dataset.k; ROOM.mode = 'mini'; roomBar(); ST.sid = ROOM.sid; ST.view = 'session'; if (k === 'rec1') ACT['rec1-open'](); else if (k === 'swipe') ACT['swipe-open'](); else openFs('board'); },
   'video-test': () => openRoom('test'),
@@ -2256,7 +2258,11 @@ Object.assign(ACT, {
   'room-switch': () => confirmBox('تنقل الحصة كلها للخدمة الثانية؟ الطلاب يطلع لهم زر «انتقل مع المعلم».', 'انقل', async () => { const sid = ROOM.sid; const to = !ROOM.alt; closeRoom(true); await openRoom(sid, to); }),
 });
 const _render0 = render;
-render = function () { _render0(); roomBar(); };
+// وهو داخل الغرفة بالشاشة الكاملة الصفحة مغطاة: ما نعيد رسمها كل شوي (يخفف الجوال ويمنع التعليق)، نحدّث شريط الغرفة بس
+render = function () {
+  if (window.__inRoom && ROOM.mode === 'full' && $('#modal').hidden) { ROOM.stale = true; roomBar(); return; }
+  ROOM.stale = false; _render0(); roomBar();
+};
 
 /* إعدادات الغرفة (المدير الكامل) */
 function videoSettingsHtml() {
@@ -2917,7 +2923,7 @@ function liveNow() {
 }
 async function pollLoop() {
   if (document.visibilityState === 'visible' && ST.meId && !DRAG.on && ($('#modal').hidden || (ST.rec && ST.rec.where === 'modal'))) { if (!(ST.rec && ST.rec.where === 'modal')) await load(); }
-  setTimeout(pollLoop, liveNow() ? 8000 : 30000);
+  setTimeout(pollLoop, window.__inRoom && ROOM.mode === 'full' ? 12000 : liveNow() ? 8000 : 30000);
 }
 setTimeout(pollLoop, 8000);
 setInterval(() => {
