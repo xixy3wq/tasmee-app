@@ -19,7 +19,7 @@ export async function syncAutoLessons(h: H, opts: { create?: boolean } = {}) {
     ]);
     const used = new Set<string>([...joins, ...recs].map((x) => String(x.lessonId)));
     const free = ls.filter((l) => !used.has(l.id) && !Object.keys((l.att as any) || {}).length);
-    const drop = free.filter((l) => !l.subId && (!h.auto || !h.days.includes(weekday(l.date))));
+    const drop = free.filter((l) => l.date > today && !l.subId && (!h.auto || !h.days.includes(weekday(l.date))));
     const fix = free.filter((l) => !drop.includes(l) && h.time && l.time !== h.time);
     if (drop.length) { await prisma.lesson.deleteMany({ where: { id: { in: drop.map((l) => l.id) } } }); dropped = drop.length; }
     if (fix.length) { await prisma.lesson.updateMany({ where: { id: { in: fix.map((l) => l.id) } }, data: { time: h.time, reminded: false, lateAlerted: false } }); fixed = fix.length; }

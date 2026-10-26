@@ -27,7 +27,9 @@ const hj = (d: string) => { try { return new Intl.DateTimeFormat("ar-SA-u-ca-isl
 const norm = (s: unknown) => String(s ?? "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ًٌٍَُِّْـ]/g, "").replace(/\s+/g, " ").trim();
 const isDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isTime = (s: unknown) => /^\d{1,2}:\d{2}$/.test(String(s || ""));
-const hhmm = (s: unknown) => String(s).padStart(5, "0");
+// الحلقات ما تكون بين 1 و3 الفجر: «3:20» يقصد فيها العصر
+const hhmm = (s: unknown) => { let [h, m] = String(s).split(":").map(Number); if (h >= 1 && h <= 3) h += 12; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); };
+const t12 = (t: string) => { const [h, m] = t.split(":").map(Number); return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "ص" : "م"}`; };
 const mask = (k?: string) => (k ? "••••" + k.slice(-4) : null);
 const ALL_RE = /^(الكل|الجميع|كل الطلاب|كلهم|all)$/i;
 const rnd = (a: number, b: number) => String(crypto.randomInt(a, b));
@@ -155,7 +157,7 @@ const recLine = (r: any) => `${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}
 const STAFF_TOOLS: Tool[] = [
   // الحصص والحضور
   { ok: staff, spec: T("add_lesson", "إضافة حصة إضافية لحلقة", P({ halqa: S("اسم الحلقة"), date: S("YYYY-MM-DD"), time: S("HH:MM بنظام 24 ساعة"), link: S("رابط الحصة (اختياري)"), note: S("ملاحظة") }, ["date"])),
-    build: (a, c) => { const h = halqaOf(c, a.halqa); if (!isDay(a.date)) throw new Error("تاريخ غير صالح"); const tm = isTime(a.time) ? hhmm(a.time) : h.time; return { summary: `➕ حصة إضافية لـ${h.name}: ${wd(a.date)} ${a.date} ${tm}${a.note ? " — " + a.note : ""}`, t: "lesson.save", payload: { data: { halqaId: h.id, date: a.date, time: tm, link: str(a.link, 600), note: str(a.note, 200) } } }; } },
+    build: (a, c) => { const h = halqaOf(c, a.halqa); if (!isDay(a.date)) throw new Error("تاريخ غير صالح"); const tm = isTime(a.time) ? hhmm(a.time) : h.time; return { summary: `➕ حصة إضافية لـ${h.name}: ${wd(a.date)} ${a.date} ${tm ? t12(tm) : ""}${a.note ? " — " + a.note : ""}`, t: "lesson.save", payload: { data: { halqaId: h.id, date: a.date, time: tm, link: str(a.link, 600), note: str(a.note, 200) } } }; } },
   { ok: staff, spec: T("edit_lesson", "تعديل حصة موجودة: تغيير وقتها أو تاريخها أو رابطها أو ملاحظتها، أو تكليف معلم احتياط (للمدير)", P({ halqa: S("اسم الحلقة"), date: S("تاريخ الحصة الحالي YYYY-MM-DD"), new_date: S("التاريخ الجديد"), new_time: S("الوقت الجديد HH:MM"), link: S("الرابط"), note: S("ملاحظة"), substitute_teacher: S("اسم المعلم الاحتياط، أو «بدون» لإلغائه") }, ["date"])),
     build: (a, c, u) => {
       const h = halqaOf(c, a.halqa, { date: a.date }); const l = lessonOf(c, h, a.date);
@@ -163,7 +165,7 @@ const STAFF_TOOLS: Tool[] = [
       const data: any = { date, time, link: a.link !== undefined ? str(a.link, 600) : l.link, note: a.note !== undefined ? str(a.note, 200) : l.note };
       let subTxt = "";
       if (a.substitute_teacher !== undefined && isAdm(u)) { if (/^(بدون|لا|لا يوجد|none)$/i.test(norm(a.substitute_teacher))) { data.subId = ""; subTxt = " · إلغاء الاحتياط"; } else { const t = one(c.teachers, a.substitute_teacher, "المعلم"); data.subId = t.id; subTxt = " · احتياط: " + t.name; } }
-      return { summary: `✎ تعديل حصة ${h.name} (${l.date}): ${wd(date)} ${date} ${time}${subTxt}${a.note ? " — " + a.note : ""}`, t: "lesson.save", payload: { id: l.id, data } };
+      return { summary: `✎ تعديل حصة ${h.name} (${l.date}): ${wd(date)} ${date} ${time ? t12(time) : ""}${subTxt}${a.note ? " — " + a.note : ""}`, t: "lesson.save", payload: { id: l.id, data } };
     } },
   { ok: staff, spec: T("cancel_lesson", "إلغاء حصة حلقة في تاريخ معيّن", P({ halqa: S("اسم الحلقة"), date: S("YYYY-MM-DD"), note: S("سبب الإلغاء") }, ["date"])),
     build: (a, c) => { const h = halqaOf(c, a.halqa, { date: a.date }); const l = lessonOf(c, h, a.date); return { summary: `✖ إلغاء حصة ${h.name}: ${wd(a.date)} ${a.date}${a.note ? " — " + a.note : ""}`, t: "lesson.cancel", payload: { id: l.id, v: true, note: str(a.note, 200) } }; } },
@@ -277,12 +279,22 @@ const STAFF_TOOLS: Tool[] = [
       if (a.teacher !== undefined) { if (/^(بدون|لا|none)$/i.test(norm(a.teacher))) { teacherId = ""; tTxt = "بدون معلم"; } else { const t = one(c.teachers, a.teacher, "المعلم"); teacherId = t.id; tTxt = "المعلم " + t.name; } }
       const days = Array.isArray(a.days) && a.days.length ? a.days.map(dayIdx) : h.days;
       const data = { name: str(a.name, 80) || h.name, days, time: isTime(a.time) ? hhmm(a.time) : h.time, teacherId, link: a.link !== undefined ? str(a.link, 600) : h.link, branch: a.branch !== undefined ? str(a.branch, 60) : (h as any).branch || "", auto: a.auto !== undefined ? !!a.auto : h.auto };
-      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + data.time + (data.time !== h.time ? " (والحصص الجاية تتعدل معها)" : ""), tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
+      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + t12(data.time) + (data.time !== h.time ? " (والحصص الجاية تتعدل معها)" : ""), tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
       if (!ch.length) throw new Error("وش التعديل المطلوب؟");
       return { summary: `✎ تعديل ${h.name}: ${ch.join(" · ")}`, t: "halqa.save", payload: { id: h.id, data } };
     } },
+  { ok: staff, spec: T("set_lessons_time", "تغيير وقت حصص يوم معيّن أو فترة (مثل حصص اليوم أو بكرة أو هالأسبوع) لكل الحلقات أو حلقات محددة، بدون ما يتغير وقت الحلقة الدائم", P({ date: S("اليوم YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري للفترة)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"] (الافتراضي الكل)"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["time"])),
+    build: (a, c) => {
+      if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time);
+      const from = isDay(a.date) ? a.date : localDate(), to = isDay(a.to_date) && a.to_date >= from ? a.to_date : from;
+      const hs = Array.isArray(a.halaqat) && a.halaqat.length ? many(c.halaqat, a.halaqat) : c.halaqat; const hset = new Set(hs.map((h) => h.id));
+      const ls = c.lessons.filter((l) => hset.has(l.halqaId) && l.date >= from && l.date <= to && !l.cancelled);
+      if (!ls.length) throw new Error(`ما فيه حصص ${from === to ? "يوم " + wd(from) + " " + from : "من " + from + " إلى " + to}`);
+      const hn = (id: string) => c.halaqat.find((h) => h.id === id)?.name || "";
+      return { summary: `🕒 ${from === to ? (from === localDate() ? "حصص اليوم" : "حصص " + wd(from) + " " + from) : `الحصص من ${from} إلى ${to}`} (${ls.length}: ${[...new Set(ls.map((l) => hn(l.halqaId)))].join("، ")}) تبدأ ${t12(time)}`, t: "lessons.time", payload: { ids: ls.map((l) => l.id), time } };
+    } },
   { ok: perm("halaqat"), spec: T("set_halaqat_time", "تغيير وقت بداية حلقة أو أكثر (أو كل الحلقات)، وكل الحصص الجاية تتعدل معها مباشرة", P({ halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["halaqat", "time"])),
-    build: (a, c) => { if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time); const hs = many(c.halaqat, a.halaqat); const ch = hs.filter((h) => h.time !== time); return { summary: `🕒 وقت ${ch.length === c.halaqat.length && ch.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} يصير ${time}، والحصص الجاية تتعدل معها`, t: "halqa.time", payload: { ids: hs.map((h) => h.id), time } }; } },
+    build: (a, c) => { if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time); const hs = many(c.halaqat, a.halaqat); const ch = hs.filter((h) => h.time !== time); return { summary: `🕒 وقت ${ch.length === c.halaqat.length && ch.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} يصير ${t12(time)}، والحصص الجاية تتعدل معها`, t: "halqa.time", payload: { ids: hs.map((h) => h.id), time } }; } },
   { ok: perm("settings"), spec: T("add_event", "إضافة اختبار أو مناسبة في تقويم الطلاب", P({ name: S("الاسم"), date: S("YYYY-MM-DD ميلادي"), kind: { type: "string", enum: ["exam", "event"] } }, ["name", "date"])),
     build: (a) => { if (!isDay(a.date)) throw new Error("تاريخ غير صالح"); return { summary: `🗓 ${a.kind === "exam" ? "اختبار" : "مناسبة"}: «${a.name}» — ${wd(a.date)} ${a.date} (${hj(a.date)})`, t: "events.add", payload: { name: a.name, date: a.date, kind: a.kind === "exam" ? "exam" : "event" } }; } },
   { ok: perm("settings"), spec: T("add_holiday", "إضافة إجازة (ما تنعقد فيها حصص)", P({ name: S("الاسم"), from: S("YYYY-MM-DD"), to: S("YYYY-MM-DD") }, ["name", "from"])),
@@ -488,7 +500,7 @@ export async function POST(req: Request) {
       `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بلهجة سعودية مهذبة ومختصرة.`,
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
-      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت الحلقات أو كل الحصص استخدم set_halaqat_time، ولحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
