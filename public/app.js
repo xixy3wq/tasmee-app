@@ -510,9 +510,9 @@ function joinText(j, s) {
   return t;
 }
 function planBrief(st) {
-  const items = planItems(st);
-  if (!items.length) return '<span class="muted">ما حُدّد</span>';
-  return items.map(x => `<span class="por">${x.retry ? '<span class="chip bad">إعادة</span> ' : ''}<span class="muted small">${TYPE[x.type]}:</span> ${esc(SN[x.surah - 1])} <b>﴿${x.from === x.to ? x.from : x.from + '–' + x.to}﴾</b></span>`).join('<br>');
+  const gs = planGroups(st);
+  if (!gs.length) return '<span class="muted">ما حُدّد</span>';
+  return gs.map(g => `<span class="por">${g.retry ? '<span class="chip bad">إعادة</span> ' : ''}<span class="muted small">${TYPE[g.type]}:</span> <b>${esc(partsText(g.parts))}</b>${g.parts.length > 1 ? ` <span class="small muted">(${g.parts.length} سور${partsPages(g.parts) ? '، ' + partsPages(g.parts) : ''})</span>` : ''}</span>`).join('<br>');
 }
 function sessionV(u) {
   const s = S.sessions[ST.sid] && { ...S.sessions[ST.sid], id: ST.sid };
@@ -612,10 +612,22 @@ function profileV(u) {
   ${behavStaffHtml(st)}</div>
   <section class="card"><h2>سجل التسميع</h2>${historyTable(inRange, true)}</section>`;
 }
+// تسميع انحفظ مرة وحدة لنفس النوع والتقدير (مقطع يمتد على أكثر من سورة) → عنصر واحد، مرتب حسب المصحف
+// ترتيب سور المقطع حسب اتجاه حفظ الطالب (من الناس للبقرة، أو العكس)
+const recOrder = uid => { const a = (planOf(S.users[uid] || {}).auto || {}); return a.dir === 'fwd' ? (x, y) => x.surah - y.surah || x.from - y.from : (x, y) => y.surah - x.surah || x.from - y.from; };
+function recMerge(rs) {
+  const out = []; rs.forEach(r => { const l = out[out.length - 1]; if (l && r.at && l.at === r.at && l.uid === r.uid && l.type === r.type && l.grade === r.grade && l.sid === r.sid) l.items.push(r); else out.push({ ...r, items: [r] }); });
+  out.forEach(g => g.items.sort(recOrder(g.uid))); return out;
+}
 function historyTable(rs, editable, noDate) {
   if (!rs.length) return '<div class="empty small">ما فيه تسميع في هذه الفترة.</div>';
+  const row = (r, sub) => `<tr${sub ? ' class="sub-row"' : ''}><td>${noDate ? esc((S.users[r.uid] || {}).name || '—') : fmtDate(r.date) + (r.sid ? '' : ' <span class="chip">خارج الحصة</span>')}</td><td>${TYPE[r.type] || ''}${r.full ? ' <span class="chip acc">سورة كاملة</span>' : ''}</td><td>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}</td><td class="num">${fmtPages(recPages(r))}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td class="num">${r.quick ? '—' : r.alerts}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${esc(r.grade)}</span></td><td class="num">${r.secs ? fmtDur(r.secs) : ''}</td><td style="white-space:normal;min-width:120px">${esc(r.note || '')}</td>${editable ? `<td><button class="btn ghost sm" data-act="edit-rec" data-id="${r.id}">تعديل</button><button class="btn ghost sm" data-act="del-rec" data-id="${r.id}">حذف</button></td>` : ''}</tr>`;
+  // التسميع اللي انحفظ مرة وحدة ويمتد على أكثر من سورة (نفس النوع والتقدير) ينعرض سطر واحد، و«تفصيل» يفتحه
+  const grp = row0 => { const it = [...row0.items].sort(recOrder(row0.uid)); const a = it[0], z = it[it.length - 1]; const k = row0.uid + '_' + row0.at + '_' + row0.type; const open = (ST.recOpen || {})[k];
+    return `<tr class="grp-row"><td>${noDate ? esc((S.users[a.uid] || {}).name || '—') : fmtDate(a.date) + (a.sid ? '' : ' <span class="chip">خارج الحصة</span>')}</td><td>${TYPE[a.type] || ''}</td><td><span class="por">من ${esc(SN[a.surah - 1])} ${a.from} إلى ${esc(SN[z.surah - 1])} ${z.to}</span> <span class="small muted">(${it.length} سور)</span></td><td class="num">${fmtPages(it.reduce((t, r) => t + recPages(r), 0))}</td><td class="num">${a.quick ? '—' : it.reduce((t, r) => t + (+r.mistakes || 0), 0)}</td><td class="num">${a.quick ? '—' : it.reduce((t, r) => t + (+r.alerts || 0), 0)}</td><td><span class="chip ${GRADE_K[a.grade] || ''}">${esc(a.grade)}</span></td><td class="num">${(it.find(r => r.secs) || {}).secs ? fmtDur(it.find(r => r.secs).secs) : ''}</td><td style="white-space:normal;min-width:120px">${esc((it.find(r => r.note) || {}).note || '')}</td>${editable ? `<td><button class="btn ghost sm" data-act="rec-open" data-k="${esc(k)}">${open ? 'إخفاء' : 'تفصيل'}</button></td>` : ''}</tr>${open ? it.map(r => row(r, true)).join('') : ''}`; };
+  const groups = []; rs.forEach(r => { const l = groups[groups.length - 1]; if (l && r.at && l.at === r.at && l.uid === r.uid && l.type === r.type && l.grade === r.grade && l.sid === r.sid) l.items.push(r); else groups.push({ ...r, items: [r] }); });
   return `<div class="tbl-wrap"><table><thead><tr>${noDate ? '<th>الطالب</th>' : '<th>التاريخ</th>'}<th>النوع</th><th>المقطع</th><th class="num">أوجه</th><th class="num">أخطاء</th><th class="num">تنبيهات</th><th>التقدير</th><th class="num">المدة</th><th>ملاحظة</th>${editable ? '<th></th>' : ''}</tr></thead><tbody>
-  ${rs.slice(0, 80).map(r => `<tr><td>${noDate ? esc((S.users[r.uid] || {}).name || '—') : fmtDate(r.date) + (r.sid ? '' : ' <span class="chip">خارج الحصة</span>')}</td><td>${TYPE[r.type] || ''}${r.full ? ' <span class="chip acc">سورة كاملة</span>' : ''}</td><td>${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}</td><td class="num">${fmtPages(recPages(r))}</td><td class="num">${r.quick ? '—' : r.mistakes}</td><td class="num">${r.quick ? '—' : r.alerts}</td><td><span class="chip ${GRADE_K[r.grade] || ''}">${esc(r.grade)}</span></td><td class="num">${r.secs ? fmtDur(r.secs) : ''}</td><td style="white-space:normal;min-width:120px">${esc(r.note || '')}</td>${editable ? `<td><button class="btn ghost sm" data-act="edit-rec" data-id="${r.id}">تعديل</button><button class="btn ghost sm" data-act="del-rec" data-id="${r.id}">حذف</button></td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+  ${groups.slice(0, 80).map(g => g.items.length > 1 ? grp(g) : row(g.items[0])).join('')}</tbody></table></div>`;
 }
 
 /* ---- admin: teachers ---- */
@@ -813,11 +825,11 @@ function studentAnnsHtml(u) {
 
 /* ---- student: tasks, motivation ---- */
 function tasksHtml(u) {
-  const t = today(); const w = wirdOf(u.id, t) || {}; const items = planItems(u);
+  const t = today(); const w = wirdOf(u.id, t) || {}; const items = planGroups(u);
   const doneSet = new Set((w.items || []).filter(x => x.done).map(x => x.k));
   if (isPaused(u)) return `<section class="card"><h2>مهام اليوم</h2><div class="note">خطتك موقوفة مؤقتًا${u.plan.paused.reason ? ': ' + esc(u.plan.paused.reason) : ''}.</div></section>`;
   return `<form class="card" data-form="wird" style="gap:10px"><div class="sec-head"><h2>مهام اليوم</h2>${w.items ? '<span class="chip ok">محفوظة</span>' : ''}</div>
-    ${items.length ? items.map((x, i) => { const k = itemLabel(x); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${x.retry ? 'إعادة ' : ''}${x.type === 'new' ? 'احفظ' : 'راجع'} ${esc(SN[x.surah - 1])} <b class="num">${x.from === x.to ? x.from : x.from + '–' + x.to}</b></span></label>`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
+    ${items.length ? items.map((g, i) => { const k = groupKey(g); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${g.retry ? 'إعادة ' : ''}${g.type === 'new' ? 'احفظ' : 'راجع'} <b>${esc(partsText(g.parts))}</b>${g.parts.length > 1 && partsPages(g.parts) ? ` <span class="small muted">${partsPages(g.parts)}</span>` : ''}</span></label>`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
     <div class="row"><label class="fld" style="flex:0 1 200px"><span>ورد التلاوة اليوم (أوجه)</span><input id="wd-read" name="read" type="number" min="0" max="604" inputmode="numeric" value="${w.read || ''}"></label>
     <label class="fld" style="flex:1 1 200px"><span>ملاحظة (اختياري)</span><input id="wd-note" name="note" maxlength="200" value="${esc(w.note || '')}"></label></div>
     <div><button class="btn pri" type="submit">حفظ</button></div></form>`;
@@ -981,7 +993,7 @@ function handoverText(hid) {
   studentsOf(hid).forEach((st, i) => {
     const items = planItems(st); const rs = recsOf(st.id).slice(0, 3); const a = attStats(st, 30);
     lines.push(`${i + 1}. ${st.name}${st.parentPhone ? ' · ولي الأمر: ' + st.parentPhone : ''}`);
-    lines.push(`   الخطة: ${isAuto(st) ? 'تلقائية' : 'يدوية'}${isPaused(st) ? ' (موقوفة)' : ''} · المطلوب: ${items.length ? items.map(itemLabel).join('، ') : 'ما حُدّد'}`);
+    lines.push(`   الخطة: ${isAuto(st) ? 'تلقائية' : 'يدوية'}${isPaused(st) ? ' (موقوفة)' : ''} · المطلوب: ${items.length ? planGroups(st).map(groupLabel).join('، ') : 'ما حُدّد'}`);
     lines.push(`   الحضور آخر 30 يوم: ${a.rate == null ? '—' : a.rate + '٪'} · آخر تسميع: ${rs.length ? rs.map(r => `${fmtDate(r.date)} ${SN[r.surah - 1]} ${r.from}-${r.to} (${r.grade})`).join(' | ') : '—'}`);
     const g = goalProgress(st); if (g) lines.push(`   الهدف: ${fmtPages(g.done)} من ${fmtPages(g.pages)} وجه`);
   });
@@ -1292,17 +1304,43 @@ function planItems(st) {
   retriesOf(st).forEach(r => { if (!out.some(o => o.type === r.type && o.surah === r.surah && o.from === r.from && o.to === r.to)) out.unshift({ type: r.type, surah: r.surah, from: r.from, to: r.to, retry: true }); });
   return out;
 }
+// المقاطع المتتالية من نفس النوع (مثل مراجعة 20 وجه في جزء عمّ تمتد على 20 سورة) تنعرض كمقطع واحد بدل سطر لكل سورة
+function planGroups(st) {
+  const out = [];
+  planItems(st).forEach(x => { const l = out[out.length - 1]; if (l && l.type === x.type && !!l.retry === !!x.retry) l.parts.push(x); else out.push({ type: x.type, retry: !!x.retry, parts: [x] }); });
+  return out;
+}
+const partsText = ps => { const a = ps[0], z = ps[ps.length - 1]; return ps.length === 1 ? `${SN[a.surah - 1]} ${a.from === a.to ? a.from : a.from + '–' + a.to}` : `من ${SN[a.surah - 1]} ${a.from} إلى ${SN[z.surah - 1]} ${z.to}`; };
+const partsPages = ps => { const a = ps[0], z = ps[ps.length - 1]; const p1 = pageOf(a.surah - 1, +a.from), p2 = pageOf(z.surah - 1, +z.to); return p1 && p2 ? (p1 === p2 ? `ص ${p1}` : `ص ${Math.min(p1, p2)}–${Math.max(p1, p2)}`) : ''; };
+const groupKey = g => g.parts.length === 1 ? itemLabel(g.parts[0]) : `${TYPE[g.type]} ${partsText(g.parts)}`;
+const groupLabel = g => `${g.retry ? 'إعادة ' : ''}${TYPE[g.type]}: ${partsText(g.parts)}`;
 const blankSeg = (type = 'new') => ({ type, surah: '', from: '', to: '', m: 0, a: 0, full: false, q: '' });
 function startRec(uid, sid, where, date) {
   const st = { ...S.users[uid], id: uid }; const items = planItems(st);
   const autoT = !!(+SET().recMin) && !!sid;
   ST.rec = { uid, sid: sid || '', where, date: date || today(), quick: false, secs: 0, run: autoT, t0: autoT ? Date.now() : 0, note: '',
-    segs: items.length ? items.map(x => ({ ...blankSeg(x.type), surah: x.surah, from: x.from, to: x.to, retry: !!x.retry })) : [blankSeg()] };
+    segs: items.length ? planGroups(st).map(g => g.parts.length === 1 ? ({ ...blankSeg(g.type), surah: g.parts[0].surah, from: g.parts[0].from, to: g.parts[0].to, retry: g.retry }) : ({ ...blankSeg(g.type), retry: g.retry, parts: g.parts.map(x => ({ surah: x.surah, from: x.from, to: x.to })) })) : [blankSeg()] };
 }
 const recSecs = () => ST.rec ? ST.rec.secs + (ST.rec.run ? Math.floor((Date.now() - ST.rec.t0) / 1000) : 0) : 0;
 const fmtDur = s => Math.floor(s / 60) + ':' + pad(s % 60);
 function segGrade(g) { return ST.rec.quick ? (g.q ? { k: GRADE_K[g.q], t: g.q } : null) : gradeOf(g.m, g.a); }
+function tallyHtml(g, i) {
+  return ST.rec.quick ? `<div class="qgrades">${['ممتاز', 'جيد جدًا', 'جيد', 'يعاد'].map(t => `<button class="btn ${g.q === t ? 'pri' : ''}" data-act="rk-q" data-i="${i}" data-v="${t}">${t}</button>`).join('')}</div>`
+    : `<div class="tally"><div class="tl"><span>الأخطاء</span><div class="tl-row"><button class="btn tb" data-act="rk-inc" data-i="${i}" data-k="m" data-d="-1" aria-label="إنقاص خطأ">−</button><b class="num">${g.m}</b><button class="btn tb big-t" data-act="rk-inc" data-i="${i}" data-k="m" data-d="1">+ خطأ</button></div></div>
+        <div class="tl"><span>التنبيهات</span><div class="tl-row"><button class="btn tb" data-act="rk-inc" data-i="${i}" data-k="a" data-d="-1" aria-label="إنقاص تنبيه">−</button><b class="num">${g.a}</b><button class="btn tb big-t" data-act="rk-inc" data-i="${i}" data-k="a" data-d="1">+ تنبيه</button></div></div></div>`;
+}
+// مقطع يمتد على أكثر من سورة: سطر واحد وتقدير واحد، و«تفصيل» يفكه سورة سورة لو احتاج المعلم
+function spanHtml(g, i) {
+  const gr = segGrade(g); const pg = partsPages(g.parts);
+  return `<div class="seg-box span-seg">
+    <div class="row" style="justify-content:space-between"><div class="row"><span class="chip acc">${TYPE[g.type]}</span>${g.retry ? '<span class="chip bad">إعادة</span>' : ''}${gr ? `<span class="chip ${gr.k}">${gr.t}</span>` : ''}</div>
+      <div class="row"><button class="btn ghost sm" data-act="rk-split" data-i="${i}">تفصيل بالسور</button>${ST.rec.segs.length > 1 ? `<button class="btn ghost sm" data-act="rk-rm" data-i="${i}" aria-label="حذف المقطع">✕</button>` : ''}</div></div>
+    <div class="span-t"><b>${esc(partsText(g.parts))}</b><span class="small muted">${g.parts.length} سور${pg ? ' · ' + pg : ''}</span></div>
+    ${tallyHtml(g, i)}
+  </div>`;
+}
 function segHtml(g, i) {
+  if (g.parts) return spanHtml(g, i);
   const n = AYAS[+g.surah - 1]; const gr = segGrade(g);
   return `<div class="seg-box">
     <div class="row" style="justify-content:space-between"><div class="row"><select id="rk-t-${i}" data-rf="type" data-i="${i}">${Object.keys(TYPE).map(k => `<option value="${k}" ${g.type === k ? 'selected' : ''}>${TYPE[k]}</option>`).join('')}</select>${g.retry ? '<span class="chip bad">إعادة</span>' : ''}${gr ? `<span class="chip ${gr.k}">${gr.t}</span>` : ''}</div>${ST.rec.segs.length > 1 ? `<button class="btn ghost sm" data-act="rk-rm" data-i="${i}" aria-label="حذف المقطع">✕</button>` : ''}</div>
@@ -1310,9 +1348,7 @@ function segHtml(g, i) {
       <input id="rk-f-${i}" data-rf="from" data-i="${i}" type="number" inputmode="numeric" min="1" ${n ? `max="${n}"` : ''} placeholder="من آية" aria-label="من آية" value="${g.full ? 1 : esc(g.from)}" ${g.full ? 'disabled' : ''}>
       <input id="rk-to-${i}" data-rf="to" data-i="${i}" type="number" inputmode="numeric" min="1" ${n ? `max="${n}"` : ''} placeholder="إلى آية" aria-label="إلى آية" value="${g.full ? (n || '') : esc(g.to)}" ${g.full ? 'disabled' : ''}></div>
     <label class="check small"><input type="checkbox" id="rk-full-${i}" data-rf="full" data-i="${i}" ${g.full ? 'checked' : ''}> السورة كاملة${n ? ` (${n} آية)` : ''}</label>
-    ${ST.rec.quick ? `<div class="qgrades">${['ممتاز', 'جيد جدًا', 'جيد', 'يعاد'].map(t => `<button class="btn ${g.q === t ? 'pri' : ''}" data-act="rk-q" data-i="${i}" data-v="${t}">${t}</button>`).join('')}</div>`
-      : `<div class="tally"><div class="tl"><span>الأخطاء</span><div class="tl-row"><button class="btn tb" data-act="rk-inc" data-i="${i}" data-k="m" data-d="-1" aria-label="إنقاص خطأ">−</button><b class="num">${g.m}</b><button class="btn tb big-t" data-act="rk-inc" data-i="${i}" data-k="m" data-d="1">+ خطأ</button></div></div>
-        <div class="tl"><span>التنبيهات</span><div class="tl-row"><button class="btn tb" data-act="rk-inc" data-i="${i}" data-k="a" data-d="-1" aria-label="إنقاص تنبيه">−</button><b class="num">${g.a}</b><button class="btn tb big-t" data-act="rk-inc" data-i="${i}" data-k="a" data-d="1">+ تنبيه</button></div></div></div>`}
+    ${tallyHtml(g, i)}
   </div>`;
 }
 function recPanelHtml() {
@@ -1333,7 +1369,13 @@ function refreshRec() { if (!ST.rec) return; if (ST.rec.where === 'modal') { con
 async function saveRec(next) {
   const R = ST.rec; if (!R) return;
   const items = [];
-  for (const g of R.segs) {
+  for (const [gi, g] of R.segs.entries()) {
+    if (g.parts) {
+      if (R.quick && !g.q) return toast('اختر التقدير لكل مقطع');
+      // كل سورة تنحفظ لحالها، والتقدير واحد للمقطع كله (الأخطاء على أول سطر)
+      g.parts.forEach((x, k) => items.push({ type: g.type, surah: +x.surah, from: +x.from, to: +x.to, full: +x.from === 1 && +x.to === AYAS[x.surah - 1], mistakes: k ? 0 : g.m, alerts: k ? 0 : g.a, quickGrade: R.quick ? g.q : undefined, grp: 'g' + gi }));
+      continue;
+    }
     const s = +g.surah; const n = AYAS[s - 1];
     if (!n) return toast('اختر السورة لكل مقطع');
     const from = g.full ? 1 : +g.from, to = g.full ? n : +g.to;
@@ -1563,7 +1605,9 @@ const ACT = {
   'rk-timer': () => { const R = ST.rec; if (R.run) { R.secs = recSecs(); R.run = false; } else { R.run = true; R.t0 = Date.now(); } refreshRec(); },
   'rk-treset': () => { Object.assign(ST.rec, { secs: 0, run: false }); refreshRec(); },
   'rk-plan': () => { const R = ST.rec; const keep = { quick: R.quick, secs: R.secs, run: R.run, t0: R.t0, note: R.note, date: R.date }; startRec(R.uid, R.sid, R.where); Object.assign(ST.rec, keep); refreshRec(); },
+  'rec-open': el => { ST.recOpen = ST.recOpen || {}; ST.recOpen[el.dataset.k] = !ST.recOpen[el.dataset.k]; render(); },
   'rk-add': () => { ST.rec.segs.push(blankSeg('review')); refreshRec(); },
+  'rk-split': el => { const i = +el.dataset.i; const g = ST.rec.segs[i]; if (!g || !g.parts) return; ST.rec.segs.splice(i, 1, ...g.parts.map((x, k) => ({ ...blankSeg(g.type), surah: x.surah, from: x.from, to: x.to, retry: g.retry, m: k ? 0 : g.m, a: k ? 0 : g.a, q: g.q }))); refreshRec(); },
   'rk-rm': el => { ST.rec.segs.splice(+el.dataset.i, 1); refreshRec(); },
   'rk-inc': el => { const g = ST.rec.segs[+el.dataset.i]; g[el.dataset.k] = Math.max(0, (+g[el.dataset.k] || 0) + +el.dataset.d); refreshRec(); },
   'rk-q': el => { ST.rec.segs[+el.dataset.i].q = el.dataset.v; refreshRec(); },
@@ -1785,7 +1829,7 @@ const FORMS = {
     if (await act('ann.save', { title: d.get('title'), body: d.get('body'), halqaId: d.get('halqaId') || '' }, 'نُشر الإعلان')) { f.reset(); clean(); }
   },
   async wird(f, d) {
-    const done = new Set(d.getAll('it')); const items = planItems(me()).map(x => ({ k: itemLabel(x), done: done.has(itemLabel(x)) }));
+    const done = new Set(d.getAll('it')); const items = planGroups(me()).map(g => ({ k: groupKey(g), done: done.has(groupKey(g)) }));
     if (await act('wird.save', { date: today(), items, read: +d.get('read') || 0, note: d.get('note') || '' }, 'حُفظت مهام اليوم')) clean();
   },
   async 'tpl-apply'(f, d) {
@@ -1942,8 +1986,8 @@ function liveV(u) {
 function rec1V(s) {
   const R = ST.rec; if (!R || R.where !== 'fs') return '';
   const st = S.users[R.uid] || {}; const q = (s.queue || []).filter(id => S.users[id] && id !== R.uid); const nx = q[0] ? S.users[q[0]] : null;
-  const i = Math.min(R.cur || 0, R.segs.length - 1); R.cur = i; const g = R.segs[i]; if (!g.surah && R.edit === undefined) R.edit = true; const gr = segGrade(g); const n = AYAS[+g.surah - 1];
-  const segLabel = x => x.surah ? `${esc(SN[x.surah - 1])} ${x.full ? 'كاملة' : '﴿' + (x.from === x.to ? x.from : x.from + '–' + x.to) + '﴾'}` : 'حدد المقطع';
+  const i = Math.min(R.cur || 0, R.segs.length - 1); R.cur = i; const g = R.segs[i]; if (!g.surah && !g.parts && R.edit === undefined) R.edit = true; const gr = segGrade(g); const n = AYAS[+g.surah - 1];
+  const segLabel = x => x.parts ? esc(partsText(x.parts)) + ` <span class="small muted">(${x.parts.length} سور)</span>` : x.surah ? `${esc(SN[x.surah - 1])} ${x.full ? 'كاملة' : '﴿' + (x.from === x.to ? x.from : x.from + '–' + x.to) + '﴾'}` : 'حدد المقطع';
   const tabs = R.segs.length > 1 ? `<div class="r1-tabs">${R.segs.map((x, k) => { const gk = segGrade(x); return `<button class="r1-tab ${k === i ? 'on' : ''}" data-act="r1-seg" data-i="${k}"><span>${TYPE[x.type]}</span>${gk ? `<i class="c-${gk.k}">${gk.t}</i>` : ''}</button>`; }).join('')}</div>` : '';
   const counters = R.quick
     ? `<div class="r1-quick">${['ممتاز', 'جيد جدًا', 'جيد', 'يعاد'].map(t => `<button class="r1-q ${g.q === t ? 'on ' + GRADE_K[t] : ''}" data-act="rk-q" data-i="${i}" data-v="${t}">${t}</button>`).join('')}</div>`
@@ -1955,7 +1999,7 @@ function rec1V(s) {
     <div class="r1-head"><div class="r1-who"><b>${esc(st.name || '')}</b>${nx ? `<span>التالي: ${esc((nx.name || '').split(' ').slice(0, 2).join(' '))}</span>` : '<span>آخر واحد في الطابور</span>'}</div>
       <button class="r1-timer ${R.run ? 'run' : ''}" data-act="rk-timer"><span class="num" data-timer>${fmtDur(recSecs())}</span><small>${R.run ? 'إيقاف' : 'توقيت'}</small></button></div>
     ${tabs}
-    <div class="r1-seg"><div class="r1-seg-t"><span class="chip">${TYPE[g.type]}</span>${g.retry ? '<span class="chip bad">إعادة</span>' : ''}<b>${segLabel(g)}</b>${g.surah ? pageTag(+g.surah, g.full ? 1 : +g.from, g.full ? n : +g.to) : ''}</div>
+    <div class="r1-seg"><div class="r1-seg-t"><span class="chip">${TYPE[g.type]}</span>${g.retry ? '<span class="chip bad">إعادة</span>' : ''}<b>${segLabel(g)}</b>${g.parts ? (partsPages(g.parts) ? ` <span class="pg">${partsPages(g.parts)}</span>` : '') : g.surah ? pageTag(+g.surah, g.full ? 1 : +g.from, g.full ? n : +g.to) : ''}</div>
       <button class="btn ghost sm" data-act="r1-edit">${R.edit ? 'تم' : 'تعديل'}</button></div>
     ${R.edit ? `${segHtml(g, i)}<div class="row"><button class="btn sm" data-act="rk-add">+ مقطع</button><label class="check small"><input type="checkbox" id="rk-quick" data-rn="quick" ${R.quick ? 'checked' : ''}> تقييم سريع بدون عدّ</label></div>` : counters}
     <div class="r1-grade ${gr ? gr.k : ''}">${gr ? gr.t : 'اختر التقدير'}</div>
@@ -2296,10 +2340,10 @@ function afterLessonHtml(u) {
   const rs = L('recs').filter(r => r.uid === u.id && (r.sid === s.id || (!r.sid && r.date === s.date)));
   const v = (s.att || {})[u.id];
   if (!rs.length && !v) return '';
-  const next = planItems(u);
+  const next = planGroups(u);
   return `<section class="card after"><div class="sec-head"><h2>ملخص حصة ${s.date === t ? 'اليوم' : fmtDate(s.date)}</h2>${v ? `<span class="chip ${ATTC[v]}">${ATT[v]}</span>` : ''}</div>
-    ${rs.length ? `<div class="list">${rs.map(r => `<div class="item"><div class="grow"><span class="small muted">${TYPE[r.type]}</span> ${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}${r.note ? `<div class="small">${esc(r.note)}</div>` : ''}</div><span class="chip ${GRADE_K[r.grade] || ''}">${esc(r.grade)}</span></div>`).join('')}</div>` : '<div class="small muted">ما سمّع في هالحصة.</div>'}
-    ${next.length ? `<div class="after-next"><b>المطلوب للحصة الجاية</b><div>${next.map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${esc(SN[x.surah - 1])} ${x.from === x.to ? x.from : x.from + '–' + x.to}`).join(' · ')}</div></div>` : ''}</section>`;
+    ${rs.length ? `<div class="list">${recMerge(rs).map(r => `<div class="item"><div class="grow"><span class="small muted">${TYPE[r.type]}</span> ${r.items.length > 1 ? `<span class="por">${esc(partsText(r.items))}</span> <span class="small muted">(${r.items.length} سور)</span>` : segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}${r.note ? `<div class="small">${esc(r.note)}</div>` : ''}</div><span class="chip ${GRADE_K[r.grade] || ''}">${esc(r.grade)}</span></div>`).join('')}</div>` : '<div class="small muted">ما سمّع في هالحصة.</div>'}
+    ${next.length ? `<div class="after-next"><b>المطلوب للحصة الجاية</b><div>${next.map(g => esc(groupLabel(g))).join(' · ')}</div></div>` : ''}</section>`;
 }
 function behavStudentHtml(u) {
   const bs = L('behav').filter(b => b.uid === u.id).sort((a, b) => b.at - a.at).slice(0, 3);
@@ -2681,8 +2725,8 @@ async function aiSend(text, retry) {
   AI.busy = true; aiSave(); aiRender();
   const ta = document.getElementById('ai-q'); if (ta && !retry) ta.value = '';
   try {
-    const u0 = me(); const due = u0 && u0.role === 'student' ? planItems(u0).map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${SN[x.surah - 1]} ${x.from === x.to ? x.from : x.from + '-' + x.to}`).join('، ') : '';
-    const tasks = u0 && u0.role === 'student' ? planItems(u0).map(itemLabel) : undefined;
+    const u0 = me(); const due = u0 && u0.role === 'student' ? planGroups(u0).map(g => groupLabel(g) + (g.parts.length > 1 && partsPages(g.parts) ? ` (${partsPages(g.parts)})` : '')).join('، ') : '';
+    const tasks = u0 && u0.role === 'student' ? planGroups(u0).map(groupKey) : undefined;
     const r = await aiApi({ t: 'chat', due, tasks, messages: AI.msgs.filter(m => !m.err && !/^⚠ /.test(m.text)).map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
     AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] }); if (r.left != null) AI.left = r.left;
   } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message, err: true }); }

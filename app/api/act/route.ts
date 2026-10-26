@@ -464,7 +464,7 @@ const A: Record<string, H> = {
     const settings = await getSettings();
     const date = lesson ? lesson.date : validDate(str(b.date)) ? str(b.date) : localDate();
     const secs = Math.max(0, Math.min(6 * 3600, int(b.secs))) || null;
-    const rows: any[] = [];
+    const rows: any[] = []; const grps: string[] = [];
     for (const it of items) {
       const type = ["new", "review", "tath"].includes(it.type) ? it.type : "new";
       const surah = int(it.surah); const full = !!it.full;
@@ -474,6 +474,14 @@ const A: Record<string, H> = {
       const mistakes = quick ? 0 : Math.max(0, int(it.mistakes)), alerts = quick ? 0 : Math.max(0, int(it.alerts));
       const g = quick ? { t: it.quickGrade, pass: it.quickGrade !== "يعاد" } : gradeOf(settings, mistakes, alerts);
       rows.push({ userId: st.id, lessonId: lesson?.id ?? null, halqaId: st.halqaId, date, type, surah, fromA: from, toA: to, mistakes, alerts, grade: g.t, pass: g.pass, full, quick, note: str(b.note ?? it.note, 300), secs: rows.length ? null : secs, byId: u.id });
+      grps.push(str(it.grp, 20));
+    }
+    // مقطع واحد يمتد على أكثر من سورة: كل سورة سطر، والتقدير واحد محسوب من مجموع أخطاء المقطع
+    for (const key of new Set(grps.filter(Boolean))) {
+      const idx = grps.map((k, i) => (k === key ? i : -1)).filter((i) => i >= 0); if (idx.length < 2) continue;
+      const first = rows[idx[0]];
+      const g = first.quick ? { t: first.grade, pass: first.pass } : gradeOf(settings, idx.reduce((t, i) => t + rows[i].mistakes, 0), idx.reduce((t, i) => t + rows[i].alerts, 0));
+      for (const i of idx) { rows[i].grade = g.t; rows[i].pass = g.pass; }
     }
     await prisma.rec.createMany({ data: rows });
     const wcfg = await waCfg();
@@ -481,7 +489,9 @@ const A: Record<string, H> = {
       const phone = String(((st.info as any) || {}).parentPhone || "");
       const all = await prisma.rec.findMany({ where: { userId: st.id, ...(lesson ? { lessonId: lesson.id } : { date }) }, orderBy: { at: "asc" } });
       const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null;
-      const lines = all.map((r) => `- ${TYPE_AR[r.type]}: ${SN[r.surah - 1]} ${r.fromA}-${r.toA} (${r.grade}${r.quick ? "" : "، أخطاء " + r.mistakes}${r.note ? "، " + r.note : ""})`).join("\n");
+      // المقاطع المتتالية من نفس الحفظة (نفس النوع والتقدير) سطر واحد بدل سطر لكل سورة
+      const mg: any[] = []; for (const r of all) { const l = mg[mg.length - 1]; if (l && +l.at === +r.at && l.type === r.type && l.grade === r.grade) { l.list.push(r); l.mistakes += r.mistakes; } else mg.push({ ...r, list: [r] }); }
+      const lines = mg.map((m) => { const fwd = planOf(st).auto.dir === "fwd"; const it = [...m.list].sort((x: any, y: any) => (fwd ? x.surah - y.surah : y.surah - x.surah) || x.fromA - y.fromA); const a = it[0], z = it[it.length - 1]; return `- ${TYPE_AR[m.type]}: ${it.length > 1 ? `من ${SN[a.surah - 1]} ${a.fromA} إلى ${SN[z.surah - 1]} ${z.toA}` : `${SN[a.surah - 1]} ${a.fromA}-${a.toA}`} (${m.grade}${m.quick ? "" : "، أخطاء " + m.mistakes}${it.find((x: any) => x.note)?.note ? "، " + it.find((x: any) => x.note).note : ""})`; }).join("\n");
       if (phone) await queueMsg(`rec-${lesson ? lesson.id : date}-${st.id}`, "rec", phone, fillVars(wcfg.tplRec, { student: st.name, halqa: h?.name || "", date: fmtD(date), rec: lines }), wcfg.delayMin, { userId: st.id, lessonId: lesson?.id });
     }
     // تقدّم الخطة التلقائية بعد النجاح فقط

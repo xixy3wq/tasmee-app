@@ -669,3 +669,9 @@ body:has(.sticky-join) .ai-fab{bottom:calc(150px + env(safe-area-inset-bottom,0p
 .wa-prog{display:grid;gap:4px}
 .ai-res{user-select:all;font-weight:700}
 @media (max-width:640px){.wa-pick{grid-template-columns:1fr;max-height:none}}
+/* مقطع تسميع يمتد على أكثر من سورة */
+.span-seg{border-inline-start:3px solid var(--accent)}
+.span-t{display:grid;gap:2px;font-size:1rem}
+.grp-row td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.sub-row td{font-size:.85rem;color:var(--muted)}
+.sub-row td:first-child{padding-inline-start:22px}
