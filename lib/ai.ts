@@ -21,7 +21,7 @@ function toGemini(s: unknown): unknown {
 
 // النماذج البديلة: إذا كان نموذج مزحوم أو بطيء ننتقل للي بعده تلقائياً
 // الترتيب: الأسرع في استدعاء الأدوات أول (فلاش)، وبعده الخفيف
-const GEMINI_FALLBACK = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash"];
+const GEMINI_FALLBACK = ["gemini-flash-latest", "gemini-flash-lite-latest"];
 const busyErr = (status: number, msg: string) => [429, 500, 502, 503, 504].includes(status) || /overload|high demand|unavailable|try again|timeout|aborted/i.test(msg);
 // التفكير الطويل يبطّئ الرد كثير: نطفيه أو نخليه بأقل مستوى. كل نموذج يقبل صيغة مختلفة، فنجرب ونتذكر اللي ينفع
 // نماذج 2.5 نطفي تفكيرها (أسرع بكثير)، والنماذج الأحدث نخليها على وضعها الافتراضي لأن إطفاءه يضعف استخدامها للأدوات
