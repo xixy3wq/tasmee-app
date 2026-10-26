@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { SN, AYAS, validRange, ORD, TOTAL, SSTART, gOf } from "@/lib/quran";
 import { mushafData } from "@/lib/pages";
 import { waCfg, fillVars } from "@/lib/wa";
-import { aiCfg, aiOn, callLlm, TRACE, type ToolSpec, type ChatMsg } from "@/lib/ai";
+import { aiCfg, aiOn, callLlm, type ToolSpec, type ChatMsg } from "@/lib/ai";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -506,16 +506,4 @@ export async function POST(req: Request) {
     const actions = await runTools(out.calls || [], (n) => { const x = tools.find((y) => y.spec.name === n); return x ? (a: any) => x.build(a, ctx, u) : null; });
     return { text: out.text || (actions.length ? "جهزت لك التالي، راجعه واضغط «تنفيذ»:" : "…"), actions };
   });
-}
-
-// فحص مؤقت (ينشال بعد التأكد)
-const gx = globalThis as unknown as { aiSelf?: number };
-export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("selftest") !== "5") return Response.json({ ok: false });
-  if (Date.now() - (gx.aiSelf || 0) < 60000) return Response.json({ wait: true });
-  gx.aiSelf = Date.now(); const t0 = Date.now(); TRACE.length = 0;
-  const cfg = await aiCfg(); let models: string[] = [];
-  try { const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": cfg.gemini || "" } }); const d: any = await r.json(); models = (d.models || []).filter((m: any) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m: any) => String(m.name).replace("models/", "")).filter((n: string) => /flash|gemini/.test(n)); } catch {}
-  try { const o = await llmActs("أنت مساعد. جاوب باختصار.", [{ role: "user", text: "كم عدد أجزاء القرآن؟ وأضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec), cfg); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c: any) => c.name), text: o.text.slice(0, 80), trace: TRACE, models }); }
-  catch (e: any) { return Response.json({ ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 300), trace: TRACE, models }); }
 }
