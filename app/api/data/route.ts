@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { APP_V } from "@/lib/version";
 import { processQueue, waCfg } from "@/lib/wa";
 import { videoCfg, videoOn } from "@/lib/video";
+import { scopeHalqaIds } from "@/lib/scope";
+import { checkLate } from "@/lib/late";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -12,7 +14,7 @@ export const dynamic = "force-dynamic";
 const userOut = (u: any) => ({
   role: u.role, status: u.status, name: u.name, username: u.username, halqaId: u.halqaId, reqHalqa: u.reqHalqaId || "",
   canPlan: u.canPlan, canAuto: u.canAuto, autoAllowed: u.autoAllowed, plan: u.plan || null,
-  goal: u.goal || null, perms: u.role === "admin" ? (u.perms ?? null) : undefined, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, ...((u.info as object) || {}),
+  goal: u.goal || null, perms: u.role === "admin" ? (u.perms ?? null) : undefined, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, lastSeen: u.lastSeenAt ? +u.lastSeenAt : null, ...((u.info as object) || {}),
 });
 const lessonOut = (l: any) => ({
   halqaId: l.halqaId, date: l.date, time: l.time, link: l.link, note: l.note, att: l.att || {}, queue: l.queue || [], current: l.currentId || null,
@@ -40,6 +42,7 @@ async function ensureLessons(halaqat: any[], s: Settings) {
   if (rows.length) await prisma.lesson.createMany({ data: rows, skipDuplicates: true });
 }
 
+const hidsAllScope = (me: any, halaqat: any[]) => (Array.isArray(me.perms) && me.perms.some((x: string) => /^(h|b):/.test(x))) ? { OR: [{ halqaId: null }, { halqaId: { in: halaqat.map((h) => h.id) } }] } : {};
 export async function GET() {
   const me = await currentUser();
   if (!me) return NextResponse.json({ me: null, appV: APP_V });
@@ -47,12 +50,20 @@ export async function GET() {
   let users: any[], halaqat: any[], lessons: any[], recs: any[], joins: any[];
   let board: any = null;
 
+  // آخر دخول (يتحدث كل نص ساعة بالكثير)
+  if (!me.lastSeenAt || Date.now() - +me.lastSeenAt > 30 * 60000) await prisma.user.update({ where: { id: me.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   if (me.role === "admin") {
-    halaqat = await prisma.halqa.findMany();
+    const sc = await scopeHalqaIds(me);
+    halaqat = await prisma.halqa.findMany(sc ? { where: { id: { in: sc } } } : undefined);
     await ensureLessons(halaqat, settings);
     users = await prisma.user.findMany();
+    if (sc) {
+      const tIds = new Set(halaqat.map((h) => h.teacherId).filter(Boolean));
+      users = users.filter((x) => x.id === me.id || (x.role === "student" && (sc.includes(x.halqaId || "") || (x.status === "pending" && (!x.reqHalqaId || sc.includes(x.reqHalqaId))))) || (x.role === "teacher" && tIds.has(x.id)));
+    }
     const sinceKey = localDate(-400);
-    [lessons, recs] = await Promise.all([prisma.lesson.findMany({ where: { date: { gte: sinceKey } } }), prisma.rec.findMany({ where: { date: { gte: sinceKey } } })]);
+    const hIds = halaqat.map((h) => h.id); const sIds = users.filter((x) => x.role === "student").map((x) => x.id);
+    [lessons, recs] = await Promise.all([prisma.lesson.findMany({ where: { date: { gte: sinceKey }, ...(sc ? { halqaId: { in: hIds } } : {}) } }), prisma.rec.findMany({ where: { date: { gte: sinceKey }, ...(sc ? { userId: { in: sIds } } : {}) } })]);
     joins = await prisma.join.findMany({ where: { lessonId: { in: lessons.map((l) => l.id) } } });
   } else if (me.role === "teacher") {
     halaqat = await prisma.halqa.findMany({ where: { teacherId: me.id } });
@@ -114,7 +125,16 @@ export async function GET() {
   const wirds = await prisma.wird.findMany({ where: { userId: { in: wUsers }, date: { gte: localDate(-14) } } });
 
   const staff = me.role !== "student";
-  if (staff) await processQueue(6);
+  if (staff) { await processQueue(6); await checkLate().catch(() => 0); }
+  // رسائل الطالب مع المعلم + السلوك + التصويت
+  const stuIds = me.role === "student" ? [me.id] : users.filter((x) => x.role === "student").map((x) => x.id);
+  const since60 = new Date(Date.now() - 60 * 864e5);
+  const [dms, behav, polls] = await Promise.all([
+    prisma.dm.findMany({ where: { studentId: { in: stuIds }, at: { gte: since60 } }, orderBy: { at: "asc" }, take: 2000 }),
+    prisma.behav.findMany({ where: { userId: { in: stuIds }, ...(me.role === "student" ? { visible: true } : {}) }, orderBy: { at: "desc" }, take: 1000 }),
+    prisma.poll.findMany({ where: me.role === "admin" ? (hidsAllScope(me, halaqat)) : { OR: [{ halqaId: null }, { halqaId: { in: halaqat.map((h) => h.id) } }] }, orderBy: { at: "desc" }, take: 30 }),
+  ]);
+  const votes = polls.length ? await prisma.pollVote.findMany({ where: { pollId: { in: polls.map((p) => p.id) } } }) : [];
   const msgs = staff ? await prisma.msg.findMany({ orderBy: { at: "desc" }, take: 100 }) : [];
   const full = me.role === "admin" && !me.perms;
   const backups = full ? await prisma.backup.findMany({ orderBy: { at: "desc" }, select: { id: true, at: true, size: true } }) : [];
@@ -124,7 +144,7 @@ export async function GET() {
     appV: APP_V,
     today: localDate(),
     users: map(users, userOut),
-    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub })),
+    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub, branch: h.branch || "" })),
     sessions: map(lessons, lessonOut),
     recs: map(recs, recOut),
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
@@ -139,6 +159,13 @@ export async function GET() {
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),
     board,
+    dms: map(dms, (m) => ({ sid: m.studentId, by: m.byId, byName: m.byName, staff: m.fromStaff, kind: m.kind, date: m.date, text: m.text, at: +m.at, read: m.readAt ? +m.readAt : null })),
+    behav: map(behav, (x) => ({ uid: x.userId, by: x.byId, byName: x.byName, kind: x.kind, text: x.text, visible: x.visible, at: +x.at })),
+    polls: map(polls, (p) => {
+      const vs = votes.filter((v) => v.pollId === p.id); const counts = (p.options as string[]).map((_, i) => vs.filter((v) => (v.choice as number[]).includes(i)).length);
+      const mine = vs.find((v) => v.userId === me.id);
+      return { halqaId: p.halqaId || "", question: p.question, options: p.options, multi: p.multi, closed: p.closed, byId: p.byId, byName: p.byName, at: +p.at, total: vs.length, counts: me.role === "student" && !mine && !p.closed ? null : counts, mine: mine ? mine.choice : null, ...(me.role !== "student" ? { voters: vs.map((v) => ({ uid: v.userId, choice: v.choice })) } : {}) };
+    }),
   };
   return NextResponse.json(out, { headers: { "Cache-Control": "no-store" } });
 }

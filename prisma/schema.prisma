@@ -31,6 +31,8 @@ model User {
   perms        Json?
   createdAt    DateTime  @default(now())
   approvedAt   DateTime?
+  /// آخر مرة فتح فيها الموقع
+  lastSeenAt   DateTime?
 }
 
 model Halqa {
@@ -43,6 +45,8 @@ model Halqa {
   link      String   @default("")
   /// إنشاء الحصص تلقائيًا حسب أيام الدوام
   auto      Boolean  @default(false)
+  /// الفرع أو المسجد (فارغ = الافتراضي)
+  branch    String   @default("")
   createdAt DateTime @default(now())
 }
 
@@ -67,6 +71,8 @@ model Lesson {
   teacherBy String?
   /// أُرسل تذكير الحصة
   reminded  Boolean  @default(false)
+  /// أُرسل للمعلم تنبيه بمن ما دخل بعد 10 دقائق
+  lateAlerted Boolean @default(false)
   /// مشاكل الدخول: { uid: { at, msg } }
   issues    Json     @default("{}")
   createdBy String?
@@ -213,4 +219,57 @@ model OutMsg {
   sentAt    DateTime?
 
   @@index([status, sendAfter])
+}
+
+/// رسائل بين الطالب (وولي أمره) ومعلم الحلقة. kind: msg | note (ملاحظة لليوم مثل: تعبان)
+model Dm {
+  id        String    @id @default(cuid())
+  studentId String
+  byId      String
+  byName    String    @default("")
+  fromStaff Boolean   @default(false)
+  kind      String    @default("msg")
+  date      String    @default("")
+  text      String
+  at        DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([studentId, at])
+}
+
+/// سجل السلوك. kind: good | bad
+model Behav {
+  id      String   @id @default(cuid())
+  userId  String
+  byId    String
+  byName  String   @default("")
+  kind    String   @default("good")
+  text    String
+  visible Boolean  @default(true)
+  at      DateTime @default(now())
+
+  @@index([userId, at])
+}
+
+/// تصويت سريع للطلاب وأولياء الأمور (halqaId فارغ = لكل الحلقات)
+model Poll {
+  id       String   @id @default(cuid())
+  halqaId  String?
+  question String
+  options  Json     @default("[]")
+  multi    Boolean  @default(false)
+  closed   Boolean  @default(false)
+  byId     String?
+  byName   String   @default("")
+  at       DateTime @default(now())
+}
+
+model PollVote {
+  id     String   @id @default(cuid())
+  pollId String
+  userId String
+  choice Json     @default("[]")
+  at     DateTime @default(now())
+
+  @@unique([pollId, userId])
 }

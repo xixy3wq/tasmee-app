@@ -61,7 +61,7 @@ const waLink = (phone, text) => { const p = normPhone(phone); return p ? 'https:
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, Math.max(3500, String(msg).length * 75)); }
 
 /* ---------------- server ---------------- */
-const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings', 'anns', 'wirds', 'msgs'];
+const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings', 'anns', 'wirds', 'msgs', 'dms', 'behav', 'polls'];
 const S = {}; COLS.forEach(c => S[c] = {});
 let READY = false, OFFLINE = false;
 const ST = { meId: null, view: null, sid: null, uid: null, halqa: '', range: 30, reg: false, regDone: false, q: '', regInfo: null };
@@ -194,7 +194,7 @@ function posText(dir, np) { if (np >= TOTAL) return 'أتمّ'; const g = ORD[di
 
 /* ---------------- state helpers ---------------- */
 const me = () => { const u = ST.meId && S.users[ST.meId]; return u ? { ...u, id: ST.meId } : null; };
-const myHalaqat = u => L('halaqat').filter(h => u.role === 'admin' || h.teacherId === u.id || h.sub).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+const myHalaqat = u => L('halaqat').filter(h => (u.role === 'admin' && (!ST.branch || h.branch === ST.branch)) || (u.role !== 'admin' && (h.teacherId === u.id || h.sub))).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const halqaName = id => (S.halaqat[id] && S.halaqat[id].name) || '—';
 const studentsOf = hid => L('users').filter(u => u.role === 'student' && u.status === 'active' && u.halqaId === hid).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const canPlan = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
@@ -407,10 +407,9 @@ function regV(hid) {
       <label class="fld"><span>اسم المستخدم <i>*</i></span><input id="rg-username" name="username" dir="ltr" required autocapitalize="none" autocorrect="off" spellcheck="false" pattern="[A-Za-z0-9_.]{3,30}" title="حروف إنجليزية أو أرقام، 3 أحرف على الأقل" placeholder="abdullah2015"><span class="hint">حروف إنجليزية وأرقام بدون مسافات، مثل اسم الطالب وسنة ميلاده.</span></label>
       ${pwField('rg-password', 'password', 'كلمة المرور <i>*</i>', 'new-password', 'minlength="4"')}
     </div>
-    ${tip('احفظ اسم المستخدم وكلمة المرور عندك. بعد الإرسال نعطيك زر تنسخها فيه أو ترسلها لنفسك بالواتساب.')}
     <div class="fgrid">${info.fields.filter(f => f.type !== 'memo').map(f => fieldHtml(f, '', 'rg-')).join('')}</div>
     ${info.fields.filter(f => f.type === 'memo').map(f => fieldHtml(f, '', 'rg-')).join('')}
-    ${!fixedH && hs.length ? `<label class="fld"><span>الحلقة المطلوبة</span><select id="rg-halqa" name="reqHalqa"><option value="">تحددها الإدارة</option>${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label>` : ''}
+    ${!fixedH && hs.length ? `<label class="fld"><span>الحلقة المطلوبة</span><select id="rg-halqa" name="reqHalqa"><option value="">تحددها الإدارة</option>${(() => { const bs = [...new Set(hs.map(h => h.branch || ''))]; return bs.length > 1 ? bs.map(b => `<optgroup label="${esc(b || 'أخرى')}">${hs.filter(h => (h.branch || '') === b).map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</optgroup>`).join('') : hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join(''); })()}</select></label>` : ''}
     <button class="btn pri big" type="submit">إرسال الطلب</button>
     <div class="small muted">بعد الإرسال تراجع الإدارة طلبك وتعتمده، وبعدها تدخل باسم المستخدم وكلمة المرور.</div>
   </form>
@@ -429,23 +428,23 @@ function regDoneV() {
   <div class="card" style="display:grid;gap:10px"><div>طلبك الآن عند الإدارة. بعد الاعتماد تدخل بهذي البيانات:</div>
     <dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.user || '')}</b></dd><dt>كلمة المرور</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.pw || '')}</b></dd></dl>
     <div class="row"><button class="btn" data-act="copy" data-text="${esc(msg)}">نسخ البيانات</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">أرسلها لنفسك بالواتساب</a></div>
-    ${tip('ما يوصلك إشعار بالاعتماد، جرّب تدخل بعد ساعات. وإذا طال الانتظار تواصل مع الإدارة.')}${supportBtn()}</div>
+    ${supportBtn()}</div>
   <button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
 }
 
 const TABS = {
-  admin: u => [['dash', 'الرئيسية'], ['req', 'الطلبات', L('users').filter(x => x.role === 'student' && x.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['logs', 'السجل'], ['settings', 'الإعدادات'], ['help', 'الدليل']].filter(([k]) => !TAB_PERM[k] || can(u, TAB_PERM[k])),
-  teacher: u => [['sessions', 'الحصص'], ['students', 'طلابي'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['help', 'الدليل']],
-  student: () => [['home', LANG === 'en' ? 'My page' : 'صفحتي'], ['help', LANG === 'en' ? 'Help' : 'الدليل']]
+  admin: u => [['dash', 'الرئيسية'], ['req', 'الطلبات', L('users').filter(x => x.role === 'student' && x.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['inbox', 'الرسائل', dmUnreadStaff()], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['logs', 'السجل'], ['settings', 'الإعدادات'], ['help', 'الدليل']].filter(([k]) => !TAB_PERM[k] || can(u, TAB_PERM[k])),
+  teacher: u => [['sessions', 'الحصص'], ['students', 'طلابي'], ['inbox', 'الرسائل', dmUnreadStaff()], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['help', 'الدليل']],
+  student: u => [['home', LANG === 'en' ? 'My page' : 'صفحتي'], ['msgs', LANG === 'en' ? 'Teacher' : 'المعلم', dmUnreadMine(u)], ['cal', LANG === 'en' ? 'Calendar' : 'التقويم'], ['help', LANG === 'en' ? 'Help' : 'الدليل']]
 };
 const ROLE = { admin: 'المدير', teacher: 'معلم', student: 'طالب' };
-const PARENT_TAB = { session: 'sessions', student: 'students' };
+const PARENT_TAB = { session: 'sessions', student: 'students', thread: 'inbox' };
 function shellV(u) {
   const tabs = TABS[u.role](u);
   const keys = tabs.map(t => t[0]);
-  if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && !['home', 'help'].includes(ST.view))) ST.view = keys[0];
+  if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && !['home', 'help', 'msgs', 'cal'].includes(ST.view))) ST.view = keys[0];
   const activeTab = PARENT_TAB[ST.view] || ST.view;
-  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV })[ST.view](u);
+  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV, msgs: msgsV, cal: calV, inbox: inboxV, thread: threadV })[ST.view](u);
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
@@ -454,7 +453,7 @@ function shellV(u) {
     <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
       <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="kids">${accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن'}</button><button class="btn ghost sm" data-act="zoom" aria-label="تكبير الخط">أ${ZOOM > 1 ? '−' : '+'}</button><button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
     ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
-  </div></header><main class="wrap">${body}</main>${bottomNav(u, tabs, activeTab)}`;
+  </div></header><main class="wrap">${['dash', 'sessions', 'students', 'reports', 'halaqat'].includes(ST.view) ? branchBar(u) : ''}${body}</main>${bottomNav(u, tabs, activeTab)}`;
 }
 
 /* ---- admin: requests ---- */
@@ -532,19 +531,19 @@ function sessionV(u) {
   if (u.role === 'teacher' && s.date === today() && !s.teacherAt && !(ST.opened || {})[s.id]) { ST.opened = { ...(ST.opened || {}), [s.id]: 1 }; act('lesson.open', { id: s.id }); }
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}. ما تنحسب في الحضور ولا تظهر للطلاب كحصة قادمة.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
   const issues = Object.entries(s.issues || {}).filter(([id]) => S.users[id]);
-  const attRow = st => { const v = att[st.id]; const wA = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.absent, vars(st))); const wE = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.excellent, vars(st))); const streak = absentStreak(st);
-    return `<div class="item"><div class="grow"><div class="name">${esc(st.name)}${streak >= lim ? ` <span class="chip bad">غاب ${streak} متتالية</span>` : ''}</div><div class="small muted">${joinText(joins[st.id], s)}</div></div>
+  const attRow = st => { const v = att[st.id]; const nts = todayNotes(st.id, s.date); const wA = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.absent, vars(st))); const wE = st.parentPhone && waLink(st.parentPhone, fillTpl(tp.excellent, vars(st))); const streak = absentStreak(st);
+    return `<div class="item"><div class="grow"><div class="name">${esc(st.name)}${streak >= lim ? ` <span class="chip bad">غاب ${streak} متتالية</span>` : ''}</div><div class="small muted">${joinText(joins[st.id], s)}</div>${nts.map(n => `<div class="small note-chip">📌 ${esc(n.text)}</div>`).join('')}</div>
     <div class="seg">${Object.keys(ATT).map(k => `<button class="${k} ${v === k ? 'on' : ''}" data-act="att" data-id="${st.id}" data-v="${k}">${ATT[k]}</button>`).join('')}</div>
     ${v === 'a' && wA ? `<a class="btn wa sm" href="${wA}" target="_blank" rel="noopener">واتساب غياب</a>` : ''}${(v === 'p' || v === 'l') && wE ? `<a class="btn wa sm" href="${wE}" target="_blank" rel="noopener">واتساب تميّز</a>` : ''}</div>`; };
   const recHere = ST.rec && ST.rec.sid === s.id && ST.rec.where === 'inline';
   const presentFirst = [...studs].sort((a, b) => ((att[b.id] === 'p' || att[b.id] === 'l') - (att[a.id] === 'p' || att[a.id] === 'l')));
   const tools = `<div class="tools3"><button class="tool" data-act="rec1-open">${ICO.mic}<b>وضع التسميع</b><span>بإبهام واحد</span></button><button class="tool" data-act="swipe-open">${ICO.swipe}<b>التحضير بالسحب</b><span>${Object.keys(att).length}/${studs.length}</span></button><button class="tool" data-act="board-open">${ICO.grid}<b>لوحة الحصة</b><span>مباشرة</span></button></div>`;
-  return head + tools + `
+  return head + tools + lessonSummaryHtml(s) + `
   ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول:</b><div class="list">${issues.map(([id, x]) => `<div class="item"><div class="grow"><b>${esc(S.users[id].name)}</b>: ${esc(x.msg)} <span class="small muted">${clock(x.at)}</span></div><button class="btn sm" data-act="issue-clear" data-id="${id}">تم الحل</button></div>`).join('')}</div></div>` : ''}
   ${waSessionHtml(s)}
   <div class="grid2">
   <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>طابور التسميع</h2><div class="row"><button class="btn ghost sm" data-act="q-sort" data-k="join">حسب الدخول</button><button class="btn ghost sm" data-act="q-sort" data-k="least">الأقل تسميعًا أولًا</button></div></div>
-    ${recHere ? recPanelHtml() : (cur ? `<div class="now"><div style="flex:1 1 160px;min-width:0"><div class="lbl">يسمّع الآن</div><div class="name">${esc(cur.name)}</div></div><button class="btn pri" data-act="rec-start" data-id="${cur.id}">سجّل التسميع</button><button class="btn" data-act="q-next">التالي</button></div>` : (queue.length ? `<button class="btn pri" data-act="q-next">ابدأ بأول الطابور</button>` : ''))}
+    ${recHere ? recPanelHtml() : (cur ? `<div class="now"><div style="flex:1 1 160px;min-width:0"><div class="lbl">يسمّع الآن</div><div class="name">${esc(cur.name)}</div></div><button class="btn pri" data-act="rec-start" data-id="${cur.id}">سجّل التسميع</button><button class="btn" data-act="q-next">التالي</button><button class="btn ghost" data-act="q-skip" title="ينتقل لآخر الطابور">ما رد</button></div>` : (queue.length ? `<button class="btn pri" data-act="q-next">ابدأ بأول الطابور</button>` : ''))}
     ${queue.length ? `<div class="list">${queue.map((id, i) => `<div class="item"><span class="qnum">${i + 1}</span><div class="grow name">${esc(S.users[id].name)}</div><button class="btn ghost sm" data-act="q-up" data-i="${i}" aria-label="تقديم">▲</button><button class="btn ghost sm" data-act="q-down" data-i="${i}" aria-label="تأخير">▼</button><button class="btn ghost sm" data-act="rec-start" data-id="${id}">سجّل</button><button class="btn ghost sm" data-act="q-rm" data-i="${i}" aria-label="حذف">✕</button></div>`).join('')}</div>` : (!cur && !recHere ? '<div class="empty small">الطابور فاضي. الطلاب يقدرون يضغطون «جاهز للتسميع» من صفحتهم، أو أضفهم أنت.</div>' : '')}
     <div class="row"><select id="q-pick" style="flex:1 1 160px"><option value="">إضافة طالب…</option>${notQueued.map(x => `<option value="${x.id}">${esc(x.name)}${att[x.id] === 'p' || att[x.id] === 'l' ? '' : ' (غير محضّر)'}</option>`).join('')}</select><button class="btn" data-act="q-add">أضف</button><button class="btn" data-act="q-all">كل الحاضرين</button></div>
   </section>
@@ -560,18 +559,20 @@ function sessionV(u) {
 /* ---- students ---- */
 function studentsV(u) {
   const hs = myHalaqat(u); const hids = hs.map(h => h.id); const lim = absentLimit();
-  let list = L('users').filter(x => x.role === 'student' && x.status !== 'pending' && (u.role === 'admin' || hids.includes(x.halqaId)));
+  let list = L('users').filter(x => x.role === 'student' && x.status !== 'pending' && ((u.role === 'admin' && !ST.branch) || hids.includes(x.halqaId)));
+  const inact = new Set(inactiveList().map(x => x.id)); const nIn = list.filter(x => inact.has(x.id)).length;
+  if (ST.inact) list = list.filter(x => inact.has(x.id));
   const nArch = list.filter(x => x.status === 'archived').length;
   list = list.filter(x => ST.arch ? x.status === 'archived' : x.status !== 'archived');
   if (ST.halqa) list = list.filter(x => x.halqaId === ST.halqa);
   const q = (ST.q || '').trim(); if (q) list = list.filter(x => (x.name || '').includes(q) || (x.username || '').toLowerCase().includes(q.toLowerCase()));
   list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
-  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row">${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
-  ${nArch ? `<div class="row"><button class="btn sm ${ST.arch ? '' : 'pri'}" data-act="arch" data-v="0">الحاليون</button><button class="btn sm ${ST.arch ? 'pri' : ''}" data-act="arch" data-v="1">المؤرشفون (${nArch})</button></div>` : ''}
+  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row">${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn" data-act="import">استيراد</button><button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
+  ${nArch || nIn ? `<div class="row">${nArch ? `<button class="btn sm ${ST.arch ? '' : 'pri'}" data-act="arch" data-v="0">الحاليون</button><button class="btn sm ${ST.arch ? 'pri' : ''}" data-act="arch" data-v="1">المؤرشفون (${nArch})</button>` : ''}${nIn ? `<button class="btn sm ${ST.inact ? 'pri' : ''}" data-act="inact">منقطعين أسبوعين (${nIn})</button>` : ''}</div>` : ''}
   <div class="row"><input id="st-q" placeholder="ابحث بالاسم أو اسم المستخدم" value="${esc(ST.q)}" data-input="search" style="flex:1 1 220px">
   ${hs.length > 1 ? `<select id="st-h" data-change="filter-h" style="flex:0 1 200px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}</div>
-  <section class="card">${list.length ? `<div class="list">${list.map(x => { const a = attStats(x, 30); const n = absentStreak(x); return `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><div class="name">${esc(x.name)}</div><div class="small muted">${esc(halqaName(x.halqaId))} · <span dir="ltr">${esc(x.username)}</span></div></div>
-    ${x.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}${n >= lim ? `<span class="chip bad">غاب ${n} متتالية</span>` : ''}<span class="chip ${isAuto(x) ? 'acc' : ''}">${isAuto(x) ? 'خطة تلقائية' : 'خطة يدوية'}</span><span class="chip num">حضور ${a.rate == null ? '—' : a.rate + '٪'}</span></div>`; }).join('')}</div>` : `<div class="empty">${q ? 'ما فيه نتائج.' : 'ما فيه طلاب معتمدون بعد.'}</div>`}</section>`;
+  <section class="card">${list.length ? `<div class="list">${list.map(x => { const a = attStats(x, 30); const n = absentStreak(x); return `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><div class="name">${esc(x.name)}</div><div class="small muted">${esc(halqaName(x.halqaId))} · <span dir="ltr">${esc(x.username)}</span>${inact.has(x.id) ? ' · ' + lastSeenText(x) : ''}</div></div>
+    ${dmUnreadOf(x.id) ? `<span class="chip bad">${dmUnreadOf(x.id)} رسالة</span>` : ''}${x.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}${n >= lim ? `<span class="chip bad">غاب ${n} متتالية</span>` : ''}<span class="chip ${isAuto(x) ? 'acc' : ''}">${isAuto(x) ? 'خطة تلقائية' : 'خطة يدوية'}</span><span class="chip num">حضور ${a.rate == null ? '—' : a.rate + '٪'}</span></div>`; }).join('')}</div>` : `<div class="empty">${q ? 'ما فيه نتائج.' : 'ما فيه طلاب معتمدون بعد.'}</div>`}</section>`;
 }
 function planHtml(st) {
   const ps = planSegs(st); const rows = ['new', 'review', 'tath'].filter(k => ps[k]);
@@ -597,7 +598,7 @@ function profileV(u) {
   const wa = st.parentPhone ? waLink(st.parentPhone, 'السلام عليكم ورحمة الله، ') : '';
   return `<button class="back" data-act="tab" data-v="students">→ ${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</button>
   <div class="sec-head"><div><h1>${esc(st.name)}</h1><div class="muted">${esc(halqaName(st.halqaId))} · <span dir="ltr">${esc(st.username)}</span>${st.status === 'disabled' ? ' · <span class="chip bad">موقوف</span>' : ''}${st.status === 'archived' ? ' · <span class="chip">مؤرشف</span>' : ''}${streak >= absentLimit() ? ` · <span class="chip bad">غاب ${streak} متتالية</span>` : ''}</div></div>
-    <div class="row"><button class="btn pri" data-act="rec-out" data-id="${st.id}">تسجيل تسميع</button>${st.parentPhone ? `<button class="btn wa" data-act="tpl-pick" data-id="${st.id}">واتساب ولي الأمر</button>` : ''}${u.role === 'admin' ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button><button class="btn" data-act="reset-pw" data-id="${st.id}">كلمة مرور جديدة</button>` : ''}</div></div>
+    <div class="row"><button class="btn pri" data-act="rec-out" data-id="${st.id}">تسجيل تسميع</button><button class="btn" data-act="open-thread" data-id="${st.id}">رسائل${dmUnreadOf(st.id) ? ` <span class="count">${dmUnreadOf(st.id)}</span>` : ''}</button>${st.parentPhone ? `<button class="btn wa" data-act="tpl-pick" data-id="${st.id}">واتساب ولي الأمر</button>` : ''}${u.role === 'admin' ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button><button class="btn" data-act="reset-pw" data-id="${st.id}">كلمة مرور جديدة</button>` : ''}</div></div>
   <div class="row">${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>نسبة الحضور</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${inRange.length}</b><span>تسميع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة وتثبيت</span></div><div class="stat"><b>${avg}</b><span>متوسط الأخطاء</span></div></div>
   <div class="grid2">
@@ -606,7 +607,8 @@ function profileV(u) {
 </section>
   <section class="card" style="display:grid;gap:12px"><h2>نقاط وأوسمة</h2><div class="stats"><div class="stat"><b>${ptsOf(st, weekStartC(today()), today())}</b><span>نقاط هالأسبوع</span></div><div class="stat"><b>${attendStreak(st)}</b><span>حصص متتالية</span></div></div>${(b => b.length ? `<div class="badges">${b.map(x => `<span class="badge"><b>${esc(x.t)}</b><span>${esc(x.d)}</span></span>`).join('')}</div>` : '')(badgesOf(st))}
     <div class="small muted" style="font-weight:600">الورد في البيت، آخر 7 أيام</div><div class="wgrid">${[...Array(7).keys()].reverse().map(i => { const d = addDays(today(), -i); const w = wirdOf(st.id, d); const n = w ? (w.items || []).filter(x => x.done).length : 0; return `<div class="wday ${w ? 'on' : ''}" title="${fmtDate(d)}"><span>${['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'][new Date(d + 'T00:00').getDay()]} ${new Date(d + 'T00:00').getDate()}</span><b>${w ? n + '/' + (w.items || []).length : '—'}</b>${w && w.read ? `<span>${w.read} و</span>` : ''}</div>`; }).join('')}</div></section>
-  <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${fmtField(f, st[f.k])}</dd>`).join('') || '<dt>—</dt><dd></dd>'}</dl></section></div>
+  <section class="card"><h2>البيانات</h2><dl class="kv">${fields.filter(f => st[f.k]).map(f => `<dt>${esc(f.label)}</dt><dd ${f.type === 'tel' ? 'dir="ltr" style="text-align:right"' : ''}>${fmtField(f, st[f.k])}</dd>`).join('')}<dt>آخر دخول</dt><dd>${st.lastSeen ? fmtDate(isoDate(new Date(st.lastSeen))) + ' ' + clock(st.lastSeen) : 'ما دخل بعد'}</dd></dl></section>
+  ${behavStaffHtml(st)}</div>
   <section class="card"><h2>سجل التسميع</h2>${historyTable(inRange, true)}</section>`;
 }
 function historyTable(rs, editable, noDate) {
@@ -619,9 +621,9 @@ function historyTable(rs, editable, noDate) {
 function teachersV() {
   const ts = L('users').filter(u => u.role === 'teacher').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
   const m = me(); const admins = L('users').filter(x => x.role === 'admin' && x.perms);
-  return `<div class="sec-head"><h1>المعلمون</h1><button class="btn pri" data-act="add-teacher">إضافة معلم</button></div>
-  ${isFullAdmin(m) ? `<section class="card" style="display:grid;gap:8px"><div class="sec-head"><h2>المشرفون الإداريون</h2><button class="btn sm" data-act="add-admin">إضافة مشرف إداري</button></div>${admins.length ? `<div class="list">${admins.map(a => `<div class="item"><div class="grow"><b>${esc(a.name)}</b><div class="small muted"><span dir="ltr">${esc(a.username)}</span> · ${(a.perms || []).map(p => PERM_LABEL[p]).join('، ')}</div></div>${a.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}<button class="btn sm" data-act="edit-admin" data-id="${a.id}">تعديل</button></div>`).join('')}</div>` : '<div class="small muted">مدراء مساعدين بصلاحيات محددة، مثل مشرف تعليمي أو مسؤول تسجيل.</div>'}</section>` : ''}
-  <div class="note info">صلاحية <b>إعداد الخطط</b> تسمح للمعلم ينشئ ويعدّل خطط طلابه، يدوية أو تلقائية.</div>
+  return `<div class="sec-head"><h1>المعلمون</h1><div class="row"><button class="btn ${ST.sched ? 'pri' : ''}" data-act="sch">جدول الأسبوع</button><button class="btn pri" data-act="add-teacher">إضافة معلم</button></div></div>
+  ${ST.sched ? scheduleHtml() : ''}
+  ${isFullAdmin(m) ? `<section class="card" style="display:grid;gap:8px"><div class="sec-head"><h2>المشرفون الإداريون</h2><button class="btn sm" data-act="add-admin">إضافة مشرف إداري</button></div>${admins.length ? `<div class="list">${admins.map(a => `<div class="item"><div class="grow"><b>${esc(a.name)}</b><div class="small muted"><span dir="ltr">${esc(a.username)}</span> · ${(a.perms || []).filter(p => PERM_LABEL[p]).map(p => PERM_LABEL[p]).join('، ')}${(a.perms || []).some(p => /^(h|b):/.test(p)) ? ' · <span class="chip info">نطاق: ' + (a.perms || []).filter(p => /^(h|b):/.test(p)).map(p => p[0] === 'b' ? esc(p.slice(2)) : esc(halqaName(p.slice(2)))).join('، ') + '</span>' : ''}</div></div>${a.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}<button class="btn sm" data-act="edit-admin" data-id="${a.id}">تعديل</button></div>`).join('')}</div>` : '<div class="small muted">ما فيه مشرفين بعد.</div>'}</section>` : ''}
   <section class="card">${ts.length ? `<div class="list">${ts.map(t => { const hs = L('halaqat').filter(h => h.teacherId === t.id); return `<div class="item"><div class="grow"><div class="name">${esc(t.name)}</div><div class="small muted"><span dir="ltr">${esc(t.username)}</span> · ${hs.length ? hs.map(h => esc(h.name)).join('، ') : 'بدون حلقة'}</div></div>
     ${t.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}
     <label class="check"><input type="checkbox" id="tc-plan-${t.id}" data-change="t-perm" data-k="canPlan" data-id="${t.id}" ${t.canPlan ? 'checked' : ''}> إعداد الخطط</label>
@@ -630,10 +632,10 @@ function teachersV() {
 
 /* ---- admin: halaqat ---- */
 function halaqatV() {
-  const hs = L('halaqat').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const hs = myHalaqat(me()).sort((a, b) => ((a.branch || '') + a.name).localeCompare((b.branch || '') + b.name, 'ar'));
   return `<div class="sec-head"><h1>الحلقات</h1><div class="row">${can(me(), 'students') ? '<button class="btn" data-act="assign">توزيع الطلاب</button>' : ''}<button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div></div>
   ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; return `<section class="card" style="display:grid;gap:10px">
-    <div class="sec-head"><h2>${esc(h.name)}</h2><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
+    <div class="sec-head"><div><h2>${esc(h.name)}</h2>${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
     <dl class="kv"><dt>المعلم</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
     <dt>الجدول</dt><dd>${h.auto ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
     <div class="row"><button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل</button><button class="btn sm" data-act="handover" data-h="${h.id}">ملخص التسليم</button><button class="btn ghost sm" data-act="copy" data-text="https://${location.host}/api/ics/${h.id}.ics">رابط التقويم</button></div></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
@@ -666,7 +668,7 @@ const SET_TABS = [
   ['reg', 'التسجيل', 'حقول نموذج تسجيل الطلاب الجدد'],
   ['msg', 'الرسائل والواتساب', 'نصوص الرسائل لأولياء الأمور وربط الواتس الذكي'],
   ['video', 'غرفة الحصة', 'الحصص بالفيديو داخل الموقع بدل Zoom وMeet'],
-  ['site', 'إعدادات الموقع', 'الاسم، جهة التواصل، النسخ الاحتياطي، Google Sheets'],
+  ['site', 'إعدادات الموقع', 'الاسم، الفروع، حالة الخدمات، النسخ الاحتياطي'],
 ];
 function settingsV() {
   const st = SET(); const hol = [...(st.holidays || [])].sort((a, b) => a.from.localeCompare(b.from));
@@ -681,22 +683,23 @@ function settingsV() {
     <div class="set-pane" ${P('rec')}>${H('التسميع والتقدير', 'كيف يُحسب التقدير، ومقادير الخطط الجاهزة، ونقاط الطلاب')}
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
       <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
-      <span class="small muted" style="font-weight:400">ما فوق «جيد» يكون «يعاد»، ولا تتقدم الخطة التلقائية إلا بعد النجاح.</span></div>
+</div>
     <div class="fld"><span>قوالب الخطط التلقائية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th class="num">حفظ</th><th class="num">مراجعة</th><th class="num">تثبيت</th><th></th></tr></thead><tbody>
       ${(st.planTpls || []).map((t, i) => `<tr><td><input id="pt-n-${i}" name="ptn-${i}" value="${esc(t.name)}" style="min-width:160px"></td><td><input id="pt-a-${i}" name="pta-${i}" type="number" min="0" step="0.125" value="${t.newAmt}" style="width:80px"></td><td><input id="pt-r-${i}" name="ptr-${i}" type="number" min="0" step="0.5" value="${t.revAmt}" style="width:80px"></td><td><input id="pt-t-${i}" name="ptt-${i}" type="number" min="0" step="0.5" value="${t.tathAmt}" style="width:80px"></td><td><button type="button" class="btn ghost sm" data-act="ptpl-del" data-i="${i}">حذف</button></td></tr>`).join('')}
-    </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="small muted" style="font-weight:400">المقادير بالأوجه: 0.25 ربع وجه، 0.5 نصف وجه.</span></div>
+    </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="hint">بالأوجه: 0.25 ربع، 0.5 نصف</span></div>
     <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
+    <label class="fld" style="max-width:320px"><span>وقت التسميع لكل طالب (دقائق)</span><input id="sg-recmin" name="recMin" type="number" min="0" max="60" value="${st.recMin || 0}"><span class="hint">ينبّه المعلم إذا تجاوز الطالب وقته. 0 = بدون تنبيه.</span></label>
     <label class="fld" style="max-width:320px"><span>لوحة الشرف عند الطلاب</span><select id="sg-board" name="board"><option value="show" ${st.board === 'show' ? 'selected' : ''}>أفضل 5 مع ترتيب الطالب</option><option value="top3" ${st.board === 'top3' ? 'selected' : ''}>أفضل 3 فقط</option><option value="hide" ${st.board === 'hide' ? 'selected' : ''}>مخفية: كل طالب يشوف نقاطه بس</option></select></label>
     </div>
     <div class="set-pane" ${P('days')}>${H('الدوام والحضور', 'الأيام الافتراضية للحلقات وفترات الدراسة')}
-    <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div><span class="small muted" style="font-weight:400">تقدر تغيّرها لكل حلقة من تبويب الحلقات.</span></div>
+    <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
     <label class="fld" style="max-width:320px"><span>تنبيه الغياب المتكرر بعد كم غياب متتالي</span><input id="sg-abs" name="absentAlert" type="number" min="2" max="20" value="${st.absentAlert || 3}"></label>
     <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
       ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
-    </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div><span class="small muted" style="font-weight:400">تطلع الفصول كفترات في التقارير، وفي تحديد أهداف الطلاب.</span></div>
+    </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div></div>
     </div>
     <div class="set-pane" ${P('reg')}>${H('نموذج التسجيل', 'وش يعبّي الطالب لما يسجل من رابط التسجيل')}
-    <div class="fld"><span>حقول التسجيل</span><div class="small muted" style="font-weight:400">الاسم واسم المستخدم وكلمة المرور ثابتة دائمًا.</div>
+    <div class="fld"><span>حقول التسجيل</span>
       <div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الحقل</th><th>النوع</th><th class="num">ظاهر</th><th class="num">إجباري</th><th></th></tr></thead><tbody>
       ${st.fields.map(f => `<tr><td><input id="sf-lb-${f.k}" name="lb-${f.k}" value="${esc(f.label)}" style="min-width:140px">${f.type === 'choice' ? `<input id="sf-op-${f.k}" name="opt-${f.k}" value="${esc((f.options || []).join('، '))}" placeholder="الخيارات مفصولة بفاصلة" style="margin-top:4px;min-width:140px"><label class="check small"><input type="checkbox" name="multi-${f.k}" ${f.multi ? 'checked' : ''}> أكثر من خيار</label>` : ''}</td><td class="small">${FTYPE[f.type || 'text'] || 'نص'}</td><td class="num"><input type="checkbox" id="sf-on-${f.k}" name="on-${f.k}" ${f.on ? 'checked' : ''}></td><td class="num"><input type="checkbox" id="sf-req-${f.k}" name="req-${f.k}" ${f.req ? 'checked' : ''}></td><td><button type="button" class="btn ghost sm" data-act="sf-del" data-k="${f.k}">حذف</button></td></tr>`).join('')}
       </tbody></table></div><div><button type="button" class="btn sm" data-act="sf-add">إضافة حقل</button></div></div>
@@ -711,6 +714,8 @@ function settingsV() {
     <div class="set-pane" ${P('site')}>${H('معلومات الموقع', 'تظهر للطلاب وأولياء الأمور')}
     <label class="fld"><span>اسم الحلقات أو المجمع</span><input id="sg-center" name="center" value="${esc(st.center)}" required></label>
     <div class="fgrid"><label class="fld"><span>جهة التواصل للطلاب وأولياء الأمور</span><input id="sg-sn" name="supportName" value="${esc(st.supportName || '')}" placeholder="مثال: إدارة الحلقة"></label><label class="fld"><span>رقم الواتساب للتواصل</span><input id="sg-sp" name="supportPhone" type="tel" dir="ltr" value="${esc(st.supportPhone || '')}" placeholder="05xxxxxxxx"></label></div>
+    <label class="fld"><span>الفروع أو المساجد (كل واحد في سطر، اختياري)</span><textarea id="sg-br" name="branches" rows="3" placeholder="مسجد الرحمن
+مسجد النور">${esc((st.branches || []).join('\n'))}</textarea></label>
     </div>
     ${saveBtn}
   </form>
@@ -718,10 +723,15 @@ function settingsV() {
     ${hol.length ? `<div class="list">${hol.map((h, i) => `<div class="item"><div class="grow"><b>${esc(h.name)}</b> <span class="small muted">${fmtDateH(h.from)}${h.to !== h.from ? ' إلى ' + fmtDateH(h.to) : ''}</span></div>${h.to < today() ? '<span class="chip">انتهت</span>' : ''}<button class="btn ghost sm" data-act="hol-del" data-from="${h.from}" data-to="${h.to}">حذف</button></div>`).join('')}</div>` : '<div class="empty small">ما فيه إجازات مسجلة.</div>'}
     <form data-form="hol-add" class="fgrid" style="align-items:end"><label class="fld"><span>اسم الإجازة</span><input id="hl-name" name="name" required placeholder="مثال: إجازة عيد الفطر"></label><label class="fld"><span>من</span><input id="hl-from" name="from" type="date" required></label><label class="fld"><span>إلى</span><input id="hl-to" name="to" type="date"></label><button class="btn" type="submit">إضافة إجازة</button></form>
   </section>
+  <section class="card" ${P('days')} style="display:grid;gap:12px"><div class="sec-head"><h2>الاختبارات والمناسبات</h2><span class="small muted">تظهر في تقويم الطلاب</span></div>
+    ${(st.events || []).length ? `<div class="list">${(st.events || []).map((e, i) => ({ e, i })).sort((a, b) => a.e.date.localeCompare(b.e.date)).map(({ e, i }) => `<div class="item"><span class="chip ${e.kind === 'exam' ? 'bad' : 'acc'}">${e.kind === 'exam' ? 'اختبار' : 'مناسبة'}</span><div class="grow"><b>${esc(e.name)}</b> <span class="small muted">${fmtDateH(e.date)}</span></div><button class="btn ghost sm" data-act="ev-del" data-i="${i}">حذف</button></div>`).join('')}</div>` : ''}
+    <form data-form="ev-add" class="fgrid" style="align-items:end"><label class="fld"><span>الاسم</span><input id="ev-name" name="name" required placeholder="مثال: اختبار جزء عمّ"></label><label class="fld"><span>التاريخ</span><input id="ev-date" name="date" type="date" required></label><label class="fld"><span>النوع</span><select id="ev-kind" name="kind"><option value="exam">اختبار</option><option value="event">مناسبة</option></select></label><button class="btn" type="submit">إضافة</button></form>
+  </section>
   ${full && cur === 'msg' ? waSettingsHtml() : ''}
   ${full && cur === 'video' ? videoSettingsHtml() : ''}
+  ${full && cur === 'site' ? statusHtml() : ''}
   ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
-    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
+    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">ما فيه نسخ تلقائية بعد (الشرح في الدليل).</div>'}</section>
   <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
   ${!full && (cur === 'msg' || cur === 'site' || cur === 'video') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
 }
@@ -736,7 +746,6 @@ function lessonCard(u, s) {
       <div class="cd" data-cd="${lessonTs(s)}">${cdText(lessonTs(s))}</div>${s.note ? `<div class="small">${esc(s.note)}</div>` : ''}${(s.att || {})[u.id] ? `<span class="chip ${ATTC[s.att[u.id]]}">${ATT[s.att[u.id]]}</span>` : ''}</div>
     <div class="join-actions">${link ? `<a class="btn pri big" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${j ? 'ادخل الحصة مرة ثانية' : 'ادخل الحصة'}</a>` : '<span class="chip warn">الرابط ينزل قبل الحصة</span>'}
       ${joined && isToday ? `<button class="btn" data-act="leave" data-id="${s.id}">خرجت من الحصة</button>` : ''}</div></div>
-  ${link ? tip('أول مرة ممكن يطلب منك تثبيت Zoom أو Meet من المتجر. ثبته وارجع اضغط «ادخل الحصة».') : ''}
   ${isToday ? `<section class="card qcard" style="display:grid;gap:10px"><div class="sec-head"><h2>طابور التسميع</h2>${isCur ? '<span class="chip gold">دورك الآن</span>' : inQ ? `<span class="chip acc">ترتيبك ${pos}</span>` : ''}</div>
     ${isCur ? '<div class="now"><div class="name">دورك الآن، المعلم ينتظرك</div></div>' : inQ ? `<div class="row"><span>${pos === 1 ? 'أنت التالي، استعد.' : 'أنت في الطابور، قدّامك ' + (pos - 1) + ' ' + (pos - 1 === 1 ? 'طالب' : 'طلاب') + '.'}</span><button class="btn sm" data-act="ready" data-id="${s.id}" data-v="0">إلغاء الجاهزية</button></div>` : `<button class="btn pri" data-act="ready" data-id="${s.id}" data-v="1">جاهز للتسميع</button>`}
     ${s.cname || qn.length ? `<ol class="qscreen">${s.cname ? `<li class="cur"><span>يسمّع الآن</span> ${esc(s.cname)}</li>` : ''}${qn.map(x => `<li class="${x.id === u.id ? 'me' : ''}">${esc(x.n)}${x.id === u.id ? ' (أنت)' : ''}</li>`).join('')}</ol>` : '<div class="small muted">الطابور فاضي حاليًا.</div>'}
@@ -754,6 +763,8 @@ function homeV(u) {
   const vd = verseOfDay(t);
   return `<div><h1>السلام عليكم، ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${hs ? esc(hs.name) : ''} · ${fmtDateH(t)} · هذه الصفحة يتابع منها ولي الأمر أيضًا</div></div>
   ${parentSummary(u)}
+  ${studentPollsHtml(u)}
+  ${afterLessonHtml(u)}
   <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
   ${studentAnnsHtml(u)}
   ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
@@ -761,7 +772,7 @@ function homeV(u) {
   ${dueCard(u)}
   ${next ? lessonCard(u, next) : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
   <div class="grid2">
-    <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>خطتك</h2></div>${tip('المطلوب يتحدث لحاله بعد ما يسجل المعلم تسميعك. الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.')}${planHtml(u)}${goalHtml(u)}</section>
+    <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>خطتك</h2></div>${planHtml(u)}${goalHtml(u)}</section>
     ${tasksHtml(u)}
   </div>
   <div class="grid2">
@@ -769,8 +780,8 @@ function homeV(u) {
     <section class="card" style="display:grid;gap:12px"><h2>إنجازك</h2><div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>الحضور، 30 يوم</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة هالأسبوع</span></div></div>
     ${past.length ? `<div class="list">${past.map(s => { const v = (s.att || {})[u.id]; return `<div class="item"><div class="grow">${fmtDate(s.date)}</div><span class="chip ${v ? ATTC[v] : ''}">${v ? ATT[v] : 'لم يُحضَّر'}</span></div>`; }).join('')}</div>` : ''}</section>
   </div>
-  <section class="card"><h2>سجل التسميع</h2>${tip('كل تسميع مع تقديره وعدد الأخطاء وملاحظة المعلم. «إعادة» معناها يعيد المقطع في الحصة الجاية.')}${historyTable(rs)}</section>
-  <div class="row" style="justify-content:center"><button class="btn ghost" data-act="tour">كيف أستخدم الصفحة؟</button>${supportBtn('تواصل مع الإدارة')}</div>
+  ${behavStudentHtml(u)}
+  <section class="card"><h2>سجل التسميع</h2>${historyTable(rs)}</section>
   ${stickyJoin(u)}`;
 }
 
@@ -778,12 +789,13 @@ function homeV(u) {
 function annsV(u) {
   const hs = myHalaqat(u);
   const list = L('anns').sort((a, b) => b.at - a.at);
-  return `<div class="sec-head"><h1>الإعلانات</h1></div>
+  return `<div class="sec-head"><h1>الإعلانات والتصويت</h1></div>
   <form class="card" data-form="ann" style="gap:10px"><h2>إعلان جديد</h2>
     <div class="fgrid"><label class="fld"><span>العنوان</span><input id="an-title" name="title" required maxlength="120" placeholder="مثال: تغيير موعد حصة الخميس"></label>
     <label class="fld"><span>لمين</span><select id="an-h" name="halqaId">${u.role === 'admin' ? '<option value="">كل الحلقات</option>' : ''}${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label></div>
     <label class="fld"><span>التفاصيل</span><textarea id="an-body" name="body" rows="3" maxlength="2000"></textarea></label>
     <div><button class="btn pri" type="submit">نشر الإعلان</button></div></form>
+  ${staffPollsHtml(u)}
   ${list.length ? list.map(a => { const tg = annTargets(a); const rd = new Set((a.reads || []).map(r => r.uid)); const readers = tg.filter(x => rd.has(x.id)); const not = tg.filter(x => !rd.has(x.id));
     return `<section class="card" style="display:grid;gap:8px"><div class="sec-head"><div><h2>${esc(a.title)}</h2><div class="small muted">${a.halqaId ? esc(halqaName(a.halqaId)) : 'كل الحلقات'} · ${esc(a.byName)} · ${fmtDate(isoDate(new Date(a.at)))}</div></div><div class="row"><span class="chip ${readers.length === tg.length && tg.length ? 'ok' : 'warn'}">قرأه ${readers.length} من ${tg.length}</span><button class="btn ghost sm" data-act="ann-del" data-id="${a.id}">حذف</button></div></div>
       ${a.body ? `<div class="ann-body">${esc(a.body)}</div>` : ''}
@@ -803,7 +815,6 @@ function tasksHtml(u) {
   const doneSet = new Set((w.items || []).filter(x => x.done).map(x => x.k));
   if (isPaused(u)) return `<section class="card"><h2>مهام اليوم</h2><div class="note">خطتك موقوفة مؤقتًا${u.plan.paused.reason ? ': ' + esc(u.plan.paused.reason) : ''}.</div></section>`;
   return `<form class="card" data-form="wird" style="gap:10px"><div class="sec-head"><h2>مهام اليوم</h2>${w.items ? '<span class="chip ok">محفوظة</span>' : ''}</div>
-    ${tip('علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط «حفظ». المعلم يشوفها قبل الحصة.')}
     ${items.length ? items.map((x, i) => { const k = itemLabel(x); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${x.retry ? 'إعادة ' : ''}${x.type === 'new' ? 'احفظ' : 'راجع'} ${esc(SN[x.surah - 1])} <b class="num">${x.from === x.to ? x.from : x.from + '–' + x.to}</b></span></label>`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
     <div class="row"><label class="fld" style="flex:0 1 200px"><span>ورد التلاوة اليوم (أوجه)</span><input id="wd-read" name="read" type="number" min="0" max="604" inputmode="numeric" value="${w.read || ''}"></label>
     <label class="fld" style="flex:1 1 200px"><span>ملاحظة (اختياري)</span><input id="wd-note" name="note" maxlength="200" value="${esc(w.note || '')}"></label></div>
@@ -883,15 +894,15 @@ const PERM_LABEL = { req: 'طلبات التسجيل', students: 'الطلاب',
 const PRESETS = { 'مشرف تعليمي': ['students', 'anns', 'reports', 'halaqat'], 'مسؤول تسجيل': ['req', 'students'], 'مشرف عام': ['req', 'students', 'teachers', 'halaqat', 'anns', 'reports', 'logs'] };
 const isFullAdmin = u => u.role === 'admin' && !u.perms;
 const can = (u, perm) => u.role === 'admin' && (!u.perms || u.perms.includes(perm));
-const TAB_PERM = { req: 'req', students: 'students', teachers: 'teachers', halaqat: 'halaqat', anns: 'anns', reports: 'reports', settings: 'settings', logs: 'logs' };
+const TAB_PERM = { req: 'req', students: 'students', inbox: 'students', teachers: 'teachers', halaqat: 'halaqat', anns: 'anns', reports: 'reports', settings: 'settings', logs: 'logs' };
 const subName = id => (S.users[id] || {}).name || '';
 function msgsUnread(u) { let seen = 0; try { seen = +localStorage.getItem('irtaq-room-' + u.id) || 0; } catch {} return L('msgs').filter(m => m.at > seen && m.by !== u.id).length; }
 
 /* ---- لوحة المدير ---- */
 function dashV(u) {
-  const t = today(); const hs = L('halaqat'); const studs = L('users').filter(x => x.role === 'student' && x.status === 'active');
-  const todayL = L('sessions').filter(s => s.date === t && !s.cancelled);
-  const wk = weekStartC(t); const recsW = L('recs').filter(r => r.date >= wk);
+  const t = today(); const hs = myHalaqat(u); const hset = new Set(hs.map(h => h.id)); const studs = L('users').filter(x => x.role === 'student' && x.status === 'active' && hset.has(x.halqaId));
+  const todayL = L('sessions').filter(s => s.date === t && !s.cancelled && hset.has(s.halqaId));
+  const wk = weekStartC(t); const recsW = L('recs').filter(r => r.date >= wk && hset.has(r.halqaId || (S.users[r.uid] || {}).halqaId));
   const pend = L('users').filter(x => x.role === 'student' && x.status === 'pending').length;
   const marked = todayL.flatMap(s => Object.values(s.att || {})); const pres = marked.filter(v => v === 'p' || v === 'l').length;
   const stuck = studs.filter(st => { const rs = recsOf(st.id).filter(r => r.date >= addDays(t, -14)); return rs.length ? rs.filter(r => r.pass === false).length >= 2 : (st.approvedAt && st.approvedAt < Date.now() - 14 * 864e5); });
@@ -983,18 +994,20 @@ function helpV(u) {
   const install = sec('ثبّت الموقع كتطبيق', `${INSTALL_EVT ? '<button class="btn pri" data-act="install">تثبيت الآن</button>' : ''}${ol(['<b>آيفون:</b> افتح الموقع في Safari، اضغط زر المشاركة، ثم «إضافة إلى الشاشة الرئيسية».', '<b>أندرويد:</b> من قائمة Chrome (⋮) اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».'])}`);
   const notif = S.push ? sec('الإشعارات', `${ol(['اضغط «الإشعارات» فوق، ووافق على السماح.', 'في الآيفون: لازم تثبت الموقع على الشاشة الرئيسية أول، وبعدها تفعّل الإشعارات من داخله.', 'توصلك: تذكير قبل الحصة، و«دورك قرب» و«دورك الآن» في الطابور، والإعلانات.'])}`) : '';
   const cal = hid ? sec('مواعيد الحلقة في تقويم جوالك', `<p>يضيف حصص الحلقة لتقويم الجوال مع تنبيه قبلها بربع ساعة، ويتحدث لحاله.</p><div class="row"><a class="btn" href="webcal://${host}/api/ics/${hid}.ics">إضافة للتقويم</a><button class="btn ghost" data-act="copy" data-text="https://${host}/api/ics/${hid}.ics">نسخ الرابط</button></div>`) : '';
+  const sub = (t, arr) => `<details class="card help"><summary><h2>${t}</h2></summary>${ol(arr)}</details>`;
   if (u.role === 'student') return `<h1>الدليل</h1>
-    <div class="row"><button class="btn pri" data-act="tour">شاهد الجولة التعريفية</button>${supportBtn('تواصل مع الإدارة')}</div>
-    ${sec('للطالب: يوم الحصة خطوة بخطوة', ol(['افتح الموقع قبل الحصة بدقائق، وتشوف العدّاد في صفحتك.', 'وقت الحصة اضغط «ادخل الحصة»، ويفتح Zoom أو Meet.', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع»، وتشوف ترتيبك في الطابور.', 'لما يطلع «دورك الآن» افتح المايك وسمّع المطلوب منك.', 'إذا ما قدرت تدخل اضغط «عندي مشكلة في الدخول» واختر المشكلة.', 'بعد الحصة شوف تقديرك وملاحظة المعلم في «سجل التسميع».']))}
-    ${sec('في البيت', ol(['افتح «المطلوب منك» وجهّز الحفظ والمراجعة للحصة الجاية.', 'في «مهام اليوم» علّم على اللي خلصته، واكتب كم وجه قرأت، واضغط «حفظ».', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ، وتطلع لك أوسمة مع الالتزام.']))}
-    ${sec('لولي الأمر', ol(['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير له.', '«إنجازك» فيه نسبة الحضور، وعدد الأوجه المحفوظة والمراجعة هالأسبوع.', '«سجل التسميع» فيه كل تسميع بتقديره وأخطائه وملاحظة المعلم.', 'الإعلانات تطلع فوق باللون الذهبي، اضغط «قرأت» بعد ما تقراها.', 'زر «English» فوق يعرض الصفحة بالإنجليزي، وزر «أ+» يكبّر الخط.', 'عندك أكثر من ولد؟ اضغط «إضافة ابن» وادخل حسابه مرة وحدة، وبعدها تتنقل بينهم من «الأبناء».']))}
+    <div class="row"><button class="btn pri" data-act="tour">الجولة التعريفية</button>${supportBtn('تواصل مع الإدارة')}</div>
+    ${sub('يوم الحصة', ['افتح الموقع قبل الحصة، وتشوف العدّاد في صفحتك.', 'اضغط «الحصة» تحت أو «ادخل الحصة». أول مرة ممكن يطلب تثبيت Zoom أو Meet، ثبته وارجع اضغط مرة ثانية.', 'شاشة الحصة تعرض ترتيبك في الطابور وتتحدث لحالها، والجوال يهتز لما تكون التالي ولما يجي دورك.', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع».', 'ما قدرت تدخل؟ اضغط «عندي مشكلة في الدخول» واختر المشكلة، وتوصل للمعلم.', 'بعد الحصة يطلع لك «ملخص الحصة»: وش سمّعت، تقديرك، والمطلوب للحصة الجاية.'])}
+    ${sub('الخطة والبيت', ['«خطتك» فيها الحفظ والمراجعة والتثبيت، وتتحدث لحالها بعد ما يسجل المعلم تسميعك.', 'الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.', '«إعادة» معناها تعيد المقطع في الحصة الجاية لين تنجح فيه.', 'في «مهام اليوم» علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط حفظ. المعلم يشوفها قبل الحصة.', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ.'])}
+    ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.'])}
+    ${sub('لولي الأمر', ['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير.', 'عندك أكثر من ولد؟ من «المزيد» اضغط «إضافة ابن» مرة وحدة، وبعدها «أولادي» يعرض ملخصهم كلهم في شاشة وحدة وتنتقل بينهم.', 'زر «English» يعرض الصفحة بالإنجليزي، و«تكبير الخط» يكبّر الكلام.'])}
     ${cal}${install}${notif}
     <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
-  const teacher = sec('للمعلم', ol(['الحصص تنشأ لحالها إذا كانت الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'في التحضير: «الكل حاضر» ثم عدّل الغائبين، أو «من دخل» يحضّر اللي ضغطوا دخول.', 'الطابور: الطلاب يدخلونه بأنفسهم، أو أضفهم. «التالي» ينقل للطالب اللي بعده ويوصله إشعار.', 'لوحة التسجيل: اضغط «+ خطأ» و«+ تنبيه» وأنت تسمع، والتقدير يطلع لحاله. «حفظ والتالي» يوفر عليك.', '«المطلوب اليوم» يعرض خطة كل طالب وهل راجع في البيت.', 'من صفحة الطالب: الخطة والهدف ورسائل واتساب لولي الأمر.']));
-  const admin = u.role === 'admin' ? sec('للمدير', ol(['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين وحدد صلاحياتهم، وأضف مشرفين إداريين بصلاحيات محددة من صفحة المعلمين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإجازات والفصول والنقاط والرسائل الجاهزة من «الإعدادات».', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.'])) +
-    (isFullAdmin(u) ? sec('Google Sheets', `<p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع. الجدول يتحدث لحاله كل ساعة تقريبًا.</p>`) +
-      sec('الرابط المختصر', ol(['من Vercel افتح المشروع ← Settings ← Domains.', 'اكتب اسم مثل irtaq.vercel.app واضغط Add (إذا كان متاح)، أو اربط دومين اشتريته.'])) +
-      sec('تذكير الحصة والنسخ الاحتياطي', ol(['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على الرابط: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY (أرسلتها لك في المحادثة).'])) : '') : '';
+  const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.']);
+  const admin = u.role === 'admin' ? sub('للمدير', ['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين، و«جدول الأسبوع» في صفحة المعلمين يعرض الحلقات بالأيام. اسحب الحلقة لصف معلم ثاني عشان تنقلها له، أو اضغط عليها في الجوال.', 'المشرفين الإداريين: حدد صلاحياتهم، ومن «يتابع» اختر حلقات أو فروع محددة، ويشوف المشرف حلقاته بس.', 'الفروع: اكتبها في الإعدادات ← إعدادات الموقع، وبعدها اختر فرع كل حلقة. يطلع فوق الصفحات شريط تختار منه الفرع.', 'الطلاب: «استيراد» يضيف طلاب من ملف إكسل أو جدول تلصقه، ويعطيك أسماء المستخدمين وكلمات المرور ترسلها لأولياء الأمور.', '«منقطعين أسبوعين» في صفحة الطلاب: اللي ما فتحوا الموقع من أسبوعين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإعدادات مقسمة: التسميع والتقدير، الدوام والحضور (الإجازات والاختبارات)، التسجيل، الرسائل والواتساب، غرفة الحصة، إعدادات الموقع.', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.']) +
+    (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: الإعدادات ← الرسائل والواتساب ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.']) +
+      `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
+      sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
   return `<h1>الدليل</h1>${admin}${teacher}${cal}${install}${notif}`;
 }
 
@@ -1007,6 +1020,9 @@ function adminModal(a) {
     <label class="fld"><span>${a ? 'كلمة مرور جديدة (اتركها فاضية)' : 'كلمة المرور'}</span><input name="password" type="password" ${a ? '' : 'required minlength="6"'} autocomplete="new-password"></label></div>
     <div class="fld"><span>قالب جاهز</span><div class="row">${Object.keys(PRESETS).map(k => `<button type="button" class="btn sm" data-act="preset" data-k="${k}">${k}</button>`).join('')}</div></div>
     <div class="fld"><span>الصلاحيات</span><div class="days">${Object.entries(PERM_LABEL).map(([k, l]) => `<label><input type="checkbox" name="perm" value="${k}" ${perms.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div><span class="small muted" style="font-weight:400">الحصص ولوحة المدير متاحة للكل. إضافة المدراء والنسخ الاحتياطي للمدير الكامل فقط.</span></div>
+    ${(() => { const sc = perms.filter(p => /^(h|b):/.test(p)); const on = sc.length > 0; const hs = L('halaqat').sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ar'));
+      return `<div class="fld"><span>يتابع</span><div class="row"><label class="check"><input type="radio" name="scope" value="all" data-change="scope-mode" ${on ? '' : 'checked'}> كل الحلقات</label><label class="check"><input type="radio" name="scope" value="some" data-change="scope-mode" ${on ? 'checked' : ''}> حلقات أو فروع محددة</label></div>
+      <div id="scope-box" class="scope-box" ${on ? '' : 'hidden'}>${branches().length ? `<div class="small muted">الفروع</div><div class="days">${branches().map(b => `<label><input type="checkbox" name="perm" value="b:${esc(b)}" ${sc.includes('b:' + b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')}</div>` : ''}<div class="small muted">الحلقات</div><div class="days">${hs.map(h => `<label><input type="checkbox" name="perm" value="h:${h.id}" ${sc.includes('h:' + h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('')}</div></div></div>`; })()}
     ${a ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${a.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${a.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${a ? `<button type="button" class="btn danger" data-act="del-user" data-id="${a.id}">حذف</button>` : ''}</div></form>`);
 }
@@ -1071,7 +1087,6 @@ function waSettingsHtml() {
   if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
   const c = { ...(ST.wa.cfg || {}) }; if (/getpostman|documenter/i.test(c.url || '')) c.url = ''; const cnt = ST.wa.counts || {};
   return `<form class="card" data-form="wa" style="gap:12px"><div class="sec-head"><h2>ربط الواتساب (الواتس الذكي)</h2><span class="chip ${c.enabled ? 'ok' : ''}">${c.enabled ? 'مفعّل' : 'متوقف'}</span></div>
-    ${tip('الموقع يرسل من رقمك المربوط في الواتس الذكي مباشرة لولي الأمر. اربط بخطوتين: ادخل بحسابك تحت واضغط «اربط»، بعدين «حفظ ربط الواتساب». تأكد قبلها إن جوالك مربوط في الواتس الذكي (مسحت الباركود).')}
     <div class="test-box"><b>الربط السريع: ادخل بحسابك في الواتس الذكي</b><div class="small muted">نفس الرقم وكلمة المرور اللي تدخل فيها موقع الواتس الذكي. الموقع يجيب رمز الربط ورقمك المربوط ويعبي الإعدادات تحت بنفسه، وكلمة المرور ما تنحفظ.</div>
       <div class="row"><input id="wa-sl-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="off" style="flex:1 1 150px"><input id="wa-sl-pw" type="password" dir="ltr" placeholder="كلمة المرور" autocomplete="new-password" style="flex:1 1 150px"><button type="button" class="btn pri" data-act="wa-smart">اربط</button></div><div id="wa-sl-out" class="small muted" dir="auto"></div></div>
     <label class="check"><input type="checkbox" id="wa-enabled" name="enabled" ${c.enabled ? 'checked' : ''}> تفعيل الإرسال التلقائي</label>
@@ -1211,6 +1226,7 @@ function parentSummary(u) {
   else bits.push('ما فيه حصة اليوم');
   if (last) bits.push(`آخر تسميع ${fmtDate(last.date)}: <b class="c-${GRADE_K[last.grade] || ''}">${esc(last.grade)}</b>`);
   const g = goalProgress(u); if (g) bits.push(`الهدف: ${g.pct}٪`);
+  const un = dmUnreadMine(u); if (un) bits.push(`<button class="linkbtn" data-act="tab" data-v="msgs">${un} رسالة من المعلم</button>`);
   return `<div class="psum"><span class="small muted">ملخص سريع</span><div>${bits.join(' · ')}</div></div>`;
 }
 
@@ -1273,7 +1289,8 @@ function planItems(st) {
 const blankSeg = (type = 'new') => ({ type, surah: '', from: '', to: '', m: 0, a: 0, full: false, q: '' });
 function startRec(uid, sid, where, date) {
   const st = { ...S.users[uid], id: uid }; const items = planItems(st);
-  ST.rec = { uid, sid: sid || '', where, date: date || today(), quick: false, secs: 0, run: false, t0: 0, note: '',
+  const autoT = !!(+SET().recMin) && !!sid;
+  ST.rec = { uid, sid: sid || '', where, date: date || today(), quick: false, secs: 0, run: autoT, t0: autoT ? Date.now() : 0, note: '',
     segs: items.length ? items.map(x => ({ ...blankSeg(x.type), surah: x.surah, from: x.from, to: x.to, retry: !!x.retry })) : [blankSeg()] };
 }
 const recSecs = () => ST.rec ? ST.rec.secs + (ST.rec.run ? Math.floor((Date.now() - ST.rec.t0) / 1000) : 0) : 0;
@@ -1297,7 +1314,7 @@ function recPanelHtml() {
   const st = S.users[R.uid] || {}; const ses = S.sessions[R.sid] || {};
   return `<div class="recp">
    <div class="sec-head"><div><div class="small muted">تسجيل تسميع${R.sid ? '' : ' خارج الحصة'}</div><h3>${esc(st.name)}</h3></div>
-     <div class="row"><span class="timer num" data-timer>${fmtDur(recSecs())}</span><button class="btn sm" data-act="rk-timer">${R.run ? 'إيقاف' : (R.secs ? 'متابعة' : 'ابدأ التوقيت')}</button>${R.secs || R.run ? '<button class="btn ghost sm" data-act="rk-treset">تصفير</button>' : ''}</div></div>
+     <div class="row"><span class="timer num timer-w ${(+SET().recMin) && recSecs() >= SET().recMin * 60 ? 'over' : ''}" data-timer>${fmtDur(recSecs())}</span><button class="btn sm" data-act="rk-timer">${R.run ? 'إيقاف' : (R.secs ? 'متابعة' : 'ابدأ التوقيت')}</button>${R.secs || R.run ? '<button class="btn ghost sm" data-act="rk-treset">تصفير</button>' : ''}</div></div>
    ${!R.sid ? `<label class="fld" style="max-width:220px"><span>التاريخ</span><input type="date" id="rk-date" data-rn="date" value="${esc(R.date)}"></label>` : ''}
    <div class="row"><label class="check"><input type="checkbox" id="rk-quick" data-rn="quick" ${R.quick ? 'checked' : ''}> تقييم سريع بدون عدّ</label><button class="btn ghost sm" data-act="rk-plan">سمّع المطلوب من الخطة</button></div>
    ${R.segs.map((g, i) => segHtml(g, i)).join('')}
@@ -1383,6 +1400,7 @@ function halqaModal(h) {
     <label class="fld"><span>المعلم</span><select name="teacherId"><option value="">بدون معلم</option>${ts.map(t => `<option value="${t.id}" ${h && h.teacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
     <div class="fld"><span>أيام الدوام</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
     <label class="fld"><span>الوقت المعتاد للحصة</span><input type="time" name="time" value="${esc(h ? h.time : '')}"></label>
+    ${branches().length ? `<label class="fld"><span>الفرع</span><select name="branch"><option value="">—</option>${branches().map(b => `<option ${h && h.branch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></label>` : ''}
     <label class="fld"><span>رابط الحلقة الثابت (Zoom أو Meet أو Teams)</span><input name="link" type="url" dir="ltr" value="${esc(h ? h.link : '')}" placeholder="https://"></label>
     <label class="check"><input type="checkbox" name="auto" ${!h || h.auto ? 'checked' : ''}> جدول ثابت: تنشأ الحصص لحالها حسب أيام الدوام والوقت</label>
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${h ? `<button type="button" class="btn danger" data-act="del-halqa" data-id="${h.id}">حذف الحلقة</button>` : ''}</div>
@@ -1468,7 +1486,7 @@ const ACT = {
   'wa-cancel': el => act('wa.cancel', { id: el.dataset.id }, 'أُلغيت').then(() => { ST.wa = null; render(); }),
   'wa-now': el => act('wa.sendNow', { lessonId: el.dataset.id }, r => 'جاري إرسال ' + (r.n || 0) + ' رسالة').then(() => { (ST.waP || {})[el.dataset.id] = null; render(); }),
   'wa-test': async () => { const ph = ($('#wa-test-phone') || {}).value; const f = document.querySelector('form[data-form=wa]'); const out = $('#wa-test-out'); if (!ph) return toast('اكتب رقم الجوال'); out.textContent = 'جاري الإرسال…'; const r = await act('wa.test', { phone: ph, data: waFormData(f) }); ST.waTest = r ? { ok: r.ok, msg: (r.ok ? 'وصلت للمزوّد بنجاح، شيك على جوالك. ' : 'ما نجحت: ') + (r.resp || '') } : null; render(); },
-  'kids': () => kidsModal(),
+  'kids': () => accounts().length > 1 ? kidsOverview() : kidsModal(),
   'switch': el => switchTo(el.dataset.id),
   'acc-rm': el => { saveAccounts(accounts().filter(x => x.id !== el.dataset.id)); if (!$('#modal').hidden) kidsModal(); else render(); },
   'tour-next': () => showTour(Math.min(TOUR.length - 1, (ST.tour || 0) + 1)),
@@ -1624,6 +1642,7 @@ const CHG = {
   'prior-toggle': el => { $('#pm-prior').hidden = !el.checked; $('#pm-start').hidden = el.checked; },
   'sf-type': el => { const c = $('#sf-choice'); if (c) c.hidden = el.value !== 'choice'; const lb = el.form.querySelector('[name=label]'); if (el.value === 'memo' && !lb.value) lb.value = 'مقدار الحفظ السابق'; },
   'memo-none': el => { const r = el.closest('.memo-fld').querySelector('.memo-rows'); if (r) r.hidden = el.checked; },
+  'scope-mode': el => { const b = $('#scope-box'); if (b) b.hidden = el.value !== 'some'; },
   'plan-mode': el => { const auto = el.value === 'auto' && el.checked; $('#pm-auto').hidden = !auto; $('#pm-manual').hidden = auto; },
 };
 document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (el && CHG[el.dataset.change]) CHG[el.dataset.change](el, e); });
@@ -1664,7 +1683,7 @@ function settingsData(f) {
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
-  return { supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3,
+  return { supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {
@@ -1716,7 +1735,7 @@ const FORMS = {
   },
   async halqa(f, d) {
     const days = d.getAll('day').map(Number); if (!days.length) return toast('اختر يوم دوام واحد على الأقل');
-    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto') } }, f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة');
+    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto'), branch: d.has('branch') ? d.get('branch') : ((S.halaqat[f.dataset.id] || {}).branch || '') } }, f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة');
     if (r) closeModal();
   },
   async plan(f, d) {
@@ -1772,7 +1791,9 @@ const FORMS = {
     if (await act('goal.save', { id: f.dataset.id, goal: { pages: +d.get('pages'), from: d.get('from'), by: d.get('by'), note: d.get('note') } }, 'حُفظ الهدف')) closeModal();
   },
   async admin(f, d) {
-    const r = await act('admin.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), perms: d.getAll('perm'), status: d.get('status') } }, 'حُفظ');
+    const perms = d.getAll('perm').filter(p => d.get('scope') === 'some' || !/^(h|b):/.test(p));
+    if (d.get('scope') === 'some' && !perms.some(p => /^(h|b):/.test(p))) return toast('اختر الحلقات أو الفروع اللي يتابعها');
+    const r = await act('admin.save', { id: f.dataset.id, data: { name: d.get('name'), username: d.get('username'), password: d.get('password'), perms, status: d.get('status') } }, 'حُفظ');
     if (r) closeModal();
   },
   async assign(f, d) {
@@ -1904,8 +1925,7 @@ function liveV(u) {
     <div class="lv-actions">
       ${isCur ? '' : pos ? `<button class="btn" data-act="ready" data-id="${s.id}" data-v="0">اطلع من الطابور</button>` : `<button class="btn big lv-ready" data-act="ready" data-id="${s.id}" data-v="1">${ICO.mic} جاهز للتسميع</button>`}
       ${issue ? `<div class="note">وصلت مشكلتك للمعلم: ${esc(issue.msg)} <button class="btn ghost sm" data-act="issue-cancel" data-id="${s.id}">انحلت</button></div>` : `<button class="btn ghost" data-act="issue-open" data-id="${s.id}">عندي مشكلة في الدخول</button>`}
-    </div>
-    ${tip('خلّ هالشاشة مفتوحة جنب الحصة: ترتيبك يتحدث لحاله، والجوال يهتز لما تكون التالي ولما يجي دورك.')}`;
+    </div>`;
   const foot = link ? `<a class="btn pri huge" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${ICO.live} ${j ? 'ارجع للحصة' : 'ادخل الحصة'}</a>` : '<span class="chip warn">الرابط ينزل قبل الحصة</span>';
   return fsWrap(esc(hs.name || 'الحصة'), fmtDate(s.date) + ' · ' + fmtTime(s.time), body, foot, isCur ? 'lv-hot' : '');
 }
@@ -1932,7 +1952,7 @@ function rec1V(s) {
     ${R.edit ? `${segHtml(g, i)}<div class="row"><button class="btn sm" data-act="rk-add">+ مقطع</button><label class="check small"><input type="checkbox" id="rk-quick" data-rn="quick" ${R.quick ? 'checked' : ''}> تقييم سريع بدون عدّ</label></div>` : counters}
     <div class="r1-grade ${gr ? gr.k : ''}">${gr ? gr.t : 'اختر التقدير'}</div>
     <label class="fld"><span>ملاحظة (اختياري)</span><input id="rk-note" data-rn="note" value="${esc(R.note)}" placeholder="مثال: انتبه للمدود"></label>`;
-  const foot = `${nx ? `<button class="btn pri huge" data-act="r1-save" data-next="1">حفظ والتالي</button>` : `<button class="btn pri huge" data-act="r1-save">حفظ وإنهاء</button>`}${nx ? `<button class="btn" data-act="r1-skip">تخطي</button>` : ''}`;
+  const foot = `${nx ? `<button class="btn pri huge" data-act="r1-save" data-next="1">حفظ والتالي</button>` : `<button class="btn pri huge" data-act="r1-save">حفظ وإنهاء</button>`}${nx ? `<button class="btn" data-act="r1-skip">ما رد</button>` : ''}`;
   return fsWrap('وضع التسميع', esc(halqaName(s.halqaId)), body, foot, 'r1');
 }
 
@@ -2016,6 +2036,9 @@ function todayAlertsHtml(u) {
   if (pend) items.push({ k: 'info', t: `${pend} طلب تسجيل ينتظرك`, b: `<button class="btn sm" data-act="tab" data-v="req">راجعها</button>` });
   if (S.waFailed) items.push({ k: 'bad', t: `${S.waFailed} رسالة واتساب ما انرسلت`, b: `<button class="btn sm" data-act="go-wa">السجل</button>` });
   if (isFullAdmin(u) && !S.waOn) items.push({ k: 'info', t: 'ربط الواتساب متوقف: رسائل الغياب والتقارير ما تطلع تلقائي', b: `<button class="btn sm" data-act="go-wa">اربطه</button>` });
+  const inact = inactiveList().length;
+  if (inact) items.push({ k: 'info', t: `${inact} طالب ما دخلوا الموقع من أسبوعين`, b: `<button class="btn sm" data-act="go-inact">شوفهم</button>` });
+  const unr = dmUnreadStaff(); if (unr) items.push({ k: 'info', t: `${unr} رسالة من أولياء الأمور ما انقرت`, b: `<button class="btn sm" data-act="tab" data-v="inbox">افتح</button>` });
   const lim = absentLimit(); const abs = L('users').filter(x => x.role === 'student' && x.status === 'active' && absentStreak(x) >= lim).length;
   if (abs) items.push({ k: 'warn', t: `${abs} ${abs === 1 ? 'طالب غاب' : 'طلاب غابوا'} ${lim} حصص متتالية أو أكثر`, b: `<button class="btn sm" data-act="scroll-abs">شوفهم</button>` });
   return `<section class="card al-card"><div class="sec-head"><h2>تنبيهات اليوم</h2>${items.length ? `<span class="chip ${items.some(x => x.k === 'bad') ? 'bad' : 'warn'}">${items.length}</span>` : ''}</div>
@@ -2024,7 +2047,7 @@ function todayAlertsHtml(u) {
 
 /* شريط التنقل السفلي في الجوال + قائمة «المزيد» */
 function bottomNav(u, tabs, active) {
-  const prim = u.role === 'student' ? tabs.slice(0, 1) : tabs.slice(0, 4);
+  const prim = u.role === 'student' ? tabs.slice(0, 3) : tabs.slice(0, 4);
   const live = u.role === 'student' && liveSession(u);
   const cnt = tabs.slice(prim.length).reduce((a, t) => a + (+t[2] || 0), 0);
   return `<nav class="bnav" aria-label="التنقل">${prim.map(([k, l, c]) => `<button class="bn ${k === active ? 'on' : ''}" data-act="tab" data-v="${k}">${ICO[k] || ICO.more}<span>${l}</span>${c ? `<i>${c}</i>` : ''}</button>`).join('')}
@@ -2032,11 +2055,11 @@ function bottomNav(u, tabs, active) {
     <button class="bn" data-act="more">${ICO.more}<span>${LANG === 'en' ? 'More' : 'المزيد'}</span>${cnt ? `<i>${cnt}</i>` : ''}</button></nav>`;
 }
 function moreSheet() {
-  const u = me(); if (!u) return; const tabs = TABS[u.role](u); const prim = u.role === 'student' ? 1 : 4;
+  const u = me(); if (!u) return; const tabs = TABS[u.role](u); const prim = u.role === 'student' ? 3 : 4;
   const it = (act, icon, label, extra = '') => `<button class="ms-it" data-act="${act}" ${extra}>${ICO[icon] || ICO.more}<span>${label}</span></button>`;
   const rest = tabs.slice(prim).map(([k, l, c]) => it('tab-m', k, l + (c ? ` (${c})` : ''), `data-v="${k}"`)).join('');
   openModal(`${dlgHead(esc(u.name))}<div class="ms-grid">${rest}
-    ${u.role !== 'student' ? it('search-m', 'search', 'بحث') : it('kids-m', 'kids', accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن') + it('zoom', 'zoom', ZOOM > 1 ? 'تصغير الخط' : 'تكبير الخط') + it('lang', 'lang', LANG === 'en' ? 'عربي' : 'English')}
+    ${u.role !== 'student' ? it('search-m', 'search', 'بحث') : it('kids-m', 'kids', accounts().length > 1 ? 'أولادي (' + accounts().length + ')' : 'إضافة ابن') + it('zoom', 'zoom', ZOOM > 1 ? 'تصغير الخط' : 'تكبير الخط') + it('lang', 'lang', LANG === 'en' ? 'عربي' : 'English')}
     ${S.push && 'PushManager' in window ? it('push', 'bell', PUSH_ON ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات') : ''}
     ${INSTALL_EVT ? it('install', 'install', 'تثبيت كتطبيق') : ''}
     ${it('theme', 'theme', isDarkNow() ? 'المظهر الفاتح' : 'المظهر الداكن')}${it('my-pw', 'key', 'كلمة المرور')}${it('logout', 'logout', 'خروج')}</div>`);
@@ -2091,7 +2114,7 @@ Object.assign(ACT, {
   'more': () => moreSheet(),
   'tab-m': el => { closeModal(); go(el.dataset.v); },
   'search-m': () => { closeModal(); setTimeout(() => searchModal(), 30); },
-  'kids-m': () => { closeModal(); setTimeout(() => kidsModal(), 30); },
+  'kids-m': () => { closeModal(); setTimeout(() => accounts().length > 1 ? kidsOverview() : kidsModal(), 30); },
   'go-wa': () => go('settings', { setTab: 'msg' }),
   'scroll-abs': () => { const el = document.querySelector('.alert-card'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   'rec1-open': async () => {
@@ -2105,7 +2128,7 @@ Object.assign(ACT, {
   'r1-edit': () => { ST.rec.edit = !ST.rec.edit; render(); },
   'r1-inc': el => { const R = ST.rec; const g = R.segs[R.cur || 0]; const k = el.dataset.k; const d = +el.dataset.d; g[k] = Math.max(0, (+g[k] || 0) + d); buzz(d > 0 ? (k === 'm' ? 35 : 15) : 8); if (!R.run && !R.secs && d > 0) { R.run = true; R.t0 = Date.now(); } render(); },
   'r1-save': async el => { buzz(20); await saveRec(el.dataset.next === '1'); if (ST.fs === 'rec1' && !ST.rec) closeFs(); else render(); },
-  'r1-skip': async () => { const s = curSession(); const q = [...(s.queue || [])].filter(id => id !== ST.rec.uid); const nx = q.shift() || null; await setQueue(s, q, nx); if (nx) { startRec(nx, s.id, 'fs'); ST.rec.cur = 0; render(); } else closeFs(); },
+  'r1-skip': async () => { const s = curSession(); const me0 = ST.rec.uid; const q = [...(s.queue || [])].filter(id => id !== me0); const nx = q.shift() || null; q.push(me0); await setQueue(s, q, nx); if (nx) { startRec(nx, s.id, 'fs'); ST.rec.cur = 0; toast('انتقل لآخر الطابور'); render(); } else closeFs(); },
   'sw-mark': el => swMark(el.dataset.v),
   'sw-skip': () => { ST.sw.i++; buzz(8); render(); },
   'sw-again': () => { ST.sw.i = 0; ST.sw.hist = []; render(); },
@@ -2195,7 +2218,6 @@ function videoSettingsHtml() {
   const c = ST.video; const pv = ST.videoPv || c.provider || 'none';
   const radio = (v, t, d) => `<label class="pv ${pv === v ? 'on' : ''}"><input type="radio" name="provider" value="${v}" ${pv === v ? 'checked' : ''} data-change="video-pv"><b>${t}</b><span>${d}</span></label>`;
   return `<form class="card" data-form="video" style="gap:14px"><div class="sec-head"><h2>غرفة الحصة داخل الموقع</h2><span class="chip ${c.on ? 'ok' : ''}">${c.on ? 'مفعّلة' : 'متوقفة'}</span></div>
-    ${tip('بدل Zoom وMeet: الطالب يضغط «ادخل الحصة» وتفتح المكالمة داخل الموقع نفسه. المعلم يقدر يصغّرها ويحضّر ويسمّع وهو في المكالمة. Google Meet ما يسمح بالتشغيل داخل المواقع، فنستخدم خدمة مخصصة لهذا.')}
     <div class="pv-grid">${radio('none', 'بدون', 'الحصص تفتح برابط Zoom أو Meet مثل الحين')}${radio('jaas', 'Jitsi (JaaS)', 'مجاني لين 25 مستخدم بالشهر بدون حد دقائق')}${radio('daily', 'Daily', 'مجاني لين 10,000 دقيقة مشارك بالشهر')}</div>
     ${pv !== 'none' ? `<div class="small muted">الخدمة اللي تختارها فوق هي الأساسية. إذا حطيت مفاتيح الخدمتين، الثانية تصير احتياط: إذا تعطلت الأساسية يتحول الموقع لها تلقائيًا، والمعلم يقدر ينقل الحصة لها بزر.</div>` : ''}
     <div ${pv !== 'none' ? '' : 'hidden'} class="pv-box"><b>Jitsi (JaaS) ${pv === 'jaas' ? '<span class="chip acc">الأساسية</span>' : c.jaasOn ? '<span class="chip">احتياط</span>' : '<span class="chip">اختياري</span>'}</b><ol class="steps small"><li>سجّل في <a href="https://jaas.8x8.vc" target="_blank" rel="noopener">jaas.8x8.vc</a> (الخطة المجانية).</li><li>من <b>API Keys</b> اضغط <b>Add API key</b> ثم <b>Generate API key pair</b>، ونزّل الملف اللي ينتهي بـ <span dir="ltr">.pk</span>.</li><li>انسخ <b>AppID</b> و <b>Key ID</b> من الصفحة، وافتح ملف المفتاح وانسخ كل اللي فيه.</li></ol>
@@ -2213,6 +2235,303 @@ FORMS.video = async (f, d) => {
   const r = await act('video.save', { data: { provider: d.get('provider'), jaasApp: d.get('jaasApp') || '', jaasKid: d.get('jaasKid') || '', jaasKey: d.get('jaasKey') || '', dailyKey: d.get('dailyKey') || '' } }, 'حُفظت إعدادات الغرفة');
   if (r) { ST.video = r; ST.videoPv = null; clean(); render(); }
 };
+
+/* ================= الدفعة الرابعة: الرسائل، التقويم، التصويت، السلوك، الإدارة ================= */
+Object.assign(ICO, (() => {
+  const s = d => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  return {
+    msgs: s('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'), inbox: s('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'), thread: s('<path d="M4 5h16v11H9l-5 4z"/>'),
+    cal: s('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M12 14h2M16 14h0"/>'),
+  };
+})());
+
+/* ---------- رسائل الطالب وولي الأمر مع المعلم ---------- */
+const dmsOf = sid => L('dms').filter(m => m.sid === sid).sort((a, b) => a.at - b.at);
+const dmUnreadStaff = () => L('dms').filter(m => !m.staff && !m.read && S.users[m.sid]).length;
+const dmUnreadOf = sid => L('dms').filter(m => m.sid === sid && !m.staff && !m.read).length;
+const dmUnreadMine = u => L('dms').filter(m => m.sid === u.id && m.staff && !m.read).length;
+const todayNotes = (sid, date) => L('dms').filter(m => m.sid === sid && m.kind === 'note' && m.date === date);
+const NOTE_Q = ['تعبان اليوم', 'عنده ظرف وبيتأخر', 'بيغيب اليوم', 'ما راجع زين، خففوا عليه'];
+function markDmRead(sid, staffSide) {
+  const unread = L('dms').some(m => m.sid === sid && m.staff !== staffSide && !m.read);
+  if (!unread) return; ST.dmRead = ST.dmRead || {}; if (Date.now() - (ST.dmRead[sid] || 0) < 15000) return;
+  ST.dmRead[sid] = Date.now(); api('/api/act', staffSide ? { t: 'dm.read', studentId: sid } : { t: 'dm.read' }).then(load).catch(() => {});
+}
+function threadHtml(sid, staffSide) {
+  const ms = dmsOf(sid);
+  setTimeout(() => { const t = document.getElementById('thread'); if (t) t.scrollTop = t.scrollHeight; }, 0);
+  return `<div class="thread" id="thread">${ms.length ? ms.map(m => `<div class="dm ${m.staff === staffSide ? 'mine' : ''} ${m.kind === 'note' ? 'note' : ''}">${m.kind === 'note' ? `<span class="chip gold">ملاحظة ليوم ${fmtDate(m.date)}</span>` : ''}<div class="ann-body">${esc(m.text)}</div><div class="dm-meta">${esc(m.byName)} · ${fmtDate(isoDate(new Date(m.at)))} ${clock(m.at)}${m.staff === staffSide && m.read ? ' · قُرئت' : ''}${m.by === ST.meId ? ` · <button class="linkbtn" data-act="dm-del" data-id="${m.id}">حذف</button>` : ''}</div></div>`).join('') : '<div class="empty small">ما فيه رسائل بعد.</div>'}</div>`;
+}
+const dmForm = sid => `<form class="dm-form" data-form="dm" data-sid="${sid || ''}"><textarea id="dm-text-${sid || 'me'}" name="text" rows="2" maxlength="1000" placeholder="اكتب رسالة…" required></textarea><button class="btn pri" type="submit">إرسال</button></form>`;
+function msgsV(u) {
+  markDmRead(u.id, false);
+  const h = S.halaqat[u.halqaId] || {}; const t = subName(h.teacherId);
+  return `<h1>المعلم</h1><div class="muted">${t ? esc(t) + ' · ' : ''}${esc(h.name || '')}</div>
+  <section class="card" style="display:grid;gap:8px"><b>ملاحظة سريعة لحصة اليوم</b><div class="qnotes">${NOTE_Q.map(q => `<button class="btn sm" data-act="dm-note" data-t="${esc(q)}">${esc(q)}</button>`).join('')}</div></section>
+  <section class="card" style="display:grid;gap:10px">${threadHtml(u.id, false)}${dmForm('')}</section>`;
+}
+function inboxV(u) {
+  const studs = L('users').filter(x => x.role === 'student' && x.status === 'active' && myHalaqat(u).some(h => h.id === x.halqaId));
+  const rows = studs.map(x => { const ms = dmsOf(x.id); return { x, last: ms[ms.length - 1], un: dmUnreadOf(x.id) }; }).filter(r => r.last).sort((a, b) => b.last.at - a.last.at);
+  return `<div class="sec-head"><h1>الرسائل</h1><select id="ib-new" data-change="dm-new" style="flex:0 1 240px"><option value="">رسالة جديدة لـ…</option>${studs.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar')).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+  <section class="card">${rows.length ? `<div class="list">${rows.map(({ x, last, un }) => `<div class="item click" data-act="open-thread" data-id="${x.id}"><div class="grow"><b>${esc(x.name)}</b><div class="small muted ellip">${last.kind === 'note' ? '📌 ' : ''}${esc(last.text)}</div></div><span class="small muted">${fmtDate(isoDate(new Date(last.at)))}</span>${un ? `<span class="chip bad">${un}</span>` : ''}</div>`).join('')}</div>` : '<div class="empty small">ما فيه رسائل بعد.</div>'}</section>`;
+}
+function threadV(u) {
+  const st = S.users[ST.uid] && { ...S.users[ST.uid], id: ST.uid };
+  if (!st) return `<button class="back" data-act="tab" data-v="inbox">→ الرسائل</button><div class="empty">الطالب غير موجود.</div>`;
+  markDmRead(st.id, true);
+  return `<button class="back" data-act="tab" data-v="inbox">→ الرسائل</button>
+  <div class="sec-head"><div><h1>${esc(st.name)}</h1><div class="muted">${esc(halqaName(st.halqaId))}</div></div><button class="btn sm" data-act="open-student" data-id="${st.id}">ملف الطالب</button></div>
+  <section class="card" style="display:grid;gap:10px">${threadHtml(st.id, true)}${dmForm(st.id)}</section>`;
+}
+
+/* ---------- ملخص بعد الحصة للطالب ---------- */
+function afterLessonHtml(u) {
+  const t = today();
+  const s = L('sessions').filter(x => x.halqaId === u.halqaId && x.date <= t && !x.cancelled).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0];
+  if (!s || s.date < addDays(t, -1)) return '';
+  const rs = L('recs').filter(r => r.uid === u.id && (r.sid === s.id || (!r.sid && r.date === s.date)));
+  const v = (s.att || {})[u.id];
+  if (!rs.length && !v) return '';
+  const next = planItems(u);
+  return `<section class="card after"><div class="sec-head"><h2>ملخص حصة ${s.date === t ? 'اليوم' : fmtDate(s.date)}</h2>${v ? `<span class="chip ${ATTC[v]}">${ATT[v]}</span>` : ''}</div>
+    ${rs.length ? `<div class="list">${rs.map(r => `<div class="item"><div class="grow"><span class="small muted">${TYPE[r.type]}</span> ${segText([{ s: r.surah - 1, a1: r.from, a2: r.to }])}${r.note ? `<div class="small">${esc(r.note)}</div>` : ''}</div><span class="chip ${GRADE_K[r.grade] || ''}">${esc(r.grade)}</span></div>`).join('')}</div>` : '<div class="small muted">ما سمّع في هالحصة.</div>'}
+    ${next.length ? `<div class="after-next"><b>المطلوب للحصة الجاية</b><div>${next.map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${esc(SN[x.surah - 1])} ${x.from === x.to ? x.from : x.from + '–' + x.to}`).join(' · ')}</div></div>` : ''}</section>`;
+}
+function behavStudentHtml(u) {
+  const bs = L('behav').filter(b => b.uid === u.id).sort((a, b) => b.at - a.at).slice(0, 3);
+  if (!bs.length) return '';
+  return `<section class="card" style="display:grid;gap:8px"><h2>ملاحظات المعلم</h2><div class="list">${bs.map(b => `<div class="item"><span class="bh ${b.kind}">${b.kind === 'good' ? '＋' : '−'}</span><div class="grow">${esc(b.text)}<div class="small muted">${esc(b.byName)} · ${fmtDate(isoDate(new Date(b.at)))}</div></div></div>`).join('')}</div></section>`;
+}
+
+/* ---------- التصويت ---------- */
+function pollBars(p) {
+  const tot = Math.max(1, p.total || 0);
+  return `<div class="pbars">${p.options.map((o, i) => { const c = (p.counts || [])[i] || 0; const mine = (p.mine || []).includes(i); return `<div class="pbar ${mine ? 'mine' : ''}"><div class="pfill" style="width:${Math.round(c / tot * 100)}%"></div><span>${esc(o)}${mine ? ' ✓' : ''}</span><b class="num">${c}</b></div>`; }).join('')}</div>`;
+}
+function studentPollsHtml(u) {
+  const ps = L('polls').filter(p => !p.halqaId || p.halqaId === u.halqaId).sort((a, b) => b.at - a.at).filter(p => !p.closed || p.mine).slice(0, 3);
+  return ps.map(p => `<section class="card poll"><div class="sec-head"><div><div class="small muted">تصويت${p.closed ? ' · انتهى' : ''}</div><h2>${esc(p.question)}</h2></div></div>
+    ${p.mine && !ST.repoll?.[p.id] || p.closed ? `${p.counts ? pollBars(p) : ''}<div class="row"><span class="small muted">${p.total} صوّت</span>${!p.closed ? `<button class="linkbtn" data-act="poll-change" data-id="${p.id}">غيّر صوتك</button>` : ''}</div>`
+      : p.multi ? `<form data-form="poll" data-id="${p.id}" class="popts">${p.options.map((o, i) => `<label class="check popt"><input type="checkbox" name="c" value="${i}" ${(p.mine || []).includes(i) ? 'checked' : ''}> ${esc(o)}</label>`).join('')}<button class="btn pri sm" type="submit">صوّت</button></form>`
+      : `<div class="popts">${p.options.map((o, i) => `<button class="btn popt" data-act="poll-vote" data-id="${p.id}" data-i="${i}">${esc(o)}</button>`).join('')}</div>`}</section>`).join('');
+}
+function staffPollsHtml(u) {
+  const hs = myHalaqat(u); const ps = L('polls').sort((a, b) => b.at - a.at);
+  return `<details class="card" ${ST.pollOpen ? 'open' : ''}><summary><h2 style="display:inline">تصويت جديد</h2></summary>
+    <form data-form="poll-new" style="display:grid;gap:10px;margin-top:10px"><label class="fld"><span>السؤال</span><input id="pl-q" name="question" required maxlength="200" placeholder="مثال: أي وقت يناسبكم لحصة السبت؟"></label>
+    <label class="fld"><span>الخيارات (كل خيار في سطر)</span><textarea id="pl-o" name="options" rows="3" required placeholder="4 العصر\n5 العصر\nبعد المغرب"></textarea></label>
+    <div class="row"><select id="pl-h" name="halqaId" style="flex:1 1 180px">${u.role === 'admin' && !(u.perms || []).some(p => /^(h|b):/.test(p)) ? '<option value="">كل الحلقات</option>' : ''}${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select><label class="check"><input type="checkbox" name="multi"> أكثر من خيار</label><button class="btn pri" type="submit">نشر التصويت</button></div></form></details>
+  ${ps.map(p => { const tg = L('users').filter(x => x.role === 'student' && x.status === 'active' && (!p.halqaId || x.halqaId === p.halqaId)); const voted = new Set((p.voters || []).map(v => v.uid)); const not = tg.filter(x => !voted.has(x.id));
+    return `<section class="card poll"><div class="sec-head"><div><div class="small muted">تصويت · ${p.halqaId ? esc(halqaName(p.halqaId)) : 'كل الحلقات'} · ${esc(p.byName)}${p.closed ? ' · <span class="chip">منتهي</span>' : ''}</div><h2>${esc(p.question)}</h2></div><div class="row"><span class="chip ${not.length ? 'warn' : 'ok'}">صوّت ${voted.size} من ${tg.length}</span><button class="btn ghost sm" data-act="poll-close" data-id="${p.id}">${p.closed ? 'افتح' : 'أنهِ'}</button><button class="btn ghost sm" data-act="poll-del" data-id="${p.id}">حذف</button></div></div>
+      ${pollBars(p)}${not.length ? `<details><summary class="small">ما صوّتوا (${not.length})</summary><div class="small">${not.map(x => esc(x.name)).join('، ')}</div></details>` : ''}</section>`; }).join('')}`;
+}
+
+/* ---------- تقويم الحلقة للطالب ---------- */
+function calV(u) {
+  const st = SET(); const base = ST.calMonth || today().slice(0, 7); const [y, m] = base.split('-').map(Number);
+  const first = new Date(y, m - 1, 1); const days = new Date(y, m, 0).getDate(); const lead = first.getDay();
+  const ss = L('sessions').filter(s => s.halqaId === u.halqaId && s.date.startsWith(base));
+  const ev = (st.events || []); const terms = st.terms || [];
+  const cells = []; for (let i = 0; i < lead; i++) cells.push('<div class="cal-c empty"></div>');
+  for (let d = 1; d <= days; d++) {
+    const ds = base + '-' + pad(d); const l = ss.find(s => s.date === ds); const hol = (st.holidays || []).find(h => ds >= h.from && ds <= h.to); const es = ev.filter(e => e.date === ds);
+    const tm = terms.find(x => x.from === ds || x.to === ds);
+    const v = l && (l.att || {})[u.id];
+    cells.push(`<div class="cal-c ${ds === today() ? 'today' : ''} ${hol ? 'hol' : ''}"><div class="cal-d"><b>${d}</b></div>${hol ? `<div class="cal-h">${esc(hol.name)}</div>` : ''}${l ? `<div class="cal-l ${l.cancelled ? 'x' : ''} ${v ? 'c-' + ATTC[v] : ''}">${l.cancelled ? 'ملغاة' : v ? ATT[v] : fmtTime(l.time)}</div>` : ''}${es.map(e => `<div class="cal-ev ${e.kind}">${esc(e.name)}</div>`).join('')}${tm ? `<div class="cal-ev">${tm.from === ds ? 'بداية' : 'نهاية'} ${esc(tm.name)}</div>` : ''}</div>`);
+  }
+  const prev = isoDate(new Date(y, m - 2, 1)).slice(0, 7), next = isoDate(new Date(y, m, 1)).slice(0, 7); const t = today();
+  const up = [...ev.filter(e => e.date >= t).map(e => ({ d: e.date, t: e.name, k: e.kind === 'exam' ? 'اختبار' : 'مناسبة' })), ...(st.holidays || []).filter(h => h.to >= t).map(h => ({ d: h.from, t: h.name, k: 'إجازة' }))].sort((a, b) => a.d.localeCompare(b.d)).slice(0, 6);
+  return `<h1>التقويم</h1>
+  ${up.length ? `<section class="card"><h2>القادم</h2><div class="list">${up.map(x => `<div class="item"><span class="chip ${x.k === 'إجازة' ? 'gold' : x.k === 'اختبار' ? 'bad' : 'acc'}">${x.k}</span><div class="grow">${esc(x.t)}</div><span class="small muted">${fmtDateH(x.d)}</span></div>`).join('')}</div></section>` : ''}
+  <section class="card" style="display:grid;gap:10px"><div class="sec-head"><button class="btn sm" data-act="cal-m" data-v="${prev}">→</button><h2>${new Intl.DateTimeFormat('ar', { month: 'long', year: 'numeric' }).format(first)}</h2><button class="btn sm" data-act="cal-m" data-v="${next}">←</button></div>
+  <div class="tbl-wrap"><div class="cal scal">${DAYN.map(d => `<div class="cal-hd">${d.replace('ال', '')}</div>`).join('')}${cells.join('')}</div></div></section>`;
+}
+
+/* ---------- سجل السلوك (للمعلم والإدارة) ---------- */
+function behavStaffHtml(st) {
+  const bs = L('behav').filter(b => b.uid === st.id).sort((a, b) => b.at - a.at);
+  return `<section class="card" style="display:grid;gap:10px"><h2>السلوك</h2>
+    <form data-form="behav" data-id="${st.id}" class="row behav-f"><div class="seg"><label class="sg-r"><input type="radio" name="kind" value="good" checked><span>إيجابي</span></label><label class="sg-r"><input type="radio" name="kind" value="bad"><span>ملاحظة</span></label></div><input id="bh-t-${st.id}" name="text" required maxlength="300" placeholder="مثال: ساعد زميله في المراجعة" style="flex:1 1 200px"><label class="check small"><input type="checkbox" name="visible" checked> يشوفها ولي الأمر</label><button class="btn sm pri" type="submit">إضافة</button></form>
+    ${bs.length ? `<div class="list">${bs.slice(0, 30).map(b => `<div class="item"><span class="bh ${b.kind}">${b.kind === 'good' ? '＋' : '−'}</span><div class="grow">${esc(b.text)}<div class="small muted">${esc(b.byName)} · ${fmtDate(isoDate(new Date(b.at)))}${b.visible ? '' : ' · خاصة'}</div></div>${b.by === ST.meId || me().role === 'admin' ? `<button class="btn ghost sm" data-act="behav-del" data-id="${b.id}">حذف</button>` : ''}</div>`).join('')}</div>` : ''}</section>`;
+}
+
+/* ---------- ملخص الحصة للمعلم ---------- */
+function lessonSummaryHtml(s) {
+  if (lessonTs(s) > Date.now()) return '';
+  const studs = studentsOf(s.halqaId); const att = s.att || {}; const recs = L('recs').filter(r => r.sid === s.id);
+  const joined = new Set(L('joins').filter(j => j.sid === s.id).map(j => j.uid));
+  const recited = new Set(recs.map(r => r.uid));
+  const pres = studs.filter(x => att[x.id] === 'p' || att[x.id] === 'l');
+  const missed = pres.filter(x => !recited.has(x.id));
+  const absentNow = Date.now() - lessonTs(s) > 10 * 60000 && s.date === today() ? studs.filter(x => !joined.has(x.id) && !['p', 'l', 'e'].includes(att[x.id])) : [];
+  const nm = arr => arr.map(x => esc((x.name || '').split(' ').slice(0, 2).join(' '))).join('، ');
+  return `<details class="card sumc" ${ST.sumOpen ? 'open' : ''} data-act-toggle="sum"><summary><h2>ملخص الحصة</h2><span class="row"><span class="chip num">حضر ${pres.length}/${studs.length}</span><span class="chip num ${missed.length ? 'warn' : 'ok'}">سمّع ${recited.size}</span>${absentNow.length ? `<span class="chip bad">ما دخل ${absentNow.length}</span>` : ''}</span></summary>
+    <div style="display:grid;gap:8px;margin-top:10px">
+    ${missed.length ? `<div><b>حضروا وما سمّعوا (${missed.length})</b><div class="small">${nm(missed)}</div><button class="btn sm" data-act="q-missed">أضفهم للطابور</button></div>` : '<div class="small c-ok">كل الحاضرين سمّعوا.</div>'}
+    ${absentNow.length ? `<div><b>ما دخلوا بعد 10 دقائق (${absentNow.length})</b><div class="small">${nm(absentNow)}</div></div>` : ''}
+    </div></details>`;
+}
+
+/* ---------- ملخص كل الأبناء ---------- */
+async function kidsOverview() {
+  const acc = accounts(); openModal(`${dlgHead('أولادي')}<div class="row"><div class="spin"></div></div>`);
+  let r; try { r = await api('/api/kids', { tokens: acc.map(a => a.token) }); } catch (e) { closeModal(); return toast(e.message); }
+  if ($('#modal').hidden) return;
+  const kids = (r.kids || []);
+  const card = k => {
+    if (k.error) return '';
+    const a = acc.find(x => x.id === k.id) || {}; const last = (k.recs || [])[0];
+    if (k.status) return `<div class="kid"><b>${esc(k.name)}</b><span class="chip warn">${k.status === 'pending' ? 'بانتظار الاعتماد' : 'موقوف'}</span></div>`;
+    return `<div class="kid"><div class="kid-h"><div><b>${esc(k.name)}</b><div class="small muted">${esc(k.halqa)}</div></div>${k.unreadDm ? `<span class="chip bad">${k.unreadDm} رسالة</span>` : ''}</div>
+      <div class="kid-s"><div><span>اليوم</span><b>${k.today ? (k.today.att ? `<span class="c-${ATTC[k.today.att]}">${ATT[k.today.att]}</span>` : fmtTime(k.today.time)) : 'ما فيه حصة'}</b></div><div><span>الحضور 30 يوم</span><b>${k.rate == null ? '—' : k.rate + '٪'}</b></div><div><span>آخر تقدير</span><b>${last ? `<span class="c-${GRADE_K[last.grade] || ''}">${esc(last.grade)}</span>` : '—'}</b></div></div>
+      ${last ? `<div class="small muted">${fmtDate(last.date)} · ${TYPE[last.type] || ''} ${esc(SN[last.surah - 1])} ${last.from}–${last.to}</div>` : ''}
+      ${a.id && a.id !== ST.meId ? `<button class="btn sm" data-act="switch" data-id="${a.id}">افتح حسابه</button>` : '<span class="chip acc">مفتوح الحين</span>'}</div>`;
+  };
+  const dead = kids.filter(k => k.error).length;
+  $('#modal .dlg').innerHTML = `${dlgHead('أولادي')}<div class="kids">${kids.map(card).join('')}</div>${dead ? `<div class="small muted">${dead} حساب انتهت صلاحيته على هالجهاز، أضفه من جديد.</div>` : ''}<div class="dlg-foot"><button class="btn" data-act="kids-manage">إضافة أو حذف ابن</button></div>`;
+}
+
+/* ---------- المنقطعين ---------- */
+const DAY = 864e5;
+const inactiveList = () => L('users').filter(x => x.role === 'student' && x.status === 'active' && (x.lastSeen || x.approvedAt || x.createdAt || Date.now()) < Date.now() - 14 * DAY);
+const lastSeenText = x => x.lastSeen ? 'آخر دخول ' + fmtDate(isoDate(new Date(x.lastSeen))) : 'ما دخل الموقع أبد';
+
+/* ---------- الفروع ---------- */
+const branches = () => SET().branches || [];
+function branchBar(u) {
+  if (u.role !== 'admin' || !branches().length) return '';
+  return `<div class="row brbar">${['', ...branches()].map(b => `<button class="btn sm ${(ST.branch || '') === b ? 'pri' : ''}" data-act="branch" data-b="${esc(b)}">${b ? esc(b) : 'كل الفروع'}</button>`).join('')}</div>`;
+}
+
+/* ---------- جدول المعلمين الأسبوعي ---------- */
+function scheduleHtml() {
+  const ts = L('users').filter(x => x.role === 'teacher' && x.status !== 'disabled').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const hs = myHalaqat(me());
+  const rows = [...ts.map(t => ({ id: t.id, name: t.name })), { id: '', name: 'بدون معلم' }];
+  const chip = (h, d, tid) => { const clash = hs.some(o => o.id !== h.id && (o.teacherId || '') === tid && tid && halqaDays(o.id).includes(d) && o.time && o.time === h.time); return `<button class="sch-h ${clash ? 'clash' : ''}" draggable="true" data-hid="${h.id}" data-act="sch-pick" title="${clash ? 'تعارض وقت' : ''}">${esc(h.name)}<span>${fmtTime(h.time)}</span></button>`; };
+  return `<section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>جدول الأسبوع</h2><span class="small muted">اسحب الحلقة لصف معلم ثاني، أو اضغط عليها</span></div>
+  <div class="tbl-wrap"><table class="sch"><thead><tr><th>المعلم</th>${DAYN.map(d => `<th>${d}</th>`).join('')}</tr></thead><tbody>
+  ${rows.map(r => { const own = hs.filter(h => (h.teacherId || '') === r.id); if (!r.id && !own.length) return ''; return `<tr data-tid="${r.id}" class="sch-row"><th>${esc(r.name)}<span class="small muted"> · ${own.length}</span></th>${DAYN.map((_, d) => `<td>${own.filter(h => halqaDays(h.id).includes(d)).map(h => chip(h, d, r.id)).join('')}</td>`).join('')}</tr>`; }).join('')}
+  </tbody></table></div></section>`;
+}
+let SCH_DRAG = null;
+document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('.sch-h'); if (!c) return; SCH_DRAG = c.dataset.hid; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', SCH_DRAG); } catch {} });
+document.addEventListener('dragover', e => { const r = e.target.closest && e.target.closest('.sch-row'); if (!r || !SCH_DRAG) return; e.preventDefault(); document.querySelectorAll('.sch-row.over').forEach(x => x !== r && x.classList.remove('over')); r.classList.add('over'); });
+document.addEventListener('dragend', () => { SCH_DRAG = null; document.querySelectorAll('.sch-row.over').forEach(x => x.classList.remove('over')); });
+document.addEventListener('drop', e => { const r = e.target.closest && e.target.closest('.sch-row'); if (!r || !SCH_DRAG) return; e.preventDefault(); const hid = SCH_DRAG; SCH_DRAG = null; r.classList.remove('over'); moveHalqa(hid, r.dataset.tid); });
+function moveHalqa(hid, tid) {
+  const h = S.halaqat[hid]; if (!h || (h.teacherId || '') === tid) return;
+  confirmBox(`تنقل «${esc(h.name)}» إلى ${tid ? esc(subName(tid)) : 'بدون معلم'}؟`, 'انقل', () => act('halqa.teacher', { id: hid, teacherId: tid }, 'تم نقل الحلقة'));
+}
+
+/* ---------- استيراد الطلاب ---------- */
+let XLSX_P = null;
+const loadXlsx = () => XLSX_P || (XLSX_P = new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => { XLSX_P = null; no(new Error('تعذّر تحميل قارئ ملفات إكسل، الصق الجدول بدل الملف')); }; document.head.appendChild(s); }));
+function parseTable(text) {
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
+  const delim = lines.some(l => l.includes('\t')) ? '\t' : lines.some(l => l.includes(';')) && !lines.some(l => l.includes(',')) ? ';' : ',';
+  return lines.map(l => l.split(delim).map(c => c.trim().replace(/^"|"$/g, '')));
+}
+function mapImport(grid, defH) {
+  const fields = SET().fields.filter(f => f.type !== 'memo'); const hs = L('halaqat');
+  const norm = s => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const head = (grid[0] || []).map(norm);
+  const find = keys => head.findIndex(h => keys.some(k => h === k));
+  let col = { name: find(['الاسم', 'اسم الطالب', 'الطالب', 'name', 'الاسم الكامل']), username: find(['اسم المستخدم', 'username', 'المستخدم']), password: find(['كلمة المرور', 'password', 'الرقم السري']), halqa: find(['الحلقة', 'halqa', 'اسم الحلقة']) };
+  fields.forEach(f => { col['f:' + f.k] = head.findIndex(h => h === norm(f.label)); });
+  let rows = grid;
+  if (col.name >= 0) rows = grid.slice(1); else { col = { name: 0 }; const ph = fields.find(f => f.k === 'parentPhone'); if (ph) col['f:parentPhone'] = 1; }
+  return rows.filter(r => (r[col.name] || '').trim()).map(r => {
+    const info = {}; fields.forEach(f => { const i = col['f:' + f.k]; if (i != null && i >= 0 && r[i]) info[f.k] = r[i]; });
+    const hn = col.halqa >= 0 ? r[col.halqa] : ''; const h = hn ? hs.find(x => norm(x.name) === norm(hn)) : null;
+    return { name: r[col.name], username: col.username >= 0 ? r[col.username] : '', password: col.password >= 0 ? r[col.password] : '', halqaId: h ? h.id : defH, halqaName: h ? h.name : halqaName(defH), info, badH: !!hn && !h };
+  });
+}
+function importModal() {
+  const hs = myHalaqat(me()); if (!hs.length) return toast('أنشئ حلقة أولًا');
+  ST.imp = null;
+  openModal(`${dlgHead('استيراد طلاب')}<div class="small muted">ملف إكسل أو CSV، أو انسخ الجدول من إكسل والصقه. أول صف أسماء الأعمدة: الاسم، جوال ولي الأمر، الحلقة…</div>
+    <label class="fld"><span>الحلقة (إذا ما فيه عمود للحلقة)</span><select id="imp-h">${hs.map(h => `<option value="${h.id}">${esc(h.name)}</option>`).join('')}</select></label>
+    <input type="file" id="imp-file" accept=".xlsx,.xls,.csv,.txt" data-change="imp-file">
+    <textarea id="imp-text" rows="5" placeholder="أو الصق الجدول هنا" data-input="imp-text"></textarea>
+    <div id="imp-prev"></div>`);
+}
+function importPreview(grid) {
+  const rows = mapImport(grid, ($('#imp-h') || {}).value); ST.imp = rows;
+  const box = $('#imp-prev'); if (!box) return;
+  const fields = SET().fields.filter(f => f.type !== 'memo');
+  box.innerHTML = rows.length ? `<div class="small"><b>${rows.length}</b> طالب جاهز للاستيراد${rows.some(r => r.badH) ? ' · <span class="c-bad">فيه حلقات ما عرفناها، بتنحط في الحلقة المختارة فوق</span>' : ''}</div>
+    <div class="tbl-wrap" style="max-height:240px"><table><thead><tr><th>الاسم</th><th>الحلقة</th>${fields.map(f => `<th>${esc(f.label)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 50).map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.badH ? halqaName(($('#imp-h') || {}).value) : r.halqaName)}</td>${fields.map(f => `<td>${esc(r.info[f.k] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="dlg-foot"><button class="btn pri" data-act="imp-go">استيراد ${rows.length}</button></div>` : '<div class="small c-bad">ما لقينا أسماء في الجدول.</div>';
+}
+
+/* ---------- حالة الخدمات ---------- */
+function statusHtml() {
+  const s = ST.status; const row = (ok, t, d) => `<div class="item"><span class="st-dot ${ok === true ? 'ok' : ok === false ? 'bad' : 'warn'}"></span><div class="grow"><b>${t}</b><div class="small muted">${d}</div></div></div>`;
+  const ago = ts => { if (!ts) return 'أبد'; const m = Math.round((Date.now() - ts) / 60000); return m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
+  return `<section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>حالة الخدمات</h2><button class="btn sm" data-act="status-check">${s ? 'افحص مرة ثانية' : 'افحص الآن'}</button></div>
+  ${!s ? '' : `<div class="list">
+    ${row(s.db.ok && s.db.ms < 1500, 'الموقع وقاعدة البيانات', `الاستجابة ${s.db.ms} ملي ثانية`)}
+    ${row(s.wa.on ? (s.wa.failed || s.wa.stuck ? null : true) : null, 'الواتساب', s.wa.on ? `أُرسل ${s.wa.sent7} آخر أسبوع · آخر رسالة ${ago(s.wa.last)}${s.wa.failed ? ' · فشلت ' + s.wa.failed : ''}${s.wa.stuck ? ' · ' + s.wa.stuck + ' متأخرة' : ''}` : 'غير مربوط')}
+    ${row(s.video.on ? true : null, 'غرفة الحصة', s.video.on ? 'مفعّلة: ' + s.video.order.map(x => x === 'jaas' ? 'Jitsi' : 'Daily').join(' ثم ') : 'متوقفة، الحصص تفتح بالروابط الخارجية')}
+    ${row(s.push ? true : null, 'الإشعارات', s.push ? 'مفعّلة' : 'غير مفعّلة')}
+    ${row(s.cron.secret && s.cron.last && Date.now() - s.cron.last < 30 * 60000 ? true : s.cron.secret ? false : null, 'المهمة الدورية (التذكير والتنبيهات)', s.cron.secret ? 'آخر تشغيل ' + ago(s.cron.last) : 'CRON_SECRET غير مضاف')}
+    ${row(s.backup && Date.now() - s.backup < 8 * DAY ? true : null, 'النسخ الاحتياطي', 'آخر نسخة ' + ago(s.backup))}
+  </div>`}</section>`;
+}
+
+/* ---------- الأحداث ---------- */
+Object.assign(ACT, {
+  'dm-note': el => confirmBox(`ترسل للمعلم: «${esc(el.dataset.t)}»؟`, 'أرسل', () => act('dm.send', { text: el.dataset.t, kind: 'note' }, 'وصلت للمعلم')),
+  'dm-del': el => act('dm.delete', { id: el.dataset.id }),
+  'open-thread': el => go('thread', { uid: el.dataset.id }),
+  'behav-del': el => act('behav.delete', { id: el.dataset.id }),
+  'poll-vote': el => { buzz(15); act('poll.vote', { id: el.dataset.id, choice: [+el.dataset.i] }, 'وصل صوتك').then(() => { if (ST.repoll) delete ST.repoll[el.dataset.id]; render(); }); },
+  'poll-change': el => { ST.repoll = { ...(ST.repoll || {}), [el.dataset.id]: 1 }; render(); },
+  'poll-close': el => act('poll.close', { id: el.dataset.id }),
+  'poll-del': el => confirmBox('تحذف التصويت ونتائجه؟', 'حذف', () => act('poll.delete', { id: el.dataset.id }, 'حُذف')),
+  'kids-manage': () => kidsModal(),
+  'branch': el => { ST.branch = el.dataset.b; ST.halqa = ''; render(); },
+  'sch': () => { ST.sched = !ST.sched; render(); },
+  'sch-pick': el => { const hid = el.dataset.hid; const h = S.halaqat[hid]; const ts = L('users').filter(x => x.role === 'teacher' && x.status !== 'disabled'); openModal(`${dlgHead('معلم ' + esc(h.name))}<div class="list">${[...ts, { id: '', name: 'بدون معلم' }].map(t => `<button class="item click ${t.id === (h.teacherId || '') ? 'on' : ''}" data-act="sch-to" data-hid="${hid}" data-tid="${t.id}"><span class="grow">${esc(t.name)}</span>${t.id === (h.teacherId || '') ? '<span class="chip acc">الحالي</span>' : ''}</button>`).join('')}</div>`); },
+  'sch-to': el => { closeModal(); moveHalqa(el.dataset.hid, el.dataset.tid); },
+  'import': () => importModal(),
+  'imp-go': async el => {
+    const rows = ST.imp || []; if (!rows.length) return; el.disabled = true; el.textContent = 'جاري الاستيراد…';
+    const defH = ($('#imp-h') || {}).value;
+    const r = await act('students.import', { rows: rows.map(x => ({ name: x.name, username: x.username, password: x.password, halqaId: x.badH ? defH : x.halqaId, info: x.info })) });
+    if (!r) { el.disabled = false; el.textContent = 'استيراد'; return; }
+    const txt = r.created.map(c => `${c.name}\t${c.username}\t${c.password}`).join('\n');
+    $('#modal .dlg').innerHTML = `${dlgHead('تم الاستيراد')}<div><b>${r.created.length}</b> طالب انضافوا.</div>${r.errors.length ? `<details open><summary class="c-bad">${r.errors.length} ما انضافوا</summary><div class="small">${r.errors.map(esc).join('<br>')}</div></details>` : ''}
+      ${r.created.length ? `<div class="tbl-wrap" style="max-height:260px"><table><thead><tr><th>الطالب</th><th>اسم المستخدم</th><th>كلمة المرور</th><th></th></tr></thead><tbody>${r.created.map(c => { const l = c.parentPhone && waLink(c.parentPhone, `السلام عليكم ورحمة الله، بيانات دخول ${c.name} في ${SET().center}:\nالرابط: ${location.origin}\nاسم المستخدم: ${c.username}\nكلمة المرور: ${c.password}`); return `<tr><td>${esc(c.name)}</td><td dir="ltr">${esc(c.username)}</td><td dir="ltr">${esc(c.password)}</td><td>${l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">إرسال</a>` : ''}</td></tr>`; }).join('')}</tbody></table></div><div class="dlg-foot"><button class="btn" data-act="copy" data-text="${esc(txt)}">نسخ الكل</button></div>` : ''}`;
+  },
+  'status-check': async () => { const r = await act('status.check', {}); if (r) { ST.status = r; render(); } },
+  'q-skip': () => { const s = curSession(); if (!s.current) return; const q = [...(s.queue || [])].filter(x => x !== s.current); const nx = q.shift() || null; q.push(s.current); buzz(12); setQueue(s, q, nx).then(r => r && toast('انتقل لآخر الطابور')); },
+  'q-missed': () => { const s = curSession(); const att = s.att || {}; const rec = new Set(L('recs').filter(r => r.sid === s.id).map(r => r.uid)); const q = [...(s.queue || [])]; studentsOf(s.halqaId).forEach(x => { if ((att[x.id] === 'p' || att[x.id] === 'l') && !rec.has(x.id) && !q.includes(x.id) && x.id !== s.current) q.push(x.id); }); setQueue(s, q).then(r => r && toast('انضافوا للطابور')); },
+  'ev-del': el => { const st = SET(); act('events.save', { list: (st.events || []).filter((e, i) => i !== +el.dataset.i) }, 'حُذفت'); },
+  'inact': () => { ST.inact = !ST.inact; render(); },
+  'go-inact': () => go('students', { inact: true, arch: false }),
+});
+Object.assign(CHG, {
+  'dm-new': el => { if (el.value) go('thread', { uid: el.value }); },
+  'imp-file': async el => {
+    const f = el.files && el.files[0]; if (!f) return;
+    try {
+      if (/\.(xlsx|xls)$/i.test(f.name)) { const X = await loadXlsx(); const wb = X.read(await f.arrayBuffer(), { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; importPreview(X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }).map(r => r.map(c => String(c ?? '').trim()))); }
+      else importPreview(parseTable(await f.text()));
+    } catch (e) { toast(e.message || 'تعذّر قراءة الملف'); }
+  },
+});
+INP['imp-text'] = el => { clearTimeout(INP._it); INP._it = setTimeout(() => importPreview(parseTable(el.value)), 250); };
+Object.assign(FORMS, {
+  async dm(f, d) { const sid = f.dataset.sid; const r = await act('dm.send', { text: d.get('text'), ...(sid ? { studentId: sid } : {}) }); if (r) { f.reset(); clean(); buzz(10); } },
+  async behav(f, d) { if (await act('behav.add', { userId: f.dataset.id, kind: d.get('kind'), text: d.get('text'), visible: !!d.get('visible') }, 'انضافت')) { f.reset(); clean(); } },
+  async 'poll-new'(f, d) { const r = await act('poll.save', { question: d.get('question'), options: String(d.get('options') || '').split('\n'), halqaId: d.get('halqaId') || '', multi: !!d.get('multi') }, 'نُشر التصويت'); if (r) { f.reset(); clean(); ST.pollOpen = false; render(); } },
+  async poll(f, d) { const c = d.getAll('c').map(Number); if (!c.length) return toast('اختر خيار'); if (await act('poll.vote', { id: f.dataset.id, choice: c }, 'وصل صوتك')) { if (ST.repoll) delete ST.repoll[f.dataset.id]; render(); } },
+  async 'ev-add'(f, d) { const st = SET(); if (await act('events.save', { list: [...(st.events || []), { date: d.get('date'), name: d.get('name'), kind: d.get('kind') }] }, 'أُضيفت')) { f.reset(); clean(); } },
+});
+document.addEventListener('toggle', e => { if (e.target.dataset && e.target.dataset.actToggle === 'sum') ST.sumOpen = e.target.open; }, true);
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
@@ -2252,7 +2571,11 @@ async function pollLoop() {
 setTimeout(pollLoop, 8000);
 setInterval(() => {
   document.querySelectorAll('[data-cd]').forEach(el => { el.textContent = el.dataset.en ? cdTextEn(+el.dataset.cd) : cdText(+el.dataset.cd); });
-  if (ST.rec && ST.rec.run) document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtDur(recSecs()); });
+  if (ST.rec && ST.rec.run) {
+    const sec = recSecs(); const lim = (+SET().recMin || 0) * 60; const over = lim && sec >= lim;
+    document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtDur(sec); const b = el.closest('.r1-timer, .timer-w') || el; b.classList.toggle('over', !!over); });
+    if (over && !ST.rec.warned) { ST.rec.warned = 1; buzz([200, 100, 200]); toast('انتهى وقت الطالب (' + SET().recMin + ' د)'); }
+  }
 }, 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ST.meId) load(); });
 })();
