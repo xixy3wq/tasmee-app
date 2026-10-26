@@ -653,3 +653,19 @@ body.fs-on .ai-fab,body.room-full .ai-fab{display:none}
 @media (prefers-reduced-motion: reduce){.ai-panel{animation:none}.ai-think{animation:none}}
 body:has(.sticky-join) .ai-fab{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 @media (min-width:1024px){body:has(.sticky-join) .ai-fab{bottom:90px}}
+
+/* صفحة رسائل الواتساب */
+.ptabs{display:flex;gap:6px;flex-wrap:wrap}
+.ptabs button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:7px 14px;font:inherit;font-size:.86rem;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:36px}
+.ptabs button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.ptabs .sn-c{background:var(--bad);color:#fff}
+.wa-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px;max-height:360px;overflow:auto;padding:2px}
+.wa-st{display:flex;align-items:flex-start;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:var(--surface)}
+.wa-st:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.wa-st.off{opacity:.55;cursor:default}
+.wa-st input{margin-top:3px}
+.wa-st .grow{display:grid;gap:2px}
+.wa-pv{white-space:pre-line;background:var(--sunk);border-radius:8px;padding:8px 10px;margin-top:6px}
+.wa-prog{display:grid;gap:4px}
+.ai-res{user-select:all;font-weight:700}
+@media (max-width:640px){.wa-pick{grid-template-columns:1fr;max-height:none}}

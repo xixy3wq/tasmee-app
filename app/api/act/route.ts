@@ -14,6 +14,7 @@ const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DA
 const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
 import crypto from "node:crypto";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const isAdmin = (u: Me) => u.role === "admin";
 const ATT = ["p", "l", "a", "e"];
@@ -915,6 +916,57 @@ const A: Record<string, H> = {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).map((x: any) => ({ k: str(x.k, 120), done: !!x.done }));
     const data = { items, read: Math.min(604, Math.max(0, int(b.read))), note: str(b.note, 200) };
     await prisma.wird.upsert({ where: { userId_date: { userId: u.id, date } }, create: { userId: u.id, date, ...data }, update: data });
+  },
+
+  // ---------- إضافات صفحة الواتساب والمساعد الذكي ----------
+  // إرسال رسائل لأولياء أمور عدة طلاب من رقم الحلقة: اللي يلحق ينرسل الحين، والباقي يدخل الطابور ويطلع خلال دقائق
+  async "wa.bulk"(u, b) {
+    if (u.role === "student") fail("غير مسموح", 403);
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("ربط الواتساب متوقف. فعّله من صفحة «رسائل الواتساب»");
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 300);
+    if (!items.length) fail("اختر طالب واحد على الأقل");
+    const t0 = Date.now(); let sent = 0, queued = 0, skipped = 0;
+    for (const it of items) {
+      const st = await studentFor(u, str(it.studentId));
+      const phone = intlPhone(String(((st.info as any) || {}).parentPhone || ""));
+      const text = str(it.text, 3000).trim();
+      if (!phone || !text) { skipped++; continue; }
+      const key = "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+      if (Date.now() - t0 < 20000) {
+        const r = await waSend(cfg, phone, text);
+        await prisma.outMsg.create({ data: { key, kind: "manual", userId: st.id, toPhone: phone, text, sendAfter: new Date(Date.now() + 2 * 60000), status: r.ok ? "sent" : "pending", sentAt: r.ok ? new Date() : null, tries: 1, resp: r.resp } });
+        if (r.ok) sent++; else queued++;
+      } else { await queueMsg(key, "manual", phone, text, 0, { userId: st.id }); queued++; }
+    }
+    await audit(u, "wa.bulk", null, `رسالة واتساب لأولياء أمور ${sent + queued} طالب`);
+    return { sent, queued, skipped };
+  },
+  // تشغيل وإيقاف الرسائل التلقائية بدون ما نلمس بيانات الربط
+  async "wa.auto"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cur: any = await waCfg(); const d = b.data || {};
+    for (const k of ["autoAbsent", "autoLate", "autoPresent", "autoRec", "autoWeek"]) if (typeof d[k] === "boolean") cur[k] = d[k];
+    if (d.delayMin !== undefined) cur.delayMin = Math.min(240, Math.max(0, int(d.delayMin, 10)));
+    if (d.weekDay !== undefined) cur.weekDay = Math.min(6, Math.max(0, int(d.weekDay, 4)));
+    if (d.weekHour !== undefined) cur.weekHour = Math.min(23, Math.max(0, int(d.weekHour, 20)));
+    if (typeof d.enabled === "boolean") { if (d.enabled && !cur.url) fail("اربط الواتساب أول من صفحة «رسائل الواتساب»"); cur.enabled = d.enabled; }
+    await prisma.setting.upsert({ where: { key: "wa" }, create: { key: "wa", value: cur }, update: { value: cur } });
+    await audit(u, "wa.save", null, "تعديل الرسائل التلقائية");
+  },
+  async "wa.retryFailed"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const r = await prisma.outMsg.updateMany({ where: { status: "failed" }, data: { status: "pending", sendAfter: new Date(), tries: 0 } });
+    return { n: r.count };
+  },
+  // إيقاف الخطة مؤقتًا أو إرجاعها (بدون ما تتغير مقاديرها)
+  async "plan.pause"(u, b) {
+    const st = await studentFor(u, str(b.id));
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
+    const p: any = planOf(st);
+    const pz = b.paused && validDate(str(b.paused.from)) ? { from: str(b.paused.from), to: validDate(str(b.paused.to)) ? str(b.paused.to) : "", reason: str(b.paused.reason, 100) } : null;
+    p.paused = pz;
+    await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+    await audit(u, "plan", st.id, pz ? `${st.name}: إيقاف الخطة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : `${st.name}: استئناف الخطة`);
   },
 
   // ---------- كلمة مرور مؤقتة ----------

@@ -28,7 +28,7 @@ async function geminiOnce(key: string, model: string, system: string, history: C
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: history.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
-      ...(tools.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: toGemini(t.parameters) })) }] } : {}),
+      ...(tools.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, ...(Object.keys(t.parameters.properties || {}).length ? { parameters: toGemini(t.parameters) } : {}) })) }] } : {}),
       generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
     }),
     signal: AbortSignal.timeout(ms),

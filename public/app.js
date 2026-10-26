@@ -440,7 +440,7 @@ function shellV(u) {
   const keys = tabs.map(t => t[0]);
   if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && !['home', 'help', 'msgs', 'cal'].includes(ST.view))) ST.view = keys[0];
   const activeTab = PARENT_TAB[ST.view] || ST.view;
-  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV, msgs: msgsV, cal: calV, inbox: inboxV, thread: threadV })[ST.view](u);
+  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV, msgs: msgsV, cal: calV, inbox: inboxV, thread: threadV, wa: waV })[ST.view](u);
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
@@ -666,7 +666,7 @@ const SET_TABS = [
   ['rec', 'التسميع والتقدير', 'سلّم التقدير، قوالب الخطط، النقاط ولوحة الشرف'],
   ['days', 'الدوام والحضور', 'أيام الدوام، الفصول الدراسية، الإجازات وتنبيه الغياب'],
   ['reg', 'التسجيل', 'حقول نموذج تسجيل الطلاب الجدد'],
-  ['msg', 'الرسائل والواتساب', 'نصوص الرسائل لأولياء الأمور وربط الواتس الذكي'],
+  ['msg', 'نصوص الرسائل', 'الرسائل الجاهزة لأولياء الأمور'],
   ['video', 'غرفة الحصة', 'الحصص بالفيديو داخل الموقع بدل Zoom وMeet'],
   ['ai', 'المساعد الذكي', 'مفتاح الذكاء الاصطناعي الخاص بالموقع'],
   ['site', 'إعدادات الموقع', 'الاسم، الفروع، حالة الخدمات، النسخ الاحتياطي'],
@@ -705,6 +705,7 @@ function settingsV() {
       </tbody></table></div><div><button type="button" class="btn sm" data-act="sf-add">إضافة حقل</button></div></div>
     </div>
     <div class="set-pane" ${P('msg')}>${H('نصوص الرسائل', 'الرسائل الجاهزة اللي يرسلها المعلم لولي الأمر')}
+    <div class="note small row"><span class="grow">الإرسال وربط الواتساب وسجل الرسائل صارت في قسم «رسائل الواتساب» بالقائمة.</span><button type="button" class="btn sm" data-act="go-wa" data-v="send">افتحه</button></div>
     <div class="fld"><span>رسائل واتساب لولي الأمر</span><span class="small muted" style="font-weight:400">استخدم {الطالب} و{الحلقة} و{التاريخ} وتنعبّى تلقائيًا.</span>
       <label class="fld"><span>رسالة الغياب</span><textarea id="sg-tA" name="absent" rows="3">${esc(st.tpl.absent)}</textarea></label>
       <label class="fld"><span>رسالة التميّز</span><textarea id="sg-tE" name="excellent" rows="3">${esc(st.tpl.excellent)}</textarea></label>
@@ -727,14 +728,13 @@ function settingsV() {
     ${(st.events || []).length ? `<div class="list">${(st.events || []).map((e, i) => ({ e, i })).sort((a, b) => a.e.date.localeCompare(b.e.date)).map(({ e, i }) => `<div class="item"><span class="chip ${e.kind === 'exam' ? 'bad' : 'acc'}">${e.kind === 'exam' ? 'اختبار' : 'مناسبة'}</span><div class="grow"><b>${esc(e.name)}</b> <span class="small muted">${fmtDateH(e.date)}</span></div><button class="btn ghost sm" data-act="ev-del" data-i="${i}">حذف</button></div>`).join('')}</div>` : ''}
     <form data-form="ev-add" class="fgrid" style="align-items:end"><label class="fld"><span>الاسم</span><input id="ev-name" name="name" required placeholder="مثال: اختبار جزء عمّ"></label><label class="fld"><span>التاريخ</span><input id="ev-date" name="date" type="date" required></label><label class="fld"><span>النوع</span><select id="ev-kind" name="kind"><option value="exam">اختبار</option><option value="event">مناسبة</option></select></label><button class="btn" type="submit">إضافة</button></form>
   </section>
-  ${full && cur === 'msg' ? waSettingsHtml() : ''}
   ${full && cur === 'video' ? videoSettingsHtml() : ''}
   ${full && cur === 'ai' ? aiSettingsHtml() : ''}
   ${full && cur === 'site' ? statusHtml() : ''}
   ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
     ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">ما فيه نسخ تلقائية بعد (الشرح في الدليل).</div>'}</section>
   <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
-  ${!full && (cur === 'msg' || cur === 'site' || cur === 'video' || cur === 'ai') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
+  ${!full && (cur === 'site' || cur === 'video' || cur === 'ai') ? '<div class="note small">النسخ الاحتياطي وغرفة الحصة والمساعد للمدير الكامل فقط.</div>' : ''}`;
 }
 
 /* ---- student / parent home ---- */
@@ -1000,13 +1000,13 @@ function helpV(u) {
     <div class="row"><button class="btn pri" data-act="tour">الجولة التعريفية</button>${supportBtn('تواصل مع الإدارة')}</div>
     ${sub('يوم الحصة', ['افتح الموقع قبل الحصة، وتشوف العدّاد في صفحتك.', 'اضغط «الحصة» تحت أو «ادخل الحصة». أول مرة ممكن يطلب تثبيت Zoom أو Meet، ثبته وارجع اضغط مرة ثانية.', 'شاشة الحصة تعرض ترتيبك في الطابور وتتحدث لحالها، والجوال يهتز لما تكون التالي ولما يجي دورك.', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع».', 'ما قدرت تدخل؟ اضغط «عندي مشكلة في الدخول» واختر المشكلة، وتوصل للمعلم.', 'بعد الحصة يطلع لك «ملخص الحصة»: وش سمّعت، تقديرك، والمطلوب للحصة الجاية.'])}
     ${sub('الخطة والبيت', ['«خطتك» فيها الحفظ والمراجعة والتثبيت، وتتحدث لحالها بعد ما يسجل المعلم تسميعك.', 'الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.', '«إعادة» معناها تعيد المقطع في الحصة الجاية لين تنجح فيه.', 'في «مهام اليوم» علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط حفظ. المعلم يشوفها قبل الحصة.', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ.'])}
-    ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.', 'المساعد الذكي (الزر الدائري تحت): اسأله عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع. وإذا تبي تراسل المعلم يجهز لك الرسالة.'])}
+    ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.', 'المساعد الذكي (الزر الدائري تحت): اسأله عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع. ويسوي عنك اللي تقدر تسويه في الموقع: يراسل المعلم، يرسل استئذان، يصوّت، يسجل مهام اليوم، ويدخلك طابور التسميع. يجهزها وأنت تضغط «تنفيذ».'])}
     ${sub('لولي الأمر', ['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير.', 'عندك أكثر من ولد؟ من «المزيد» اضغط «إضافة ابن» مرة وحدة، وبعدها «أولادي» يعرض ملخصهم كلهم في شاشة وحدة وتنتقل بينهم.', 'زر «English» يعرض الصفحة بالإنجليزي، و«تكبير الخط» يكبّر الكلام.'])}
     ${cal}${install}${notif}
     <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
-  const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.', 'المساعد الذكي (الزر الدائري تحت يسار، أو Ctrl+J): اسأله عن طلابك (مين غاب، مين يحتاج متابعة)، أو اطلب منه إعلان أو تصويت أو حصة إضافية أو إلغاء حصة أو رسالة للطلاب. يجهزها لك وأنت تضغط «تنفيذ».', 'في «واتساب ولي الأمر» بصفحة الطالب: «اكتبها لي بالذكاء» يكتب رسالة من حضوره وتسميعه بالنبرة اللي تختارها.']);
-  const admin = u.role === 'admin' ? sub('للمدير', ['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين، و«جدول الأسبوع» في صفحة المعلمين يعرض الحلقات بالأيام. اسحب الحلقة لصف معلم ثاني عشان تنقلها له، أو اضغط عليها في الجوال.', 'المشرفين الإداريين: حدد صلاحياتهم، ومن «يتابع» اختر حلقات أو فروع محددة، ويشوف المشرف حلقاته بس.', 'الفروع: اكتبها في الإعدادات ← إعدادات الموقع، وبعدها اختر فرع كل حلقة. يطلع فوق الصفحات شريط تختار منه الفرع.', 'الطلاب: «استيراد» يضيف طلاب من ملف إكسل أو جدول تلصقه، ويعطيك أسماء المستخدمين وكلمات المرور ترسلها لأولياء الأمور.', '«منقطعين أسبوعين» في صفحة الطلاب: اللي ما فتحوا الموقع من أسبوعين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإعدادات مقسمة: التسميع والتقدير، الدوام والحضور (الإجازات والاختبارات)، التسجيل، الرسائل والواتساب، غرفة الحصة، إعدادات الموقع.', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.']) +
-    (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: الإعدادات ← الرسائل والواتساب ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.', 'المساعد الذكي: الإعدادات ← المساعد الذكي، تسوي مفتاح من aistudio.google.com خاص بهالموقع وتلصقه وتحفظ.']) +
+  const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.', '«رسائل الواتساب» في القائمة: اختر الطلاب (أو «غابوا اليوم») واكتب الرسالة أو اختر رسالة جاهزة، وتنرسل لأولياء أمورهم مرة وحدة. ومنها ترسل التقرير الأسبوعي لحلقتك.', 'المساعد الذكي (الزر الدائري تحت يسار، أو Ctrl+J): يسوي عنك أي شي تقدر عليه في الموقع إلا الحذف — تحضير، تسجيل تسميع، خطط وأهداف، رسائل وواتساب لأولياء الأمور، إعلانات وتصويت، حصص إضافية أو إلغاء — ويجاوبك عن طلابك. يجهز كل شي في بطاقة وأنت تضغط «تنفيذ».', 'في «واتساب ولي الأمر» بصفحة الطالب: «اكتبها لي بالذكاء» يكتب رسالة من حضوره وتسميعه بالنبرة اللي تختارها.']);
+  const admin = u.role === 'admin' ? sub('للمدير', ['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين، و«جدول الأسبوع» في صفحة المعلمين يعرض الحلقات بالأيام. اسحب الحلقة لصف معلم ثاني عشان تنقلها له، أو اضغط عليها في الجوال.', 'المشرفين الإداريين: حدد صلاحياتهم، ومن «يتابع» اختر حلقات أو فروع محددة، ويشوف المشرف حلقاته بس.', 'الفروع: اكتبها في الإعدادات ← إعدادات الموقع، وبعدها اختر فرع كل حلقة. يطلع فوق الصفحات شريط تختار منه الفرع.', 'الطلاب: «استيراد» يضيف طلاب من ملف إكسل أو جدول تلصقه، ويعطيك أسماء المستخدمين وكلمات المرور ترسلها لأولياء الأمور.', '«منقطعين أسبوعين» في صفحة الطلاب: اللي ما فتحوا الموقع من أسبوعين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', '«رسائل الواتساب» في القائمة: ترسل لأولياء أمور مجموعة طلاب مرة وحدة (برسالة جاهزة أو التقرير الأسبوعي)، وفيها سجل الرسائل والربط.', 'الإعدادات مقسمة: التسميع والتقدير، الدوام والحضور (الإجازات والاختبارات)، التسجيل، نصوص الرسائل، غرفة الحصة، إعدادات الموقع.', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.', 'المساعد الذكي عند المدير يقدر كمان (حسب صلاحياتك): يعتمد طلبات التسجيل، يضيف ويعدّل الطلاب والمعلمين والحلقات، ينقل طلاب، يعدّل الإعدادات والرسائل التلقائية، ويعطي كلمة مرور مؤقتة. الحذف ما يسويه أبدًا.']) +
+    (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: رسائل الواتساب ← الربط والرسائل التلقائية ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.', 'المساعد الذكي: الإعدادات ← المساعد الذكي، تسوي مفتاح من aistudio.google.com خاص بهالموقع وتلصقه وتحفظ.']) +
       `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
       sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
   return `<h1>الدليل</h1>${admin}${teacher}${cal}${install}${notif}`;
@@ -1083,8 +1083,8 @@ function homeEn(u) {
 /* ---------------- الواتساب التلقائي (الواتس الذكي) ---------------- */
 const WA_STATUS = { pending: ['warn', 'بانتظار الإرسال'], sending: ['info', 'يُرسل الآن'], sent: ['ok', 'أُرسلت'], failed: ['bad', 'فشلت'], cancelled: ['', 'أُلغيت'] };
 const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع', week: 'تقرير أسبوعي', manual: 'رسالة' };
-function waSettingsHtml() {
-  if (!ST.wa && !ST.waLoading) { ST.waLoading = true; act('wa.get', {}).then(r => { ST.waLoading = false; ST.wa = r || { cfg: {}, log: [], counts: {} }; render(); }); }
+function waConnHtml() {
+  waLoaded();
   if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
   const c = { ...(ST.wa.cfg || {}) }; if (/getpostman|documenter/i.test(c.url || '')) c.url = ''; const cnt = ST.wa.counts || {};
   return `<form class="card" data-form="wa" style="gap:12px"><div class="sec-head"><h2>ربط الواتساب (الواتس الذكي)</h2><span class="chip ${c.enabled ? 'ok' : ''}">${c.enabled ? 'مفعّل' : 'متوقف'}</span></div>
@@ -1116,8 +1116,12 @@ function waSettingsHtml() {
       <span class="small muted">يحسب من بداية الأسبوع (الأحد) لين يوم الإرسال. ولي الأمر ما يوصله نفس التقرير مرتين في نفس الأسبوع.</span></div>
     <div class="row"><button class="btn pri" type="submit">حفظ ربط الواتساب</button></div>
     <div class="test-box"><b>تجربة الإرسال</b><div class="row"><input id="wa-test-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" style="flex:1 1 160px"><button type="button" class="btn" data-act="wa-test">أرسل رسالة تجريبية</button></div><div id="wa-test-out" class="small ${ST.waTest ? (ST.waTest.ok ? 'c-ok' : 'c-bad') : 'muted'}" dir="auto">${ST.waTest ? esc(ST.waTest.msg) : ''}</div></div>
-  </form>
-  <section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>سجل رسائل الواتساب</h2><button class="btn ghost sm" data-act="wa-refresh">تحديث</button></div>
+  </form>`;
+}
+function waLogHtml() {
+  if (!waLoaded()) return `<section class="card"><h2>سجل الرسائل</h2><div class="row"><div class="spin"></div></div></section>`;
+  const cnt = ST.wa.counts || {};
+  return `<section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>سجل الرسائل</h2><div class="row">${cnt.failed ? '<button class="btn sm" data-act="wa-retry-all">إعادة الفاشلة</button>' : ''}<button class="btn ghost sm" data-act="wa-refresh">تحديث</button></div></div>
     <div class="row">${Object.entries(WA_STATUS).map(([k, [c2, l]]) => cnt[k] ? `<span class="chip ${c2}">${l}: ${cnt[k]}</span>` : '').join('')}</div>
     ${(ST.wa.log || []).length ? `<div class="list">${ST.wa.log.map(m => { const [c2, l] = WA_STATUS[m.status] || ['', m.status]; return `<div class="item"><div class="grow"><b>${esc(m.name || m.phone)}</b> <span class="chip">${WA_KIND[m.kind] || m.kind}</span> <span class="chip ${c2}">${l}</span><div class="small muted">${m.sentAt ? 'أُرسلت ' + fmtDate(isoDate(new Date(m.sentAt))) + ' ' + clock(m.sentAt) : m.status === 'pending' ? 'موعد الإرسال ' + clock(m.sendAfter) : fmtDate(isoDate(new Date(m.at)))}</div>${m.status === 'failed' ? `<div class="small" style="color:var(--bad)" dir="auto">${esc(m.resp)}</div>` : ''}<details><summary class="small">نص الرسالة</summary><div class="small ann-body">${esc(m.text)}</div></details></div>${m.status === 'failed' || m.status === 'cancelled' ? `<button class="btn sm" data-act="wa-retry" data-id="${m.id}">إعادة</button>` : ''}${m.status === 'pending' ? `<button class="btn ghost sm" data-act="wa-cancel" data-id="${m.id}">إلغاء</button>` : ''}</div>`; }).join('')}</div>` : '<div class="empty small">ما فيه رسائل بعد.</div>'}
   </section>`;
@@ -1466,6 +1470,7 @@ const ACT = {
   'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
   'tour': () => showTour(0),
   'wa-refresh': () => { ST.wa = null; render(); },
+  'wa-retry-all': () => act('wa.retryFailed', {}, r => 'رجعت ' + (r.n || 0) + ' رسالة للإرسال').then(() => { ST.wa = null; render(); }),
   'wa-c-send': async () => { const t = ($('#wa-c-text') || {}).value || ''; if (t.trim().length < 3) return toast('اكتب الرسالة'); const r = await act('wa.sendText', { phone: ST.waC, text: t }); if (r) { closeModal(); toast(r.ok ? 'انرسلت من رقم الحلقة ✓' : 'ما انرسلت الحين، بتنعاد تلقائيًا'); } },
   'wa-send-all': async el => { const as = [...document.querySelectorAll('#modal a.btn.wa:not(.sent)')]; if (!as.length) return toast('كلها مرسلة'); el.disabled = true; el.textContent = 'يرسل…'; for (const a of as) await waSendLink(a); el.textContent = 'تم'; },
   'wa-week-now': async () => { const f = document.querySelector('form[data-form=wa]'); if (f) { const ok = await act('wa.save', { data: waFormData(f) }); if (ok === null) return; } act('wa.weekNow', {}, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال').then(() => { ST.wa = null; render(); }); },
@@ -1844,6 +1849,7 @@ const ICO = (() => {
     logout: s('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/>'), mic: s('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
     swipe: s('<path d="M7 12h10M13 8l4 4-4 4"/><rect x="3" y="4" width="18" height="16" rx="3"/>'), grid: s('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
     check: s('<path d="M5 12l5 5 9-10"/>'),
+    wa: s('<path d="M4 20l1.2-3.6A8.5 8.5 0 1 1 8 19.3z"/><path d="M9.2 8.6c0 3.2 2.8 6.1 6.1 6.2l.9-1.6-2-1-1 .9c-1-.4-2.1-1.5-2.5-2.5l.9-1-1-2z"/>'),
   };
 })();
 
@@ -2035,8 +2041,8 @@ function todayAlertsHtml(u) {
   todayL.forEach(s => { const n = Object.keys(s.issues || {}).length; if (n) items.push({ k: 'bad', t: `${n} ${n === 1 ? 'طالب عنده' : 'طلاب عندهم'} مشكلة دخول في ${halqaName(s.halqaId)}`, b: `<button class="btn sm" data-act="open-session" data-id="${s.id}">شوف</button>` }); });
   const pend = L('users').filter(x => x.role === 'student' && x.status === 'pending').length;
   if (pend) items.push({ k: 'info', t: `${pend} طلب تسجيل ينتظرك`, b: `<button class="btn sm" data-act="tab" data-v="req">راجعها</button>` });
-  if (S.waFailed) items.push({ k: 'bad', t: `${S.waFailed} رسالة واتساب ما انرسلت`, b: `<button class="btn sm" data-act="go-wa">السجل</button>` });
-  if (isFullAdmin(u) && !S.waOn) items.push({ k: 'info', t: 'ربط الواتساب متوقف: رسائل الغياب والتقارير ما تطلع تلقائي', b: `<button class="btn sm" data-act="go-wa">اربطه</button>` });
+  if (S.waFailed) items.push({ k: 'bad', t: `${S.waFailed} رسالة واتساب ما انرسلت`, b: `<button class="btn sm" data-act="go-wa" data-v="log">السجل</button>` });
+  if (isFullAdmin(u) && !S.waOn) items.push({ k: 'info', t: 'ربط الواتساب متوقف: رسائل الغياب والتقارير ما تطلع تلقائي', b: `<button class="btn sm" data-act="go-wa" data-v="conn">اربطه</button>` });
   const inact = inactiveList().length;
   if (inact) items.push({ k: 'info', t: `${inact} طالب ما دخلوا الموقع من أسبوعين`, b: `<button class="btn sm" data-act="go-inact">شوفهم</button>` });
   const unr = dmUnreadStaff(); if (unr) items.push({ k: 'info', t: `${unr} رسالة من أولياء الأمور ما انقرت`, b: `<button class="btn sm" data-act="tab" data-v="inbox">افتح</button>` });
@@ -2112,7 +2118,6 @@ Object.assign(ACT, {
   'tab-m': el => { closeModal(); go(el.dataset.v); },
   'search-m': () => { closeModal(); setTimeout(() => searchModal(), 30); },
   'kids-m': () => { closeModal(); setTimeout(() => accounts().length > 1 ? kidsOverview() : kidsModal(), 30); },
-  'go-wa': () => go('settings', { setTab: 'msg' }),
   'scroll-abs': () => { const el = document.querySelector('.alert-card'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   'rec1-open': async () => {
     let s = curSession(); let uid = s.current;
@@ -2549,9 +2554,10 @@ function navSections(u) {
   const anns = I('anns', 'الإعلانات والتصويت');
   const room = I('room', 'غرفة المعلمين', msgsUnread(u));
   const reports = I('reports', 'التقارير');
+  const wa = I('wa', 'رسائل الواتساب', isFullAdmin(u) ? S.waFailed || 0 : 0, waTabsFor(u).map(([k, l]) => S_(l, { waTab: k })));
   if (u.role === 'teacher') return [
     { title: 'الحلقة', items: [sessions, students] },
-    { title: 'التواصل', items: [inbox, anns, room] },
+    { title: 'التواصل', items: [inbox, wa, anns, room] },
     { title: 'المتابعة', items: [reports] },
     { title: '', items: [I('help', 'الدليل')] },
   ];
@@ -2559,14 +2565,14 @@ function navSections(u) {
   const sec = [
     { title: 'الرئيسية', items: [I('dash', 'لوحة المدير')] },
     { title: 'الحلقات', items: [sessions, students, I('req', 'طلبات التسجيل', pend), I('halaqat', 'الحلقات')] },
-    { title: 'التواصل', items: [inbox, anns, room] },
+    { title: 'التواصل', items: [inbox, wa, anns, room] },
     { title: 'الإدارة', items: [I('teachers', 'المعلمون', 0, [S_('المعلمون والمشرفون', { sched: false }), S_('جدول الأسبوع', { sched: true })]), reports, I('logs', 'سجل العمليات'),
       I('settings', 'الإعدادات', 0, SET_TABS.map(([k, t]) => S_(t, { setTab: k })))] },
     { title: '', items: [I('help', 'الدليل')] },
   ];
   return sec.map(s => ({ ...s, items: s.items.filter(i => has(i.k)) })).filter(s => s.items.length);
 }
-const subOn = x => x.set && Object.entries(x.set).every(([k, v]) => k === 'setTab' ? (ST.setTab || 'rec') === v : !!ST[k] === !!v);
+const subOn = x => x.set && Object.entries(x.set).every(([k, v]) => k === 'setTab' ? (ST.setTab || 'rec') === v : k === 'waTab' ? (ST.waTab || 'send') === v : !!ST[k] === !!v);
 let SIDE_MINI = false; try { SIDE_MINI = localStorage.getItem('irtaq-side-mini') === '1'; } catch {}
 function sideNavHtml(u, active, mini) {
   const secs = navSections(u); ST.navOpen = ST.navOpen || {};
@@ -2625,9 +2631,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.drawer)
 const AI = { open: false, msgs: [], busy: false };
 try { AI.msgs = JSON.parse(sessionStorage.getItem('irtaq-ai') || '[]'); } catch {}
 const AI_SUGGEST = {
-  admin: ['مين الطلاب اللي غابوا أكثر هالشهر؟', 'مين يحتاج متابعة ومن أي حلقة؟', 'أضف اختبار جزء عمّ يوم الخميس الجاي', 'أعلن لكل الحلقات إن حصص الأسبوع الجاي تبدأ بعد العشاء', 'اقترح 5 أفكار تحفيزية للطلاب هالشهر'],
-  student: ['وش المطلوب مني للحصة الجاية؟', 'كيف أثبّت حفظي وما أنساه؟', 'كيف مستواي هالشهر؟', 'متى الحصة الجاية؟', 'أبي جدول مراجعة يومي يناسبني'],
-  teacher: ['مين من طلابي ما سمّع هالأسبوع؟', 'لخص لي وضع حلقتي', 'سوّ تصويت لطلابي: أي وقت يناسبهم السبت؟', 'ألغِ حصة بكرة لظرف', 'اقترح طريقة تساعد طالب يعيد كثير'],
+  admin: ['مين يحتاج متابعة ومن أي حلقة؟', 'أرسل واتساب لأولياء أمور الغايبين اليوم', 'اعتمد طلبات التسجيل كلها', 'أضف اختبار جزء عمّ يوم الخميس الجاي', 'اقترح 5 أفكار تحفيزية للطلاب هالشهر'],
+  student: ['وش المطلوب مني للحصة الجاية؟', 'خلصت مهام اليوم كلها وقريت 3 أوجه', 'أبي أستأذن من حصة بكرة', 'كيف أثبّت حفظي وما أنساه؟', 'أبي جدول مراجعة يومي يناسبني'],
+  teacher: ['مين من طلابي ما سمّع هالأسبوع؟', 'حضّر حصة اليوم: الكل حاضر', 'أرسل التقرير الأسبوعي لأولياء أمور حلقتي', 'ألغِ حصة بكرة لظرف', 'اقترح طريقة تساعد طالب يعيد كثير'],
 };
 const AI_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4-1.4-.6 1.4-.6z"/></svg>';
 function aiEl() {
@@ -2643,10 +2649,10 @@ function aiRender() {
   const listEl = el.querySelector('.ai-list'); const atBottom = !listEl || listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 40; const st0 = listEl ? listEl.scrollTop : 0;
   const card = (a, mi, ai) => `<div class="ai-act ${a.state || ''} ${a.error ? 'err' : ''}"><b>${esc(a.summary)}</b>${a.error || a.msg ? `<div class="c-bad small">${esc(a.error || a.msg)}</div>` : ''}
     ${!a.error && !a.state ? `<div class="row"><button class="btn pri sm" data-act="ai-run" data-m="${mi}" data-a="${ai}">تنفيذ</button><button class="btn ghost sm" data-act="ai-skip" data-m="${mi}" data-a="${ai}">إلغاء</button></div>` : ''}
-    ${a.state === 'busy' ? '<div class="small muted">جاري التنفيذ…</div>' : a.state === 'done' ? '<div class="small c-ok">✓ تم</div>' : a.state === 'skip' ? '<div class="small muted">أُلغي</div>' : a.state === 'err' ? `<button class="linkbtn" data-act="ai-run" data-m="${mi}" data-a="${ai}">إعادة المحاولة</button>` : ''}</div>`;
+    ${a.state === 'busy' ? '<div class="small muted">جاري التنفيذ…</div>' : a.state === 'done' ? `<div class="small c-ok">✓ تم${a.res ? ' — <span class="ai-res">' + esc(a.res) + '</span>' : ''}</div>` : a.state === 'skip' ? '<div class="small muted">أُلغي</div>' : a.state === 'err' ? `<button class="linkbtn" data-act="ai-run" data-m="${mi}" data-a="${ai}">إعادة المحاولة</button>` : ''}</div>`;
   const html = `<button class="ai-fab ${AI.open ? 'on' : ''}" data-act="ai-toggle" aria-label="المساعد الذكي" title="المساعد الذكي (Ctrl+J)">${AI.open ? '✕' : AI_ICON}</button>
   ${AI.open ? `<div class="ai-panel" role="dialog" aria-label="المساعد الذكي"><div class="ai-h"><span class="ai-badge">${AI_ICON}</span><div class="grow"><b>مساعد ارتق</b><span>${u.role === 'student' ? (AI.left != null ? 'باقي لك اليوم ' + AI.left + ' سؤال' : 'اسألني أي شي عن حفظك وحصصك') : 'يجاوب ويجهز لك، وأنت تأكد قبل التنفيذ'}</span></div>${AI.msgs.length ? '<button class="linkbtn" data-act="ai-new">محادثة جديدة</button>' : ''}</div>
-    <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، ${u.role === 'student' ? 'اسألني عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع وتثبت. جرّب:' : 'أقدر أجاوبك عن طلابك وحضورهم وتسميعهم، وأضيف إعلانات وتصويت وإجازات وحصص، وأقترح أفكار. جرّب:'}</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+    <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، ${u.role === 'student' ? 'اسألني عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع. وأقدر أسوي عنك اللي تسويه في الموقع: أراسل المعلم، أرسل استئذان، أصوّت، وأسجل مهام اليوم. جرّب:' : 'أسوي عنك أي شي تقدر عليه في الموقع (إلا الحذف): تحضير وتسميع وخطط، رسائل وواتساب، إعلانات وتصويت، حصص وحلقات وطلاب… وأجاوبك عن طلابك. أجهزه وأنت تضغط «تنفيذ». جرّب:'}</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
       ${AI.msgs.map((m, mi) => `<div class="ai-m ${m.role}${m.err ? ' err' : ''}"><div class="ai-b">${esc(m.text)}${m.err && mi === AI.msgs.length - 1 && !AI.busy ? '<button class="btn sm ai-rt" data-act="ai-retry">↻ إعادة المحاولة</button>' : ''}</div>${(m.actions || []).length ? `<div class="ai-acts">${m.actions.map((a, ai) => card(a, mi, ai)).join('')}${m.actions.filter(a => !a.state && !a.error).length > 1 ? `<button class="btn pri sm" data-act="ai-all" data-m="${mi}">تنفيذ الكل</button>` : ''}</div>` : ''}</div>`).join('')}
       ${AI.busy ? '<div class="ai-m assistant"><div class="ai-b ai-think">يفكر…</div></div>' : ''}</div>
     <form class="ai-f" data-form="ai"><textarea id="ai-q" rows="1" placeholder="${u.role === 'student' ? 'اكتب سؤالك… مثل: كيف أراجع جزء عمّ؟' : 'اكتب طلبك… مثل: مين غاب أكثر هالأسبوع؟'}" aria-label="رسالة للمساعد"></textarea><button class="btn pri" type="submit" ${AI.busy ? 'disabled' : ''} aria-label="إرسال">➤</button></form></div>` : ''}`;
@@ -2675,15 +2681,17 @@ async function aiSend(text, retry) {
   const ta = document.getElementById('ai-q'); if (ta && !retry) ta.value = '';
   try {
     const u0 = me(); const due = u0 && u0.role === 'student' ? planItems(u0).map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${SN[x.surah - 1]} ${x.from === x.to ? x.from : x.from + '-' + x.to}`).join('، ') : '';
-    const r = await aiApi({ t: 'chat', due, messages: AI.msgs.filter(m => !m.err && !/^⚠ /.test(m.text)).map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
+    const tasks = u0 && u0.role === 'student' ? planItems(u0).map(itemLabel) : undefined;
+    const r = await aiApi({ t: 'chat', due, tasks, messages: AI.msgs.filter(m => !m.err && !/^⚠ /.test(m.text)).map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
     AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] }); if (r.left != null) AI.left = r.left;
   } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message, err: true }); }
   AI.busy = false; aiSave(); aiRender();
 }
+const aiResTxt = (t, r) => t === 'user.resetpw' && r.pw ? `اسم الدخول: ${r.username} · كلمة المرور المؤقتة: ${r.pw}` : t === 'wa.bulk' ? `انرسلت ${r.sent || 0}${r.queued ? ' · ' + r.queued + ' تطلع خلال دقائق' : ''}${r.skipped ? ' · ' + r.skipped + ' بدون رقم' : ''}` : t === 'wa.weekNow' ? `انضاف ${r.n || 0} تقرير للإرسال` : t === 'wa.retryFailed' ? `رجعت ${r.n || 0} رسالة للإرسال` : t === 'students.assign' ? `انتقل ${r.n || 0}` : t === 'plan.applyTpl' ? `تطبقت على ${r.done || 0}` : t === 'dm.bulk' ? `وصلت لـ ${r.n || 0}` : t === 'rec.addMany' && r.grade ? 'التقدير: ' + r.grade : '';
 async function aiRun(mi, ai) {
   const a = AI.msgs[mi] && AI.msgs[mi].actions[ai]; if (!a || a.state === 'done' || a.error) return;
   a.state = 'busy'; aiRender();
-  try { await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; buzz(15); await load(); }
+  try { const r = await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; a.res = aiResTxt(a.t, r || {}); buzz(15); await load(); }
   catch (e) { a.state = 'err'; a.msg = e.message; }
   aiSave(); aiRender();
 }
@@ -2746,6 +2754,90 @@ Object.assign(ACT, {
 CHG['ai-model'] = el => aiCfgSave({ geminiModel: el.value || null }, 'حُفظ النموذج');
 CHG['ai-stu'] = el => aiCfgSave({ students: el.checked }, el.checked ? 'صار متاح للطلاب' : 'انقفل عن الطلاب');
 CHG['ai-lim'] = el => aiCfgSave({ studentLimit: +el.value || 25 }, 'حُفظ الحد');
+
+/* ================= رسائل الواتساب: قسم رئيسي مستقل في القائمة ================= */
+// إرسال لأولياء أمور مجموعة طلاب، والتقرير الأسبوعي، وسجل الرسائل، والربط والرسائل التلقائية — كلها في مكان واحد
+const WA_TABS = [['send', 'إرسال رسالة'], ['week', 'التقرير الأسبوعي'], ['log', 'سجل الرسائل', 1], ['conn', 'الربط والرسائل التلقائية', 1]];
+const waTabsFor = u => WA_TABS.filter(t => !t[2] || isFullAdmin(u));
+function waLoaded() {
+  if (!ST.wa && !ST.waLoading) { ST.waLoading = true; act('wa.get', {}).then(r => { ST.waLoading = false; ST.wa = r || { cfg: {}, log: [], counts: {} }; render(); }); }
+  return !!ST.wa;
+}
+function waV(u) {
+  const tabs = waTabsFor(u); const cur = tabs.some(t => t[0] === ST.waTab) ? ST.waTab : 'send';
+  const body = cur === 'week' ? waWeekHtml(u) : cur === 'log' ? waLogHtml() : cur === 'conn' ? waConnHtml() : waSendHtml(u);
+  return `<div class="sec-head"><div><h1>رسائل الواتساب</h1><div class="muted small">${S.waOn ? 'الرسائل تطلع من رقم الحلقة المربوط مباشرة.' : 'الربط متوقف: الرسائل تفتح واتسابك وترسلها بنفسك.'}</div></div><span class="chip ${S.waOn ? 'ok' : 'warn'}">${S.waOn ? 'مربوط' : 'غير مربوط'}</span></div>
+  <div class="ptabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${k === cur}" class="${k === cur ? 'on' : ''}" data-act="wa-tab" data-v="${k}">${l}${k === 'log' && S.waFailed ? ` <b class="sn-c">${S.waFailed}</b>` : ''}</button>`).join('')}</div>
+  ${!S.waOn && isFullAdmin(u) && cur !== 'conn' ? `<div class="note small row"><span class="grow">اربط الواتساب عشان الرسائل تطلع من رقم الحلقة تلقائيًا بدل ما ترسلها وحدة وحدة.</span><button class="btn sm" data-act="wa-tab" data-v="conn">اربطه الحين</button></div>` : ''}
+  ${body}`;
+}
+function waSendHtml(u) {
+  const hs = myHalaqat(u); const hid = hs.some(h => h.id === ST.waH) ? ST.waH : '';
+  const studs = L('users').filter(x => x.role === 'student' && x.status === 'active' && (hid ? x.halqaId === hid : hs.some(h => h.id === x.halqaId))).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+  const sel = ST.waSel || (ST.waSel = {}); const t = today();
+  const absent = new Set(L('sessions').filter(s => s.date === t && !s.cancelled).flatMap(s => Object.entries(s.att || {}).filter(([, v]) => v === 'a').map(([k]) => k)));
+  const chosen = studs.filter(x => sel[x.id] && x.parentPhone); const tplId = ST.waTpl || '';
+  const text = ST.waText ?? 'السلام عليكم ورحمة الله، ';
+  const first = chosen[0] || studs.find(x => x.parentPhone);
+  const preview = first ? (tplId === 'week' ? weekMsg(first) : fillTpl(text, { student: first.name, halqa: halqaName(first.halqaId), date: fmtDate(t) })) : '';
+  const noPhone = studs.filter(x => !x.parentPhone).length; ST.waPvId = first ? first.id : '';
+  return `<section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>1. لمين؟</h2><span class="chip ${chosen.length ? 'acc' : ''}">${chosen.length} مختار</span></div>
+    <div class="row">${hs.length > 1 ? `<select data-change="wa-h" aria-label="الحلقة" style="flex:0 1 220px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}
+      <button class="btn sm" data-act="wa-pick" data-v="all">الكل</button>${absent.size ? `<button class="btn sm" data-act="wa-pick" data-v="absent">غابوا اليوم</button>` : ''}<button class="btn ghost sm" data-act="wa-pick" data-v="none">إلغاء التحديد</button></div>
+    ${studs.length ? `<div class="wa-pick">${studs.map(x => `<label class="wa-st ${x.parentPhone ? '' : 'off'}"><input type="checkbox" data-change="wa-sel" data-id="${x.id}" ${sel[x.id] && x.parentPhone ? 'checked' : ''} ${x.parentPhone ? '' : 'disabled'}><span class="grow">${esc(x.name)}${absent.has(x.id) ? ' <span class="chip bad">غاب اليوم</span>' : ''}<span class="small muted">${hs.length > 1 && !hid ? esc(halqaName(x.halqaId)) + ' · ' : ''}${x.parentPhone ? '<span dir="ltr">' + esc(x.parentPhone) + '</span>' : 'ما فيه رقم ولي أمر'}</span></span></label>`).join('')}</div>` : '<div class="empty small">ما فيه طلاب.</div>'}
+    ${noPhone ? `<div class="small muted">${noPhone} طالب بدون رقم ولي أمر، تقدر تضيفه من صفحة الطالب.</div>` : ''}</section>
+  <section class="card" style="display:grid;gap:12px"><h2>2. وش الرسالة؟</h2>
+    <label class="fld"><span>رسالة جاهزة</span><select data-change="wa-tpl"><option value="">رسالة جديدة</option>${allTpls().map(x => `<option value="${esc(x.id)}" ${tplId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}<option value="week" ${tplId === 'week' ? 'selected' : ''}>التقرير الأسبوعي (لكل طالب تقريره)</option></select></label>
+    ${tplId === 'week' ? '<div class="small muted">كل ولي أمر يوصله تقرير ولده: الحضور والحفظ والتسميع والنقاط لهالأسبوع.</div>' : `<label class="fld"><span>النص</span><textarea id="wa-text" rows="5" data-input="wa-text">${esc(text)}</textarea><span class="hint">{الطالب} و{الحلقة} و{التاريخ} تتعبى لكل واحد تلقائيًا.</span></label>`}
+    ${preview ? `<details ${tplId === 'week' ? 'open' : ''}><summary class="small">معاينة (${esc(first.name)})</summary><div class="small ann-body wa-pv">${esc(preview)}</div></details>` : ''}
+    ${ST.waProg ? `<div class="wa-prog"><div class="bar-track"><div class="bar-fill" style="width:${Math.round(ST.waProg.n / ST.waProg.of * 100)}%"></div></div><span class="small">${ST.waProg.done ? 'خلص ✓ ' : 'يرسل… '}${ST.waProg.ok} انرسلت${ST.waProg.bad ? ' · ' + ST.waProg.bad + ' بتنعاد تلقائيًا' : ''} من ${ST.waProg.of}</span></div>` : ''}
+    <div class="row"><button class="btn pri" data-act="wa-send-sel" ${chosen.length && !(ST.waProg && !ST.waProg.done) ? '' : 'disabled'}>${S.waOn ? 'أرسل' : 'جهّز الروابط'} لـ ${chosen.length} ${chosen.length === 1 ? 'ولي أمر' : 'أولياء أمور'}</button>${isFullAdmin(u) || can(u, 'settings') ? '<button class="btn ghost sm" data-act="go-tpls">تعديل الرسائل الجاهزة</button>' : ''}</div></section>`;
+}
+function waWeekHtml(u) {
+  const hs = myHalaqat(u); const c = (ST.wa && ST.wa.cfg) || {};
+  if (isFullAdmin(u)) waLoaded();
+  return `<section class="card" style="display:grid;gap:12px"><h2>التقرير الأسبوعي لأولياء الأمور</h2>
+    <div class="small muted">يوصل كل ولي أمر تقرير ولده: الحضور، الحفظ والمراجعة، التسميع والتقديرات، والنقاط — من بداية الأسبوع لين اليوم. وما يوصله نفس التقرير مرتين في نفس الأسبوع.</div>
+    ${isFullAdmin(u) ? `<div class="row"><span class="chip ${c.autoWeek ? 'ok' : ''}">${c.autoWeek ? `تلقائي كل ${DAYN[c.weekDay ?? 4]} ${fmtTime(pad(c.weekHour ?? 20) + ':00')}` : 'الإرسال التلقائي متوقف'}</span><button class="btn ghost sm" data-act="wa-tab" data-v="conn">تغيير</button></div>` : ''}
+    ${S.waOn && isFullAdmin(u) ? '<div><button class="btn pri" data-act="wa-week-all">أرسل الآن لكل الحلقات</button></div>' : ''}
+    <div class="list">${hs.map(h => `<div class="item"><div class="grow"><b>${esc(h.name)}</b><div class="small muted">${studentsOf(h.id).filter(x => x.parentPhone).length} ولي أمر</div></div>${S.waOn ? `<button class="btn sm" data-act="wa-week-h" data-h="${h.id}">أرسل الآن</button>` : `<button class="btn wa sm" data-act="wa-week-man" data-h="${h.id}">روابط الإرسال</button>`}</div>`).join('') || '<div class="empty small">ما فيه حلقات.</div>'}</div></section>`;
+}
+Object.assign(ACT, {
+  'wa-tab': el => { ST.waTab = el.dataset.v; if (ST.view !== 'wa') go('wa'); else render(); },
+  'wa-pick': el => {
+    const u = me(); const hs = myHalaqat(u); const hid = hs.some(h => h.id === ST.waH) ? ST.waH : ''; const t = today();
+    const studs = L('users').filter(x => x.role === 'student' && x.status === 'active' && x.parentPhone && (hid ? x.halqaId === hid : hs.some(h => h.id === x.halqaId)));
+    const absent = new Set(L('sessions').filter(s => s.date === t && !s.cancelled).flatMap(s => Object.entries(s.att || {}).filter(([, v]) => v === 'a').map(([k]) => k)));
+    const v = el.dataset.v; ST.waSel = {};
+    if (v === 'all') studs.forEach(x => { ST.waSel[x.id] = true; });
+    if (v === 'absent') { studs.filter(x => absent.has(x.id)).forEach(x => { ST.waSel[x.id] = true; }); const ab = allTpls().find(x => x.id === 'absent'); if (ab && !ST.waTpl && !(ST.waText || '').trim().replace('السلام عليكم ورحمة الله،', '')) { ST.waTpl = 'absent'; ST.waText = ab.text; const ta = $('#wa-text'); if (ta) delete ta.dataset.dirty; } }
+    ST.waProg = null; render();
+  },
+  'wa-send-sel': async () => {
+    const u = me(); const t = today(); const tpl = ST.waTpl || '';
+    const ids = Object.keys(ST.waSel || {}).filter(id => ST.waSel[id] && S.users[id] && S.users[id].parentPhone);
+    const text = (($('#wa-text') || {}).value ?? ST.waText ?? '').trim();
+    if (!ids.length) return toast('اختر طالب واحد على الأقل');
+    if (tpl !== 'week' && text.length < 3) return toast('اكتب الرسالة');
+    const msgFor = st => tpl === 'week' ? weekMsg(st) : fillTpl(text, { student: st.name, halqa: halqaName(st.halqaId), date: fmtDate(t) });
+    const list = ids.map(id => ({ ...S.users[id], id }));
+    if (!S.waOn) { waListModal('إرسال واتساب', list.map(st => ({ name: st.name, sub: halqaName(st.halqaId), link: waLink(st.parentPhone, msgFor(st)), key: 'wsel-' + st.id }))); return; }
+    ST.waProg = { n: 0, of: list.length, ok: 0, bad: 0 }; render();
+    for (const st of list) {
+      let r = null; try { r = await api('/api/act', { t: 'wa.sendText', phone: st.parentPhone, text: msgFor(st) }); } catch (e) { r = null; }
+      ST.waProg.n++; if (r && r.ok) ST.waProg.ok++; else ST.waProg.bad++; if (ST.view === 'wa') render();
+    }
+    ST.waProg.done = true; buzz(20); toast(ST.waProg.bad ? `انرسلت ${ST.waProg.ok}، والباقي بتنعاد تلقائيًا` : `انرسلت ${ST.waProg.ok} رسالة ✓`); ST.wa = null; render();
+  },
+  'wa-week-all': () => confirmBox('يرسل التقرير الأسبوعي الحين لكل أولياء الأمور في كل الحلقات؟', 'أرسل', () => act('wa.weekNow', {}, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال').then(() => { ST.wa = null; render(); })),
+  'wa-week-man': el => { const list = studentsOf(el.dataset.h); waListModal('التقرير الأسبوعي — ' + halqaName(el.dataset.h), list.map(st => ({ name: st.name, sub: st.parentPhone ? '' : 'ما فيه رقم', link: st.parentPhone ? waLink(st.parentPhone, weekMsg(st)) : '', key: 'wk-' + st.id }))); },
+  'go-tpls': () => go('settings', { setTab: 'msg' }),
+  'go-wa': el => go('wa', { waTab: el.dataset.v || (S.waOn ? 'log' : 'conn') }),
+});
+CHG['wa-h'] = el => { ST.waH = el.value; ST.waSel = {}; ST.waProg = null; render(); };
+CHG['wa-sel'] = el => { ST.waSel = ST.waSel || {}; ST.waSel[el.dataset.id] = el.checked; ST.waProg = null; render(); };
+CHG['wa-tpl'] = el => { const ta = $('#wa-text'); if (ta) { ST.waText = ta.value; delete ta.dataset.dirty; } ST.waTpl = el.value; const x = allTpls().find(y => y.id === el.value); if (x) ST.waText = x.text; ST.waProg = null; render(); };
+INP['wa-text'] = el => { ST.waText = el.value; const st = S.users[ST.waPvId]; const pv = $('.wa-pv'); if (st && pv) pv.textContent = fillTpl(el.value, { student: st.name, halqa: halqaName(st.halqaId), date: fmtDate(today()) }); };
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
