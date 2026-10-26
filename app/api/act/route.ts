@@ -623,6 +623,22 @@ const A: Record<string, H> = {
     if (!devices.length) devices = [...new Set(d.t.match(/\b[a-f0-9]{24}\b/gi) || [])].map((id) => ({ id, name: "", status: "" }));
     return { jwt, devices, raw: devices.length ? "" : (d.status + " " + d.t.slice(0, 300)) };
   },
+  // رسالة يدوية لولي الأمر تطلع من رقم الحلقة المربوط (بدل واتساب المعلم)
+  async "wa.sendText"(u, b) {
+    if (u.role === "student") fail("غير مسموح", 403);
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("ربط الواتساب متوقف. فعّله من الإعدادات");
+    const phone = intlPhone(str(b.phone)); const text = str(b.text, 3000).trim();
+    if (!phone) fail("رقم غير صالح"); if (!text) fail("الرسالة فاضية");
+    // المعلم يرسل لأولياء أمور طلاب حلقاته فقط، والمدير لأي طالب
+    const where: any = { role: "student" };
+    if (u.role === "teacher") { const hs = await prisma.halqa.findMany({ where: { teacherId: u.id }, select: { id: true } }); where.halqaId = { in: hs.map((h) => h.id) }; }
+    const studs = await prisma.user.findMany({ where, select: { id: true, info: true } });
+    const st = studs.find((x) => [(x.info as any)?.parentPhone, (x.info as any)?.phone].some((v) => v && intlPhone(String(v)) === phone));
+    if (!st) fail("هذا الرقم مو لأحد طلابك", 403);
+    const r = await waSend(cfg, phone, text);
+    await prisma.outMsg.create({ data: { key: "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), kind: "manual", userId: st!.id, toPhone: phone, text, sendAfter: new Date(Date.now() + 2 * 60000), status: r.ok ? "sent" : "pending", sentAt: r.ok ? new Date() : null, tries: 1, resp: r.resp } });
+    return { ok: r.ok, resp: r.resp };
+  },
   // إرسال التقرير الأسبوعي الآن عبر الواتساب (لكل الحلقات أو لحلقة وحدة)
   async "wa.weekNow"(u, b) {
     const hid = str(b.halqaId);

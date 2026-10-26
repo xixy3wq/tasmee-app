@@ -825,7 +825,7 @@ function weekMsg(st) {
 }
 function waListModal(title, rows) {
   ST.sent = ST.sent || {};
-  openModal(`${dlgHead(title)}<div class="small muted">اضغط على كل اسم يفتح واتساب برسالة جاهزة، وبعد الإرسال ارجع هنا للي بعده.</div>
+  openModal(`${dlgHead(title)}${waAuto() ? `<div class="row"><span class="small muted grow">الرسائل تطلع من رقم الحلقة المربوط مباشرة.</span><button class="btn pri sm" data-act="wa-send-all">أرسل للكل</button></div>` : '<div class="small muted">اضغط على كل اسم يفتح واتساب برسالة جاهزة، وبعد الإرسال ارجع هنا للي بعده.</div>'}
   <div class="list">${rows.length ? rows.map(r => `<div class="item"><div class="grow"><b>${esc(r.name)}</b>${r.sub ? `<div class="small muted">${esc(r.sub)}</div>` : ''}</div>${r.link ? `<a class="btn wa sm ${ST.sent[r.key] ? 'sent' : ''}" href="${r.link}" target="_blank" rel="noopener" data-act="mark-sent" data-k="${esc(r.key)}">${ST.sent[r.key] ? 'أُرسل ✓' : 'إرسال'}</a>` : '<span class="chip warn">ما فيه رقم</span>'}</div>`).join('') : '<div class="empty small">ما فيه أحد.</div>'}</div>`);
 }
 function tplPickModal(st) {
@@ -1055,7 +1055,7 @@ function homeEn(u) {
 
 /* ---------------- الواتساب التلقائي (الواتس الذكي) ---------------- */
 const WA_STATUS = { pending: ['warn', 'بانتظار الإرسال'], sending: ['info', 'يُرسل الآن'], sent: ['ok', 'أُرسلت'], failed: ['bad', 'فشلت'], cancelled: ['', 'أُلغيت'] };
-const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع', week: 'تقرير أسبوعي' };
+const WA_KIND = { absent: 'غياب', present: 'حضور', late: 'تأخر', rec: 'نتيجة التسميع', week: 'تقرير أسبوعي', manual: 'رسالة' };
 function waSettingsHtml() {
   if (!ST.wa && !ST.waLoading) { ST.waLoading = true; act('wa.get', {}).then(r => { ST.waLoading = false; ST.wa = r || { cfg: {}, log: [], counts: {} }; render(); }); }
   if (!ST.wa) return `<section class="card"><h2>ربط الواتساب</h2><div class="row"><div class="spin"></div></div></section>`;
@@ -1436,6 +1436,8 @@ const ACT = {
   'forgot': () => openModal(`${dlgHead('نسيت كلمة المرور؟')}<p>كلمة المرور ما نقدر نرسلها، لكن الإدارة تعطيك كلمة مرور جديدة بالواتساب خلال دقائق.</p><div class="dlg-foot">${supportBtn('اطلب كلمة مرور جديدة', 'السلام عليكم، نسيت كلمة المرور لحساب الطالب: ') || '<span class="muted">تواصل مع إدارة الحلقة.</span>'}</div>`),
   'tour': () => showTour(0),
   'wa-refresh': () => { ST.wa = null; render(); },
+  'wa-c-send': async () => { const t = ($('#wa-c-text') || {}).value || ''; if (t.trim().length < 3) return toast('اكتب الرسالة'); const r = await act('wa.sendText', { phone: ST.waC, text: t }); if (r) { closeModal(); toast(r.ok ? 'انرسلت من رقم الحلقة ✓' : 'ما انرسلت الحين، بتنعاد تلقائيًا'); } },
+  'wa-send-all': async el => { const as = [...document.querySelectorAll('#modal a.btn.wa:not(.sent)')]; if (!as.length) return toast('كلها مرسلة'); el.disabled = true; el.textContent = 'يرسل…'; for (const a of as) await waSendLink(a); el.textContent = 'تم'; },
   'wa-week-now': async () => { const f = document.querySelector('form[data-form=wa]'); if (f) { const ok = await act('wa.save', { data: waFormData(f) }); if (ok === null) return; } act('wa.weekNow', {}, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال').then(() => { ST.wa = null; render(); }); },
   'wa-week-h': el => act('wa.weekNow', { halqaId: el.dataset.h }, r => 'انضاف ' + (r.n || 0) + ' تقرير للإرسال عبر الواتساب'),
   'wa-smart': async () => {
@@ -1570,6 +1572,30 @@ const ACT = {
     <label class="check"><input type="checkbox" name="req"> إجباري</label><div class="dlg-foot"><button class="btn pri" type="submit">إضافة</button></div></form>`); },
   'sf-del': el => saveSettingsWith(d => { d.fields = d.fields.filter(f => f.k !== el.dataset.k); }, 'حُذف الحقل'),
 };
+/* لما يكون ربط الواتساب شغال: أي زر واتساب لولي أمر يرسل من رقم الحلقة مباشرة بدل ما يفتح واتساب المعلم */
+const waAuto = () => S.waOn && me() && me().role !== 'student';
+function waParse(href) { const m = /^https:\/\/wa\.me\/(\d{8,15})(?:\?text=(.*))?$/.exec(href || ''); if (!m) return null; let t = ''; try { t = decodeURIComponent(m[2] || ''); } catch {} return { phone: m[1], text: t }; }
+async function waSendLink(a) {
+  const w = waParse(a.getAttribute('href')); if (!w) return false;
+  if (a.dataset.busy) return true;
+  if (!w.text.trim() || w.text.trim() === 'السلام عليكم ورحمة الله،') { waCompose(w.phone, w.text); return true; }
+  a.dataset.busy = 1; const old = a.textContent; a.textContent = 'يرسل…';
+  const r = await act('wa.sendText', { phone: w.phone, text: w.text });
+  delete a.dataset.busy;
+  if (r && r.ok) { a.textContent = 'أُرسل ✓'; a.classList.add('sent'); if (a.dataset.k) { ST.sent = ST.sent || {}; ST.sent[a.dataset.k] = 1; } toast('انرسلت من رقم الحلقة ✓'); }
+  else { a.textContent = old; if (r) toast('ما انرسلت الحين، بتنعاد تلقائيًا. ' + (r.resp || '')); }
+  return true;
+}
+function waCompose(phone, text) {
+  ST.waC = phone;
+  openModal(`${dlgHead('رسالة لولي الأمر')}<div class="small muted">تنرسل من رقم الحلقة المربوط.</div><textarea id="wa-c-text" rows="5">${esc(text || 'السلام عليكم ورحمة الله، ')}</textarea><div class="dlg-foot"><button class="btn pri" data-act="wa-c-send">إرسال</button><button class="btn ghost" data-act="close">إلغاء</button></div>`);
+}
+document.addEventListener('click', e => {
+  if (!waAuto()) return;
+  const a = e.target.closest('a[href^="https://wa.me/"]'); const w = a && waParse(a.getAttribute('href')); if (!w) return;
+  if (!L('users').some(x => x.role === 'student' && [x.parentPhone, x.phone].some(v => v && normPhone(v) === w.phone))) return;
+  e.preventDefault(); e.stopPropagation(); waSendLink(a);
+}, true);
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const fn = ACT[el.dataset.act]; if (!fn) return;
