@@ -461,12 +461,3 @@ export async function POST(req: Request) {
   });
 }
 
-// فحص مؤقت لتعريف الأدوات مع Gemini (مرة كل دقيقة، ما يعرض أي بيانات) — ينشال بعد التأكد
-const gx = globalThis as unknown as { aiSelf?: number };
-export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("selftest") !== "1") return Response.json({ ok: false });
-  if (Date.now() - (gx.aiSelf || 0) < 60000) return Response.json({ wait: true });
-  gx.aiSelf = Date.now(); const t0 = Date.now();
-  try { const o = await callLlm("أنت مساعد. استخدم أداة add_event لإضافة اختبار.", [{ role: "user", text: "أضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec)); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c) => c.name), text: o.text.slice(0, 80) }); }
-  catch (e: any) { return Response.json({ ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 400) }); }
-}
