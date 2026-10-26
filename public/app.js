@@ -148,7 +148,8 @@ function segs(list) {
 function autoInfo(st) {
   const a = planOf(st).auto; const { ord } = ORD[a.dir] || ORD.bwd;
   const np = Math.max(0, Math.min(TOTAL, +a.newPos || 0)); const ms = Math.max(0, Math.min(np, +a.memStart || 0));
-  let memPages = 0; for (let i = ms; i < np; i++) memPages += W[ord[i]];
+  // المحفوظ بعدد صفحات المصحف اللي يغطيها (أدق من جمع الأسطر لأن عناوين السور والبسملة تاخذ أسطر)
+  let memPages = 0; if (PG) { const st = new Set(); for (let i = ms; i < np; i++) st.add(PG[ord[i]]); memPages = st.size; } else for (let i = ms; i < np; i++) memPages += W[ord[i]];
   const res = { memPages, done: np >= TOTAL, ms, np };
   if (np < TOTAL && +a.newAmt > 0) res.new = take(ord, np, TOTAL, +a.newAmt, true);
   if (np > ms && +a.revAmt > 0) { let rp = +a.revPos || 0; if (rp < ms || rp >= np) rp = ms; res.review = take(ord, rp, np, +a.revAmt, false); }
@@ -1741,7 +1742,7 @@ const FORMS = {
   },
   async halqa(f, d) {
     const days = d.getAll('day').map(Number); if (!days.length) return toast('اختر يوم دوام واحد على الأقل');
-    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto'), branch: d.has('branch') ? d.get('branch') : ((S.halaqat[f.dataset.id] || {}).branch || '') } }, f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة');
+    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto'), branch: d.has('branch') ? d.get('branch') : ((S.halaqat[f.dataset.id] || {}).branch || '') } }, r => (f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة') + (r.fixed ? ` وتعدّل وقت ${r.fixed} حصة جاية` : ''));
     if (r) closeModal();
   },
   async plan(f, d) {
@@ -2687,11 +2688,11 @@ async function aiSend(text, retry) {
   } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message, err: true }); }
   AI.busy = false; aiSave(); aiRender();
 }
-const aiResTxt = (t, r) => t === 'user.resetpw' && r.pw ? `اسم الدخول: ${r.username} · كلمة المرور المؤقتة: ${r.pw}` : t === 'wa.bulk' ? `انرسلت ${r.sent || 0}${r.queued ? ' · ' + r.queued + ' تطلع خلال دقائق' : ''}${r.skipped ? ' · ' + r.skipped + ' بدون رقم' : ''}` : t === 'wa.weekNow' ? `انضاف ${r.n || 0} تقرير للإرسال` : t === 'wa.retryFailed' ? `رجعت ${r.n || 0} رسالة للإرسال` : t === 'students.assign' ? `انتقل ${r.n || 0}` : t === 'plan.applyTpl' ? `تطبقت على ${r.done || 0}` : t === 'dm.bulk' ? `وصلت لـ ${r.n || 0}` : t === 'rec.addMany' && r.grade ? 'التقدير: ' + r.grade : '';
-async function aiRun(mi, ai) {
+const aiResTxt = (t, r) => t === 'user.resetpw' && r.pw ? `اسم الدخول: ${r.username} · كلمة المرور المؤقتة: ${r.pw}` : t === 'wa.bulk' ? `انرسلت ${r.sent || 0}${r.queued ? ' · ' + r.queued + ' تطلع خلال دقائق' : ''}${r.skipped ? ' · ' + r.skipped + ' بدون رقم' : ''}` : t === 'wa.weekNow' ? `انضاف ${r.n || 0} تقرير للإرسال` : t === 'wa.retryFailed' ? `رجعت ${r.n || 0} رسالة للإرسال` : t === 'students.assign' ? `انتقل ${r.n || 0}` : t === 'plan.applyTpl' ? `تطبقت على ${r.done || 0}` : t === 'dm.bulk' ? `وصلت لـ ${r.n || 0}` : t === 'rec.addMany' && r.grade ? 'التقدير: ' + r.grade : t === 'halqa.save' && r.fixed ? `وتعدّل وقت ${r.fixed} حصة جاية` : '';
+async function aiRun(mi, ai, batch) {
   const a = AI.msgs[mi] && AI.msgs[mi].actions[ai]; if (!a || a.state === 'done' || a.error) return;
   a.state = 'busy'; aiRender();
-  try { const r = await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; a.res = aiResTxt(a.t, r || {}); buzz(15); await load(); }
+  try { const r = await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; a.res = aiResTxt(a.t, r || {}); buzz(15); if (!batch) await load(); }
   catch (e) { a.state = 'err'; a.msg = e.message; }
   aiSave(); aiRender();
 }
@@ -2702,7 +2703,7 @@ Object.assign(ACT, {
   'ai-retry': () => { while (AI.msgs.length && AI.msgs[AI.msgs.length - 1].err) AI.msgs.pop(); aiSend('', true); },
   'ai-run': el => aiRun(+el.dataset.m, +el.dataset.a),
   'ai-skip': el => { const a = AI.msgs[+el.dataset.m].actions[+el.dataset.a]; a.state = 'skip'; aiSave(); aiRender(); },
-  'ai-all': async el => { const mi = +el.dataset.m; const acts = AI.msgs[mi].actions; for (let i = 0; i < acts.length; i++) if (!acts[i].state && !acts[i].error) await aiRun(mi, i); },
+  'ai-all': async el => { const mi = +el.dataset.m; const acts = AI.msgs[mi].actions; for (let i = 0; i < acts.length; i++) if (!acts[i].state && !acts[i].error) await aiRun(mi, i, true); await load(); },
 });
 FORMS.ai = async (f) => { const t = document.getElementById('ai-q'); await aiSend(t ? t.value : ''); };
 document.addEventListener('keydown', e => {

@@ -75,6 +75,8 @@ model Lesson {
   lateAlerted Boolean @default(false)
   /// مشاكل الدخول: { uid: { at, msg } }
   issues    Json     @default("{}")
+  /// حصة تلقائية عدّل المعلم وقتها أو تاريخها يدويًا (ما تتبع جدول الحلقة بعدها)
+  custom    Boolean  @default(false)
   createdBy String?
   createdAt DateTime @default(now())
 

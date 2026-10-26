@@ -22,14 +22,28 @@ function toGemini(s: unknown): unknown {
 // النماذج البديلة: إذا كان نموذج مزحوم أو بطيء ننتقل للي بعده تلقائياً
 const GEMINI_FALLBACK = ["gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
 const busyErr = (status: number, msg: string) => [429, 500, 502, 503, 504].includes(status) || /overload|high demand|unavailable|try again|timeout|aborted/i.test(msg);
+// التفكير الطويل يبطّئ الرد كثير: نطفيه أو نخليه بأقل مستوى. كل نموذج يقبل صيغة مختلفة، فنجرب ونتذكر اللي ينفع
+const THINK = [{ thinkingBudget: 0 }, { thinkingLevel: "minimal" }, { thinkingLevel: "low" }, null];
+const gt = globalThis as unknown as { aiThink?: Record<string, number> };
 async function geminiOnce(key: string, model: string, system: string, history: ChatMsg[], tools: ToolSpec[], ms: number): Promise<LlmOut> {
+  gt.aiThink ??= {};
+  for (;;) {
+    const ti = gt.aiThink[model] ?? 0;
+    try { return await geminiCall(key, model, system, history, tools, ms, THINK[ti]); }
+    catch (e: any) {
+      if (Number(e.status) === 400 && /think/i.test(String(e.message)) && ti < THINK.length - 1) { gt.aiThink[model] = ti + 1; continue; }
+      throw e;
+    }
+  }
+}
+async function geminiCall(key: string, model: string, system: string, history: ChatMsg[], tools: ToolSpec[], ms: number, think: Record<string, unknown> | null): Promise<LlmOut> {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: history.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
       ...(tools.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, ...(Object.keys(t.parameters.properties || {}).length ? { parameters: toGemini(t.parameters) } : {}) })) }] } : {}),
-      generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2048, ...(think ? { thinkingConfig: think } : {}) },
     }),
     signal: AbortSignal.timeout(ms),
   });
@@ -50,7 +64,7 @@ export async function callLlm(system: string, history: ChatMsg[], tools: ToolSpe
     const models = [...new Set([c.geminiModel || GEMINI_FALLBACK[0], ...GEMINI_FALLBACK])];
     for (const model of models) {
       const left = deadline - Date.now(); if (left < 4000) break;
-      try { return await geminiOnce(c.gemini, model, system, history, tools, Math.min(20000, left)); }
+      try { return await geminiOnce(c.gemini, model, system, history, tools, Math.min(model === models[0] ? 15000 : 20000, left)); }
       catch (e: any) {
         lastErr = e; const st = Number(e.status || 0);
         if (st === 400 && /api key|API_KEY/i.test(e.message)) throw new Error("مفتاح Gemini غير صحيح، تأكد منه في الإعدادات ← المساعد الذكي");

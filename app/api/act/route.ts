@@ -9,6 +9,7 @@ import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video
 import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 import { scopeHalqaIds } from "@/lib/scope";
+import { syncAutoLessons } from "@/lib/lessons";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
 const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
@@ -270,12 +271,16 @@ const A: Record<string, H> = {
     const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
     const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "", branch: str(d.branch, 60) };
     if (id) await needScope(u, id); else if (await scopeHalqaIds(u)) fail("إنشاء الحلقات للمدير بدون نطاق محدد", 403);
+    let h: any;
     if (id) {
       const old = await prisma.halqa.findUnique({ where: { id } });
-      await prisma.halqa.update({ where: { id }, data });
+      h = await prisma.halqa.update({ where: { id }, data });
       if (old && old.teacherId !== teacherId) await audit(u, "halqa.teacher", id, `${name}: تغيير المعلم`);
-    } else await prisma.halqa.create({ data });
-    await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name);
+    } else h = await prisma.halqa.create({ data });
+    // الحصص التلقائية الجاية تتعدل مع الوقت والأيام الجديدة
+    const sy = await syncAutoLessons(h, { create: true });
+    await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name + (sy.fixed ? ` (تعدّل وقت ${sy.fixed} حصة جاية)` : ""));
+    return { fixed: sy.fixed, dropped: sy.dropped };
   },
   // جدول المعلمين: تغيير معلم الحلقة بالسحب
   async "halqa.teacher"(u, b) {
@@ -309,7 +314,8 @@ const A: Record<string, H> = {
     if (id) {
       const l = await lessonFor(u, id);
       if (subId !== undefined && l.subId === u.id && !isAdmin(u)) subId = undefined;
-      await prisma.lesson.update({ where: { id }, data: { date, time, link, note, ...(subId !== undefined ? { subId } : {}) } });
+      const moved = !!l.autoKey && (date !== l.date || time !== l.time);
+      await prisma.lesson.update({ where: { id }, data: { date, time, link, note, ...(moved ? { custom: true, reminded: false, lateAlerted: false } : {}), ...(subId !== undefined ? { subId } : {}) } });
       if (subId !== undefined && subId !== l.subId) {
         await audit(u, "lesson.sub", id, subId ? `تكليف معلم احتياط لحصة ${date}` : `إلغاء المعلم الاحتياط لحصة ${date}`);
         if (subId) await notify([subId], { title: "تكليف بحصة احتياط", body: `عندك حصة احتياط يوم ${date} الساعة ${time}`, url: "/" });

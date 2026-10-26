@@ -4,7 +4,8 @@ import { currentUser, handle, fail, str, cleanUsername, USERNAME_RE } from "@/li
 import { getSettings, localDate, GRADES } from "@/lib/settings";
 import { scopeHalqaIds } from "@/lib/scope";
 import { audit } from "@/lib/audit";
-import { SN, AYAS, validRange } from "@/lib/quran";
+import { SN, AYAS, validRange, ORD, TOTAL, SSTART, gOf } from "@/lib/quran";
+import { mushafData } from "@/lib/pages";
 import { waCfg, fillVars } from "@/lib/wa";
 import { aiCfg, aiOn, callLlm, type ToolSpec, type ChatMsg } from "@/lib/ai";
 export const dynamic = "force-dynamic";
@@ -82,15 +83,17 @@ async function context(u: U) {
   const allStuds = await prisma.user.findMany({ where: { role: "student", status: { in: ["active", "disabled", "archived"] }, halqaId: { in: hIds } }, orderBy: { name: "asc" }, take: 600 });
   const studs = allStuds.filter((x) => x.status === "active");
   const since = localDate(-30), to = localDate(21);
-  const [lessons, recs, teachers, pending, polls, wa] = await Promise.all([
+  const [lessons, recs, teachers, pending, polls, wa, recAll] = await Promise.all([
     prisma.lesson.findMany({ where: { halqaId: { in: hIds }, date: { gte: since, lte: to } }, orderBy: [{ date: "asc" }, { time: "asc" }] }),
     prisma.rec.findMany({ where: { userId: { in: studs.map((s) => s.id) }, date: { gte: since } }, orderBy: { at: "desc" } }),
     isAdm(u) ? prisma.user.findMany({ where: { role: "teacher" }, orderBy: { name: "asc" } }) : Promise.resolve([] as any[]),
     perm("req")(u) ? prisma.user.findMany({ where: { role: "student", status: "pending" }, orderBy: { createdAt: "asc" }, take: 100 }) : Promise.resolve([] as any[]),
     prisma.poll.findMany({ where: { closed: false, OR: [{ halqaId: { in: hIds } }, ...(isAdm(u) && !sc ? [{ halqaId: null }] : [])] }, orderBy: { at: "desc" }, take: 20 }),
     waCfg(),
+    prisma.rec.groupBy({ by: ["userId"], where: { userId: { in: studs.map((x) => x.id) } }, _count: { _all: true } }),
   ]);
-  return { halaqat, studs, allStuds, lessons, recs, teachers, pending: sc ? pending.filter((p: any) => !p.reqHalqaId || sc.includes(p.reqHalqaId)) : pending, polls, waOn: !!(wa.enabled && wa.url), wa, sc, settings: await getSettings() };
+  const recTotal: Record<string, number> = Object.fromEntries((recAll as any[]).map((x) => [x.userId, x._count?._all || 0]));
+  return { halaqat, studs, allStuds, lessons, recs, recTotal, teachers, pending: sc ? pending.filter((p: any) => !p.reqHalqaId || sc.includes(p.reqHalqaId)) : pending, polls, waOn: !!(wa.enabled && wa.url), wa, sc, settings: await getSettings() };
 }
 type Ctx = Awaited<ReturnType<typeof context>>;
 type Act = { summary: string; t: string; payload: any; error?: string };
@@ -118,6 +121,34 @@ const lessonOf = (c: Ctx, h: any, date: string, wantCancelled = false) => {
 };
 const planOf = (st: any) => { const p: any = st.plan || {}; return { mode: p.mode || "manual", manual: p.manual || {}, auto: p.auto || {}, near: p.near || 0, paused: p.paused || null }; };
 const seg = (m: any) => m && m.surah ? `${SN[m.surah - 1]} ${m.from}${m.toSurah && m.toSurah !== m.surah ? " إلى " + SN[m.toSurah - 1] + " " : "-"}${m.to}` : "";
+/* مقدار المحفوظ: من الخطة التلقائية (الحفظ السابق + اللي حفظه في الموقع)، أو من «الحفظ السابق» اللي كتبه عند التسجيل */
+const PGS = mushafData().pages;
+const surOf = (g: number) => { let lo = 0, hi = 113; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (SSTART[m] <= g) lo = m; else hi = m - 1; } return lo; };
+const posTxt = (g: number) => { const x = surOf(g); return `${SN[x]} ${g - SSTART[x] + 1}`; };
+function memInfo(st: any) {
+  const p: any = st.plan || {}; const a = p.auto || {};
+  let dir: "fwd" | "bwd" = a.dir === "fwd" ? "fwd" : "bwd"; let ms = +a.memStart || 0, np = +a.newPos || 0;
+  if (!(p.mode === "auto" && np > ms)) {
+    const mm = /^(\d+):(\d+)>(\d+):(\d+)$/.exec(String(((st.info as any) || {}).memo || ""));
+    if (!mm) return "";
+    const [fs, fa, ts, ta] = mm.slice(1).map(Number);
+    const tryDir = (d: "fwd" | "bwd") => { const x = ORD[d].pos[gOf(fs, fa)], z = ORD[d].pos[gOf(ts, ta)]; return x != null && z != null && z >= x ? { d, x, z: z + 1 } : null; };
+    const r = (fs === 114 || fs > ts ? tryDir("bwd") : tryDir("fwd")) || tryDir("bwd") || tryDir("fwd");
+    if (!r) return ""; dir = r.d; ms = r.x; np = r.z;
+  }
+  // عدد صفحات المصحف اللي يغطيها المحفوظ
+  const ord = ORD[dir].ord; const set = new Set<number>(); for (let i = ms; i < np && i < TOTAL; i++) set.add(PGS[ord[i]]); const pg = set.size;
+  return `محفوظه ≈ ${Math.round(pg)} وجه (≈ ${Math.round(pg / 2.01) / 10} جزء) من ${posTxt(ord[ms])} إلى ${posTxt(ord[Math.min(np, TOTAL) - 1])}`;
+}
+// تقويم مختصر: التاريخ واليوم واليوم الهجري (واسم الشهر الهجري أول ما يتغير)
+function calTxt(n: number) {
+  let lastM = "";
+  return Array.from({ length: n }, (_, i) => {
+    const d = localDate(i); let hd = "";
+    try { const f = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura-nu-latn", { day: "numeric", month: "long", timeZone: "UTC" }).formatToParts(new Date(d + "T12:00:00Z")); const day = f.find((x) => x.type === "day")?.value || "", mo = f.find((x) => x.type === "month")?.value || ""; hd = day + (mo !== lastM ? " " + mo : ""); lastM = mo; } catch {}
+    return `${d} ${wd(d)} ${hd}`.trim();
+  }).join("، ");
+}
 const recLine = (r: any) => `${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA} (${r.grade}${r.quick ? "" : r.mistakes ? "، " + r.mistakes + " أخطاء" : ""})`;
 
 /* ---------- أدوات المعلم والمدير ---------- */
@@ -246,7 +277,7 @@ const STAFF_TOOLS: Tool[] = [
       if (a.teacher !== undefined) { if (/^(بدون|لا|none)$/i.test(norm(a.teacher))) { teacherId = ""; tTxt = "بدون معلم"; } else { const t = one(c.teachers, a.teacher, "المعلم"); teacherId = t.id; tTxt = "المعلم " + t.name; } }
       const days = Array.isArray(a.days) && a.days.length ? a.days.map(dayIdx) : h.days;
       const data = { name: str(a.name, 80) || h.name, days, time: isTime(a.time) ? hhmm(a.time) : h.time, teacherId, link: a.link !== undefined ? str(a.link, 600) : h.link, branch: a.branch !== undefined ? str(a.branch, 60) : (h as any).branch || "", auto: a.auto !== undefined ? !!a.auto : h.auto };
-      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + data.time, tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
+      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + data.time + (data.time !== h.time ? " (والحصص الجاية تتعدل معها)" : ""), tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
       if (!ch.length) throw new Error("وش التعديل المطلوب؟");
       return { summary: `✎ تعديل ${h.name}: ${ch.join(" · ")}`, t: "halqa.save", payload: { id: h.id, data } };
     } },
@@ -350,6 +381,7 @@ async function studentChat(u: U, b: any) {
     `تقدر تسوي عنه كل شي يقدر يسويه في الموقع باستخدام الأدوات (${tools.map((t) => t.spec.description.split(" (")[0]).join("، ")}). إذا طلب شي منها استخدم الأداة مباشرة، وهو يأكد بزر قبل التنفيذ. ما تقدر تحذف شي ولا تغيّر كلمة المرور.`,
     due ? `المطلوب منه في خطته الحالية: ${due}` : "",
     sc.tasks.length ? `مهام اليوم (لأداة الورد): ${sc.tasks.join("؛ ")}${wird ? ` — المسجّل اليوم: ${((wird.items as any[]) || []).filter((x) => x.done).length} منجزة، تلاوة ${wird.read || 0} وجه` : ""}` : "",
+    memInfo(u) ? memInfo(u) + "." : "",
     `الحضور آخر 30 يوم: ${pres} من ${past.length}${abs ? ` (غاب ${abs})` : ""}.`,
     `الحصص القادمة: ${next.join("؛ ") || "لا يوجد"}.${sc.lessonToday ? " عنده حصة اليوم." : ""}`,
     `آخر تسميعاته: ${recs.map((r) => `${r.date} ${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}${r.mistakes ? ` (${r.mistakes} أخطاء)` : ""}${r.note ? ` — ملاحظة: ${r.note}` : ""}`).join("؛ ") || "ما فيه"}.`,
@@ -429,10 +461,11 @@ export async function POST(req: Request) {
       const rs = ctx.recs.filter((r) => r.userId === st.id); const last = rs[0]; const re = rs.filter((r) => !r.pass).length;
       const pl = planOf(st); const plTxt = pl.paused ? "موقوفة" : pl.mode === "auto" ? `تلقائية ح${fmtPg(+pl.auto.newAmt || 0)}/م${fmtPg(+pl.auto.revAmt || 0)}/ت${fmtPg(+pl.auto.tathAmt || 0)}` : Object.keys(pl.manual).length ? "يدوية " + Object.entries(pl.manual).map(([k, v]: any) => TYPE[k] + " " + seg(v)).join("، ") : "بدون";
       const ph = ((st.info as any) || {}).parentPhone ? "" : " | بدون رقم ولي أمر";
-      return `${st.name} | ${hName(st.halqaId)} | حضور ${p}/${ls.length}${a ? ` غاب ${a}` : ""} | تسميع ${rs.length}${last ? ` آخره ${last.date} ${recLine(last)}` : ""}${re ? ` | إعادات ${re}` : ""} | خطة ${plTxt} | آخر دخول ${st.lastSeenAt ? st.lastSeenAt.toISOString().slice(0, 10) : "أبد"}${ph}`;
+      const mem = memInfo(st); const tot = ctx.recTotal[st.id] || 0;
+      return `${st.name} | ${hName(st.halqaId)} | حضور ${p}/${ls.length}${a ? ` غاب ${a}` : ""} | تسميع ${rs.length}${tot > rs.length ? ` (الكل ${tot})` : ""}${last ? ` آخره ${last.date} ${recLine(last)}` : ""}${re ? ` | إعادات ${re}` : ""} | ${mem || "المحفوظ غير مسجل"} | خطة ${plTxt} | آخر دخول ${st.lastSeenAt ? st.lastSeenAt.toISOString().slice(0, 10) : "أبد"}${ph}`;
     });
     const otherStuds = ctx.allStuds.filter((x) => x.status !== "active");
-    const lessonLines = ctx.lessons.filter((l) => l.date >= localDate(-7)).slice(0, 80).map((l) => {
+    const lessonLines = ctx.lessons.filter((l) => l.date >= localDate(-7) && l.date <= localDate(10)).slice(0, 70).map((l) => {
       const att = (l.att as any) || {}; const n = Object.values(att).length; const ab = Object.entries(att).filter(([, v]) => v === "a").map(([k]) => ctx.studs.find((x) => x.id === k)?.name.split(" ")[0]).filter(Boolean);
       return `${l.date} ${wd(l.date)} ${l.time} ${hName(l.halqaId)}${l.cancelled ? " (ملغاة)" : ""}${n ? ` — محضّر ${n}${ab.length ? "، غاب: " + ab.join("، ") : ""}` : l.date <= today && !l.cancelled ? " — ما تحضّرت" : ""}`;
     });
@@ -441,7 +474,7 @@ export async function POST(req: Request) {
       `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بلهجة سعودية مهذبة ومختصرة.`,
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
-      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب) جاوب من البيانات بالأرقام. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
@@ -450,9 +483,9 @@ export async function POST(req: Request) {
       `الإجازات: ${(s.holidays || []).filter((h) => h.to >= today).map((h) => `${h.name} ${h.from}→${h.to}`).join("؛ ") || "لا يوجد"}`,
       `الاختبارات والمناسبات: ${((s as any).events || []).filter((e: any) => e.date >= today).map((e: any) => `${e.date} ${e.name}`).join("؛ ") || "لا يوجد"}`,
       ctx.polls.length ? `التصويتات المفتوحة: ${ctx.polls.map((p) => `«${p.question}»${p.halqaId ? " (" + hName(p.halqaId) + ")" : ""}`).join("؛ ")}` : "",
-      `الطلاب النشطين (${ctx.studs.length}) — الاسم | الحلقة | الحضور آخر 30 يوم | التسميع | الخطة | آخر دخول:\n${studLines.join("\n") || "لا يوجد"}`,
+      `الطلاب النشطين (${ctx.studs.length}) — الاسم | الحلقة | الحضور آخر 30 يوم | التسميع آخر 30 يوم | المحفوظ (الحفظ السابق + الجديد) | الخطة | آخر دخول:\n${studLines.join("\n") || "لا يوجد"}`,
       otherStuds.length ? `طلاب موقوفين أو مؤرشفين: ${otherStuds.map((x) => `${x.name} (${x.status === "archived" ? "مؤرشف" : "موقوف"})`).join("، ")}` : "",
-      `التقويم للأيام الـ 21 القادمة: ${Array.from({ length: 21 }, (_, i) => { const d = localDate(i); return `${d}=${wd(d)} ${hj(d)}`; }).join("، ")}`,
+      `التقويم للأيام الـ 21 القادمة (ميلادي، اليوم، هجري): ${calTxt(21)}`,
     ].filter(Boolean).join("\n\n");
     let out: any;
     try { out = await callLlm(system, messages, tools.map((x) => x.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }

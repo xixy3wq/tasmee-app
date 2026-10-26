@@ -5,6 +5,7 @@ import { videoCfg, videoOn } from "@/lib/video";
 import { scopeHalqaIds } from "@/lib/scope";
 import { aiCfg, aiOn } from "@/lib/ai";
 import { checkLate } from "@/lib/late";
+import { syncAutoLessons } from "@/lib/lessons";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -30,10 +31,12 @@ async function ensureLessons(halaqat: any[], s: Settings) {
   g.lastEnsure ??= {};
   const now = Date.now();
   const rows: any[] = [];
-  for (const h of halaqat) {
+  const due = halaqat.filter((h) => now - (g.lastEnsure![h.id] || 0) >= 10 * 60000);
+  due.forEach((h) => { g.lastEnsure![h.id] = now; });
+  // الحصص الجاية تتبع جدول الحلقة لو تغيّر وقتها أو أيامها
+  await Promise.all(due.map((h) => syncAutoLessons(h).catch(() => null)));
+  for (const h of due) {
     if (!h.auto || !h.days?.length) continue;
-    if (now - (g.lastEnsure[h.id] || 0) < 10 * 60000) continue;
-    g.lastEnsure[h.id] = now;
     for (let i = 0; i < 7; i++) {
       const date = localDate(i);
       if (!h.days.includes(weekday(date)) || isHoliday(s, date)) continue;
