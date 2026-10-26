@@ -432,11 +432,7 @@ function regDoneV() {
   <button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
 }
 
-const TABS = {
-  admin: u => [['dash', 'الرئيسية'], ['req', 'الطلبات', L('users').filter(x => x.role === 'student' && x.status === 'pending').length], ['sessions', 'الحصص'], ['students', 'الطلاب'], ['inbox', 'الرسائل', dmUnreadStaff()], ['teachers', 'المعلمون'], ['halaqat', 'الحلقات'], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['logs', 'السجل'], ['settings', 'الإعدادات'], ['help', 'الدليل']].filter(([k]) => !TAB_PERM[k] || can(u, TAB_PERM[k])),
-  teacher: u => [['sessions', 'الحصص'], ['students', 'طلابي'], ['inbox', 'الرسائل', dmUnreadStaff()], ['anns', 'الإعلانات'], ['room', 'غرفة المعلمين', msgsUnread(u)], ['reports', 'التقارير'], ['help', 'الدليل']],
-  student: u => [['home', LANG === 'en' ? 'My page' : 'صفحتي'], ['msgs', LANG === 'en' ? 'Teacher' : 'المعلم', dmUnreadMine(u)], ['cal', LANG === 'en' ? 'Calendar' : 'التقويم'], ['help', LANG === 'en' ? 'Help' : 'الدليل']]
-};
+const TABS = new Proxy({}, { get: () => u => navSections(u).flatMap(x => x.items).map(i => [i.k, i.label, i.count]) });
 const ROLE = { admin: 'المدير', teacher: 'معلم', student: 'طالب' };
 const PARENT_TAB = { session: 'sessions', student: 'students', thread: 'inbox' };
 function shellV(u) {
@@ -449,11 +445,15 @@ function shellV(u) {
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
   if (u.role === 'student' && LANG !== 'en' && !ST.tourShown && !tourSeen(u)) { ST.tourShown = true; setTimeout(() => { if ($('#modal').hidden) showTour(0); }, 600); }
-  return `${banner()}<header class="top"><div class="top-in">
-    <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
-      <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="kids">${accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن'}</button><button class="btn ghost sm" data-act="zoom" aria-label="تكبير الخط">أ${ZOOM > 1 ? '−' : '+'}</button><button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
-    ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
-  </div></header><main class="wrap">${['dash', 'sessions', 'students', 'reports', 'halaqat'].includes(ST.view) ? branchBar(u) : ''}${body}</main>${bottomNav(u, tabs, activeTab)}`;
+  return `${banner()}<header class="top"><div class="top-in"><div class="brand-row">
+      <button class="hb only-n" data-act="drawer" aria-label="القائمة"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
+      <div class="who">${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : ''}<span class="small hide-n">${esc(u.name)}</span><span class="chip acc hide-n">${ROLE[u.role]}</span>
+        <button class="hb" data-act="theme" aria-label="تبديل المظهر" title="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>'}</button>
+        <button class="hb" data-act="account" aria-label="حسابي" title="حسابي">${ICO.settings}</button>
+        <button class="btn ghost sm" data-act="logout">خروج</button></div></div></div></header>
+  <div class="shell ${SIDE_MINI ? 'mini' : ''}"><aside class="side">${sideNavHtml(u, activeTab, SIDE_MINI)}<button class="side-fold" data-act="side-mini" title="طي القائمة"><span>⇥</span>${SIDE_MINI ? '' : ' طي القائمة'}</button></aside>
+  <main class="wrap">${['dash', 'sessions', 'students', 'reports', 'halaqat'].includes(ST.view) ? branchBar(u) : ''}${body}</main></div>${bottomNav(u, tabs, activeTab)}${drawerHtml(u, activeTab)}`;
 }
 
 /* ---- admin: requests ---- */
@@ -677,8 +677,7 @@ function settingsV() {
   const P = k => k === cur ? '' : 'hidden';
   const H = (t, d) => `<div class="set-h"><h2>${t}</h2>${d ? `<span class="small muted">${d}</span>` : ''}</div>`;
   const saveBtn = `<div class="set-save"><button class="btn pri" type="submit">حفظ الإعدادات</button></div>`;
-  return `<h1>الإعدادات</h1>
-  <nav class="set-tabs" aria-label="أقسام الإعدادات">${SET_TABS.map(([k, t, d]) => `<button type="button" class="set-tab ${k === cur ? 'on' : ''}" data-act="set-tab" data-k="${k}" aria-pressed="${k === cur}"><b>${t}</b><span>${d}</span></button>`).join('')}</nav>
+  return `<div><h1>الإعدادات</h1><div class="muted">${(SET_TABS.find(t => t[0] === cur) || [])[1] || ''}</div></div>
   <form class="card" data-form="settings" style="gap:18px" ${cur === 'video' ? 'hidden' : ''}>
     <div class="set-pane" ${P('rec')}>${H('التسميع والتقدير', 'كيف يُحسب التقدير، ومقادير الخطط الجاهزة، ونقاط الطلاب')}
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
@@ -2052,7 +2051,7 @@ function bottomNav(u, tabs, active) {
   const cnt = tabs.slice(prim.length).reduce((a, t) => a + (+t[2] || 0), 0);
   return `<nav class="bnav" aria-label="التنقل">${prim.map(([k, l, c]) => `<button class="bn ${k === active ? 'on' : ''}" data-act="tab" data-v="${k}">${ICO[k] || ICO.more}<span>${l}</span>${c ? `<i>${c}</i>` : ''}</button>`).join('')}
     ${u.role === 'student' ? `<button class="bn ${live ? 'hot' : ''}" data-act="live-open">${ICO.live}<span>${LANG === 'en' ? 'Class' : 'الحصة'}</span>${live ? '<i class="pulse"></i>' : ''}</button>` : ''}
-    <button class="bn" data-act="more">${ICO.more}<span>${LANG === 'en' ? 'More' : 'المزيد'}</span>${cnt ? `<i>${cnt}</i>` : ''}</button></nav>`;
+    <button class="bn" data-act="drawer">${ICO.more}<span>${LANG === 'en' ? 'Menu' : 'القائمة'}</span>${cnt ? `<i>${cnt}</i>` : ''}</button></nav>`;
 }
 function moreSheet() {
   const u = me(); if (!u) return; const tabs = TABS[u.role](u); const prim = u.role === 'student' ? 3 : 4;
@@ -2101,10 +2100,6 @@ document.addEventListener('touchend', e => {
     if (TOUCH.dy > 150 && TOUCH.top) { buzz(12); PTR.classList.add('busy'); PTR.style.transform = 'translate(-50%, 24px)'; flushOutbox().then(load).finally(() => { PTR.classList.remove('busy', 'ready'); PTR.style.opacity = ''; PTR.style.transform = ''; }); }
     else { PTR.style.opacity = ''; PTR.style.transform = ''; PTR.classList.remove('ready'); }
   }
-  // سحب أفقي سريع يتنقل بين الأقسام
-  if (!TOUCH.ok || ST.fs || !$('#modal').hidden || Date.now() - TOUCH.at > 600 || Math.abs(dx) < 90 || Math.abs(dy) > 50) return;
-  const u = me(); if (!u || window.innerWidth > 760) return; const keys = TABS[u.role](u).map(x => x[0]); const cur = PARENT_TAB[ST.view] || ST.view; const i = keys.indexOf(cur); if (i < 0) return;
-  const j = dx > 0 ? i + 1 : i - 1; if (j < 0 || j >= keys.length) return; buzz(8); go(keys[j]);
 }, { passive: true });
 
 /* ---------- أزرار الشاشات الجديدة ---------- */
@@ -2532,6 +2527,96 @@ Object.assign(FORMS, {
   async 'ev-add'(f, d) { const st = SET(); if (await act('events.save', { list: [...(st.events || []), { date: d.get('date'), name: d.get('name'), kind: d.get('kind') }] }, 'أُضيفت')) { f.reset(); clean(); } },
 });
 document.addEventListener('toggle', e => { if (e.target.dataset && e.target.dataset.actToggle === 'sum') ST.sumOpen = e.target.open; }, true);
+
+/* ================= القائمة الجانبية (يمين): أقسام ← صفحات ← خيارات داخلية ================= */
+// نفس ترتيب منصة الحلقة التربوية: قائمة ثابتة يمين للكمبيوتر وتنطوي، ودرج من اليمين للجوال
+function navSections(u) {
+  const has = k => !TAB_PERM[k] || can(u, TAB_PERM[k]);
+  const I = (k, label, count, subs) => ({ k, label, count: count || 0, subs });
+  const S_ = (label, set, extra = {}) => ({ label, set, ...extra });
+  if (u.role === 'student') {
+    const en = LANG === 'en';
+    return [
+      { title: en ? 'My day' : 'يومي', items: [I('home', en ? 'My page' : 'صفحتي'), I('msgs', en ? 'Teacher' : 'المعلم', dmUnreadMine(u)), I('cal', en ? 'Calendar' : 'التقويم')] },
+      { title: '', items: [I('help', en ? 'Help' : 'الدليل')] },
+    ];
+  }
+  const sessions = I('sessions', 'الحصص', 0, [S_('اليوم والقادمة', { cal: false }), S_('التقويم', { cal: true })]);
+  const students = I('students', u.role === 'admin' ? 'الطلاب' : 'طلابي', 0, [S_('كل الطلاب', { inact: false, arch: false }), S_('المنقطعين', { inact: true, arch: false }), S_('المؤرشفون', { arch: true, inact: false }), ...(u.role === 'admin' && has('students') ? [S_('استيراد طلاب', null, { act: 'import' })] : [])]);
+  const inbox = I('inbox', 'الرسائل', dmUnreadStaff());
+  const anns = I('anns', 'الإعلانات والتصويت');
+  const room = I('room', 'غرفة المعلمين', msgsUnread(u));
+  const reports = I('reports', 'التقارير');
+  if (u.role === 'teacher') return [
+    { title: 'الحلقة', items: [sessions, students] },
+    { title: 'التواصل', items: [inbox, anns, room] },
+    { title: 'المتابعة', items: [reports] },
+    { title: '', items: [I('help', 'الدليل')] },
+  ];
+  const pend = L('users').filter(x => x.role === 'student' && x.status === 'pending').length;
+  const sec = [
+    { title: 'الرئيسية', items: [I('dash', 'لوحة المدير')] },
+    { title: 'الحلقات', items: [sessions, students, I('req', 'طلبات التسجيل', pend), I('halaqat', 'الحلقات')] },
+    { title: 'التواصل', items: [inbox, anns, room] },
+    { title: 'الإدارة', items: [I('teachers', 'المعلمون', 0, [S_('المعلمون والمشرفون', { sched: false }), S_('جدول الأسبوع', { sched: true })]), reports, I('logs', 'سجل العمليات'),
+      I('settings', 'الإعدادات', 0, SET_TABS.map(([k, t]) => S_(t, { setTab: k })))] },
+    { title: '', items: [I('help', 'الدليل')] },
+  ];
+  return sec.map(s => ({ ...s, items: s.items.filter(i => has(i.k)) })).filter(s => s.items.length);
+}
+const subOn = x => x.set && Object.entries(x.set).every(([k, v]) => k === 'setTab' ? (ST.setTab || 'rec') === v : !!ST[k] === !!v);
+let SIDE_MINI = false; try { SIDE_MINI = localStorage.getItem('irtaq-side-mini') === '1'; } catch {}
+function sideNavHtml(u, active, mini) {
+  const secs = navSections(u); ST.navOpen = ST.navOpen || {};
+  if (mini) return `<nav class="sn mini" aria-label="القائمة">${secs.map(s => `<ul>${s.items.map(i => `<li><button class="sn-ic ${i.k === active ? 'on' : ''}" data-act="nav" data-v="${i.k}" title="${esc(i.label)}" aria-label="${esc(i.label)}">${ICO[i.k] || ICO.more}${i.count ? '<i></i>' : ''}</button><span>${esc(i.label)}</span></li>`).join('')}</ul>`).join('')}</nav>`;
+  return `<nav class="sn" aria-label="القائمة">${secs.map(s => `<div class="sn-sec">${s.title ? `<div class="sn-t">${esc(s.title)}</div>` : ''}<ul>${s.items.map(i => {
+    const on = i.k === active; const exp = ST.navOpen[i.k] ?? on;
+    return `<li><div class="sn-row ${on ? 'on' : ''}"><button class="sn-link" data-act="nav" data-v="${i.k}">${ICO[i.k] || ICO.more}<span class="sn-l">${esc(i.label)}</span>${i.count ? `<b class="sn-c">${i.count}</b>` : ''}</button>${i.subs && i.subs.length ? `<button class="sn-x ${exp ? 'open' : ''}" data-act="nav-exp" data-k="${i.k}" aria-expanded="${exp}" aria-label="${exp ? 'إخفاء' : 'إظهار'} خيارات ${esc(i.label)}">▾</button>` : ''}</div>
+      ${i.subs && exp ? `<ul class="sn-subs">${i.subs.map((x, j) => `<li><button class="sn-sub ${on && subOn(x) ? 'on' : ''}" data-act="nav-sub" data-v="${i.k}" data-j="${j}">${esc(x.label)}</button></li>`).join('')}</ul>` : ''}</li>`;
+  }).join('')}</ul></div>`).join('')}</nav>`;
+}
+function drawerHtml(u, active) {
+  if (!ST.drawer) return '';
+  return `<div class="drawer" role="dialog" aria-modal="true" aria-label="القائمة"><div class="drawer-bg" data-act="drawer-x"></div>
+    <div class="drawer-p"><div class="drawer-h"><div><b>${esc(u.name)}</b><div class="small muted">${ROLE[u.role]}${u.halqaId && S.halaqat[u.halqaId] ? ' · ' + esc(S.halaqat[u.halqaId].name) : ''}</div></div><button class="btn ghost sm" data-act="drawer-x" aria-label="إغلاق">✕</button></div>
+    <div class="drawer-b">${sideNavHtml(u, active, false)}</div>
+    <div class="drawer-f"><button class="btn ghost" data-act="account">${ICO.settings} حسابي</button><button class="btn ghost" data-act="logout">${ICO.logout} خروج</button></div></div></div>`;
+}
+function accountSheet() {
+  const u = me(); if (!u) return;
+  const it = (act, icon, label, extra = '') => `<button class="ms-it" data-act="${act}" ${extra}>${ICO[icon] || ICO.more}<span>${label}</span></button>`;
+  openModal(`${dlgHead(esc(u.name))}<div class="ms-grid">
+    ${u.role !== 'student' ? it('search-m', 'search', 'بحث') : it('kids-m', 'kids', accounts().length > 1 ? 'أولادي (' + accounts().length + ')' : 'إضافة ابن') + it('zoom', 'zoom', ZOOM > 1 ? 'تصغير الخط' : 'تكبير الخط') + it('lang', 'lang', LANG === 'en' ? 'عربي' : 'English')}
+    ${S.push && 'PushManager' in window ? it('push', 'bell', PUSH_ON ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات') : ''}
+    ${INSTALL_EVT ? it('install', 'install', 'تثبيت كتطبيق') : ''}
+    ${it('theme', 'theme', isDarkNow() ? 'المظهر الفاتح' : 'المظهر الداكن')}${it('my-pw', 'key', 'كلمة المرور')}${it('logout', 'logout', 'خروج')}</div>`);
+}
+Object.assign(ACT, {
+  'nav': el => { ST.drawer = false; const v = el.dataset.v; const def = { students: { inact: false, arch: false }, teachers: { sched: false }, sessions: { cal: false } }[v] || {}; go(v, def); },
+  'nav-exp': el => { ST.navOpen = ST.navOpen || {}; const k = el.dataset.k; const u = me(); const on = (PARENT_TAB[ST.view] || ST.view) === k; ST.navOpen[k] = !(ST.navOpen[k] ?? on); render(); },
+  'nav-sub': el => {
+    const u = me(); const item = navSections(u).flatMap(s => s.items).find(i => i.k === el.dataset.v); const x = item && item.subs[+el.dataset.j]; if (!x) return;
+    ST.drawer = false;
+    if (x.act) { if (ST.view !== item.k) go(item.k); return ACT[x.act](el); }
+    go(item.k, x.set);
+  },
+  'drawer': () => { ST.drawer = true; buzz(8); render(); },
+  'drawer-x': () => { ST.drawer = false; render(); },
+  'side-mini': () => { SIDE_MINI = !SIDE_MINI; try { localStorage.setItem('irtaq-side-mini', SIDE_MINI ? '1' : '0'); } catch {} render(); },
+  'account': () => { ST.drawer = false; render(); accountSheet(); },
+});
+// السحب من حافة الشاشة اليمنى يفتح القائمة، والسحب لليمين يقفلها
+(() => {
+  let sx = null, sy = 0, fromEdge = false;
+  document.addEventListener('touchstart', e => { if (e.touches.length !== 1) return; const t = e.touches[0]; sx = t.clientX; sy = t.clientY; fromEdge = t.clientX > window.innerWidth - 22; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (sx == null) return; const t = e.changedTouches[0]; const dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+    if (window.innerWidth >= 1024 || !me() || ST.fs) return;
+    if (!ST.drawer && fromEdge && dx < -60 && Math.abs(dy) < 60 && $('#modal').hidden) { ST.drawer = true; buzz(8); render(); }
+    else if (ST.drawer && dx > 70 && Math.abs(dy) < 60) { ST.drawer = false; render(); }
+  }, { passive: true });
+})();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.drawer) { ST.drawer = false; render(); } });
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
