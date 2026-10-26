@@ -649,3 +649,5 @@ details.help[open] summary{margin-bottom:8px}
 .aipm b{display:flex;align-items:center;gap:6px}.aipm b svg{width:18px;height:18px;color:var(--accent)}
 body.fs-on .ai-fab,body.room-full .ai-fab{display:none}
 @media (prefers-reduced-motion: reduce){.ai-panel{animation:none}.ai-think{animation:none}}
+body:has(.sticky-join) .ai-fab{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+@media (min-width:1024px){body:has(.sticky-join) .ai-fab{bottom:90px}}

@@ -46,6 +46,52 @@ const findS = (studs: any[], names: unknown) => {
   return studs.filter((s) => arr.some((n) => { const a = norm(s.name), b = norm(n); return a === b || a.includes(b) || b.includes(a.split(" ").slice(0, 2).join(" ")); }));
 };
 
+/* ---------- المساعد للطالب وولي الأمر: يجاوب عن بياناته هو فقط ---------- */
+const STU_TOOLS: ToolSpec[] = [
+  { name: "message_teacher", description: "إرسال رسالة لمعلم الحلقة (بعد تأكيد الطالب)", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
+];
+async function studentChat(u: any, b: any) {
+  const row = await prisma.setting.findUnique({ where: { key: "ai" } }); const raw: any = (row?.value as any) || {};
+  if (raw.students === false) fail("المساعد غير متاح للطلاب حاليًا");
+  const cfg = await aiCfg(); if (!aiOn(cfg)) fail("المساعد غير مفعّل");
+  // حد يومي لكل طالب عشان ما تخلص الباقة المجانية
+  const today = localDate(); const lim = Math.min(200, Math.max(1, Number(raw.studentLimit) || 25)); const qk = "aiq:" + today;
+  const qrow = await prisma.setting.findUnique({ where: { key: qk } }); const used: Record<string, number> = { ...((qrow?.value as any) || {}) };
+  if ((used[u.id] || 0) >= lim) fail(`وصلت حد اليوم (${lim} سؤال). ارجع بكرة إن شاء الله`);
+  const messages: ChatMsg[] = (Array.isArray(b.messages) ? b.messages : []).slice(-10).map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", text: str(m.text, 2000) })).filter((m: ChatMsg) => m.text);
+  if (!messages.length || messages[messages.length - 1].role !== "user") fail("اكتب سؤالك");
+  const s = await getSettings();
+  const h = u.halqaId ? await prisma.halqa.findUnique({ where: { id: u.halqaId } }) : null;
+  const teacher = h?.teacherId ? await prisma.user.findUnique({ where: { id: h.teacherId }, select: { name: true } }) : null;
+  const [lessons, recs, behav] = await Promise.all([
+    u.halqaId ? prisma.lesson.findMany({ where: { halqaId: u.halqaId, date: { gte: localDate(-30), lte: localDate(14) } }, orderBy: [{ date: "asc" }, { time: "asc" }] }) : Promise.resolve([] as any[]),
+    prisma.rec.findMany({ where: { userId: u.id }, orderBy: { at: "desc" }, take: 25 }),
+    prisma.behav.findMany({ where: { userId: u.id, visible: true }, orderBy: { at: "desc" }, take: 5 }),
+  ]);
+  const past = lessons.filter((l: any) => l.date <= today && !l.cancelled); const att = past.map((l: any) => ((l.att as any) || {})[u.id]).filter(Boolean);
+  const pres = att.filter((v: string) => v === "p" || v === "l").length, abs = att.filter((v: string) => v === "a").length;
+  const next = lessons.filter((l: any) => l.date >= today && !l.cancelled).slice(0, 5).map((l: any) => `${l.date} ${wd(l.date)} ${l.time}`);
+  const due = str(b.due, 600);
+  const system = [
+    `أنت «مساعد ارتق»: مساعد لطيف للطالب وولي أمره في موقع «${s.center}» لحلقات تسميع القرآن عن بعد. ترد بلهجة سعودية بسيطة ومختصرة تناسب الطلاب.`,
+    `الطالب: ${u.name}. الحلقة: ${h?.name || "—"}${teacher ? ` (المعلم: ${teacher.name})` : ""}. أيام الحلقة: ${h ? h.days.map((d: number) => DAYS[d]).join("، ") + " " + h.time : "—"}. اليوم ${today} = ${hj(today)} (${wd(today)}).`,
+    "قواعد: جاوب عن بيانات هذا الطالب فقط من المعطى. ساعده في طرق الحفظ والمراجعة والتثبيت وتنظيم الوقت بنصائح عملية. لأسئلة المعاني اعطِ معنى عام مختصر مما هو معروف في التفاسير، وانصحه يسأل معلمه للتفصيل، ولا تفتِ في الأحكام. لا تكتب نص آيات من ذاكرتك (قد تخطئ)؛ اذكر اسم السورة ورقم الآية وانصحه يرجع للمصحف. إذا طلب يراسل المعلم استخدم أداة الرسالة. لا تخترع أرقاماً غير موجودة.",
+    due ? `المطلوب منه في خطته الحالية: ${due}` : "",
+    `الحضور آخر 30 يوم: ${pres} من ${past.length}${abs ? ` (غاب ${abs})` : ""}.`,
+    `الحصص القادمة: ${next.join("؛ ") || "لا يوجد"}.`,
+    `آخر تسميعاته: ${recs.map((r) => `${r.date} ${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}${r.mistakes ? ` (${r.mistakes} أخطاء)` : ""}${r.note ? ` — ملاحظة: ${r.note}` : ""}`).join("؛ ") || "ما فيه"}.`,
+    behav.length ? `ملاحظات المعلم: ${behav.map((x) => x.text).join("؛ ")}.` : "",
+    `الإجازات القادمة: ${(s.holidays || []).filter((x) => x.to >= today).map((x) => `${x.name} ${x.from}→${x.to}`).join("؛ ") || "لا يوجد"}. الاختبارات والمناسبات: ${((s as any).events || []).filter((e: any) => e.date >= today).map((e: any) => `${e.date} ${e.name}`).join("؛ ") || "لا يوجد"}.`,
+    `التقويم للأيام الـ 14 القادمة: ${Array.from({ length: 14 }, (_, i) => { const d = localDate(i); return `${d}=${wd(d)}`; }).join("، ")}`,
+  ].filter(Boolean).join("\n\n");
+  let out: any;
+  try { out = await callLlm(system, messages, h ? STU_TOOLS : [], cfg); } catch (e: any) { fail(String(e.message), 503); }
+  used[u.id] = (used[u.id] || 0) + 1;
+  await prisma.setting.upsert({ where: { key: qk }, create: { key: qk, value: used }, update: { value: used } }).catch(() => {});
+  const actions = (out.calls || []).filter((c: any) => c.name === "message_teacher" && c.args?.text).map((c: any) => ({ summary: `✉ رسالة للمعلم: ${String(c.args.text).slice(0, 200)}`, t: "dm.send", payload: { text: String(c.args.text).slice(0, 1000) } }));
+  return { text: out.text || (actions.length ? "جهزت الرسالة، راجعها واضغط «تنفيذ»:" : "…"), actions, left: lim - used[u.id] };
+}
+
 export async function POST(req: Request) {
   return handle(async () => {
     const u = await currentUser(); if (!u) fail("انتهت الجلسة", 401);
@@ -55,11 +101,13 @@ export async function POST(req: Request) {
     if (t === "get" || t === "save" || t === "test") {
       if (!full) fail("إعداد المساعد للمدير الكامل فقط", 403);
       const row = await prisma.setting.findUnique({ where: { key: "ai" } }); const c: any = { ...((row?.value as any) || {}) };
-      if (t === "get") { const e = await aiCfg(); return { gemini: mask(e.gemini), claude: mask(e.claude), model: c.geminiModel || "", on: aiOn(e), fromEnv: !!(process.env.IRTAQ_GEMINI_KEY || process.env.IRTAQ_ANTHROPIC_KEY) }; }
+      if (t === "get") { const e = await aiCfg(); return { gemini: mask(e.gemini), claude: mask(e.claude), model: c.geminiModel || "", on: aiOn(e), students: c.students !== false, studentLimit: c.studentLimit || 25, fromEnv: !!(process.env.IRTAQ_GEMINI_KEY || process.env.IRTAQ_ANTHROPIC_KEY) }; }
       if (t === "save") {
         if (b.gemini !== undefined) c.gemini = str(b.gemini, 200).trim() || undefined;
         if (b.claude !== undefined) c.claude = str(b.claude, 300).trim() || undefined;
         if (b.geminiModel !== undefined) c.geminiModel = str(b.geminiModel, 60).trim() || undefined;
+        if (b.students !== undefined) c.students = !!b.students;
+        if (b.studentLimit !== undefined) c.studentLimit = Math.min(200, Math.max(1, Number(b.studentLimit) || 25));
         await prisma.setting.upsert({ where: { key: "ai" }, create: { key: "ai", value: c }, update: { value: c } });
         await audit(u!, "ai.save", null, "إعداد المساعد الذكي");
         return { ok: true };
@@ -67,7 +115,10 @@ export async function POST(req: Request) {
       const out = await callLlm("رد بكلمة واحدة.", [{ role: "user", text: "قل: تمام" }]).catch((e) => fail(String(e.message), 422));
       return { reply: (out as any).text };
     }
-    if (u!.role === "student") fail("غير مصرح", 403);
+    if (u!.role === "student") {
+      if (t !== "chat") fail("غير مصرح", 403);
+      return await studentChat(u!, b);
+    }
 
     if (t === "parentMsg") {
       const st = await prisma.user.findUnique({ where: { id: str(b.studentId) } });

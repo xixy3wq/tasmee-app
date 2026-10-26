@@ -1000,7 +1000,7 @@ function helpV(u) {
     <div class="row"><button class="btn pri" data-act="tour">الجولة التعريفية</button>${supportBtn('تواصل مع الإدارة')}</div>
     ${sub('يوم الحصة', ['افتح الموقع قبل الحصة، وتشوف العدّاد في صفحتك.', 'اضغط «الحصة» تحت أو «ادخل الحصة». أول مرة ممكن يطلب تثبيت Zoom أو Meet، ثبته وارجع اضغط مرة ثانية.', 'شاشة الحصة تعرض ترتيبك في الطابور وتتحدث لحالها، والجوال يهتز لما تكون التالي ولما يجي دورك.', 'إذا صرت جاهز تسمّع اضغط «جاهز للتسميع».', 'ما قدرت تدخل؟ اضغط «عندي مشكلة في الدخول» واختر المشكلة، وتوصل للمعلم.', 'بعد الحصة يطلع لك «ملخص الحصة»: وش سمّعت، تقديرك، والمطلوب للحصة الجاية.'])}
     ${sub('الخطة والبيت', ['«خطتك» فيها الحفظ والمراجعة والتثبيت، وتتحدث لحالها بعد ما يسجل المعلم تسميعك.', 'الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.', '«إعادة» معناها تعيد المقطع في الحصة الجاية لين تنجح فيه.', 'في «مهام اليوم» علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط حفظ. المعلم يشوفها قبل الحصة.', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ.'])}
-    ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.'])}
+    ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.', 'المساعد الذكي (الزر الدائري تحت): اسأله عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع. وإذا تبي تراسل المعلم يجهز لك الرسالة.'])}
     ${sub('لولي الأمر', ['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير.', 'عندك أكثر من ولد؟ من «المزيد» اضغط «إضافة ابن» مرة وحدة، وبعدها «أولادي» يعرض ملخصهم كلهم في شاشة وحدة وتنتقل بينهم.', 'زر «English» يعرض الصفحة بالإنجليزي، و«تكبير الخط» يكبّر الكلام.'])}
     ${cal}${install}${notif}
     <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
@@ -2626,6 +2626,7 @@ const AI = { open: false, msgs: [], busy: false };
 try { AI.msgs = JSON.parse(sessionStorage.getItem('irtaq-ai') || '[]'); } catch {}
 const AI_SUGGEST = {
   admin: ['مين الطلاب اللي غابوا أكثر هالشهر؟', 'مين يحتاج متابعة ومن أي حلقة؟', 'أضف اختبار جزء عمّ يوم الخميس الجاي', 'أعلن لكل الحلقات إن حصص الأسبوع الجاي تبدأ بعد العشاء', 'اقترح 5 أفكار تحفيزية للطلاب هالشهر'],
+  student: ['وش المطلوب مني للحصة الجاية؟', 'كيف أثبّت حفظي وما أنساه؟', 'كيف مستواي هالشهر؟', 'متى الحصة الجاية؟', 'أبي جدول مراجعة يومي يناسبني'],
   teacher: ['مين من طلابي ما سمّع هالأسبوع؟', 'لخص لي وضع حلقتي', 'سوّ تصويت لطلابي: أي وقت يناسبهم السبت؟', 'ألغِ حصة بكرة لظرف', 'اقترح طريقة تساعد طالب يعيد كثير'],
 };
 const AI_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4-1.4-.6 1.4-.6z"/></svg>';
@@ -2637,18 +2638,18 @@ function aiEl() {
 function aiSave() { try { sessionStorage.setItem('irtaq-ai', JSON.stringify(AI.msgs.slice(-30))); } catch {} }
 function aiRender() {
   const u = me(); const el = aiEl();
-  if (!u || u.role === 'student' || !S.aiOn || ST.fs) { el.innerHTML = ''; el._h = ''; return; }
+  if (!u || !S.aiOn || ST.fs) { el.innerHTML = ''; el._h = ''; return; }
   const ta = document.getElementById('ai-q'); const keep = ta ? ta.value : ''; const hadFocus = ta && document.activeElement === ta;
   const listEl = el.querySelector('.ai-list'); const atBottom = !listEl || listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 40; const st0 = listEl ? listEl.scrollTop : 0;
   const card = (a, mi, ai) => `<div class="ai-act ${a.state || ''} ${a.error ? 'err' : ''}"><b>${esc(a.summary)}</b>${a.error || a.msg ? `<div class="c-bad small">${esc(a.error || a.msg)}</div>` : ''}
     ${!a.error && !a.state ? `<div class="row"><button class="btn pri sm" data-act="ai-run" data-m="${mi}" data-a="${ai}">تنفيذ</button><button class="btn ghost sm" data-act="ai-skip" data-m="${mi}" data-a="${ai}">إلغاء</button></div>` : ''}
     ${a.state === 'busy' ? '<div class="small muted">جاري التنفيذ…</div>' : a.state === 'done' ? '<div class="small c-ok">✓ تم</div>' : a.state === 'skip' ? '<div class="small muted">أُلغي</div>' : a.state === 'err' ? `<button class="linkbtn" data-act="ai-run" data-m="${mi}" data-a="${ai}">إعادة المحاولة</button>` : ''}</div>`;
   const html = `<button class="ai-fab ${AI.open ? 'on' : ''}" data-act="ai-toggle" aria-label="المساعد الذكي" title="المساعد الذكي (Ctrl+J)">${AI.open ? '✕' : AI_ICON}</button>
-  ${AI.open ? `<div class="ai-panel" role="dialog" aria-label="المساعد الذكي"><div class="ai-h"><span class="ai-badge">${AI_ICON}</span><div class="grow"><b>مساعد ارتق</b><span>يجاوب ويجهز لك، وأنت تأكد قبل التنفيذ</span></div>${AI.msgs.length ? '<button class="linkbtn" data-act="ai-new">محادثة جديدة</button>' : ''}</div>
-    <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، أقدر أجاوبك عن طلابك وحضورهم وتسميعهم، وأضيف إعلانات وتصويت وإجازات وحصص، وأقترح أفكار. جرّب:</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+  ${AI.open ? `<div class="ai-panel" role="dialog" aria-label="المساعد الذكي"><div class="ai-h"><span class="ai-badge">${AI_ICON}</span><div class="grow"><b>مساعد ارتق</b><span>${u.role === 'student' ? (AI.left != null ? 'باقي لك اليوم ' + AI.left + ' سؤال' : 'اسألني أي شي عن حفظك وحصصك') : 'يجاوب ويجهز لك، وأنت تأكد قبل التنفيذ'}</span></div>${AI.msgs.length ? '<button class="linkbtn" data-act="ai-new">محادثة جديدة</button>' : ''}</div>
+    <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، ${u.role === 'student' ? 'اسألني عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع وتثبت. جرّب:' : 'أقدر أجاوبك عن طلابك وحضورهم وتسميعهم، وأضيف إعلانات وتصويت وإجازات وحصص، وأقترح أفكار. جرّب:'}</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
       ${AI.msgs.map((m, mi) => `<div class="ai-m ${m.role}"><div class="ai-b">${esc(m.text)}</div>${(m.actions || []).length ? `<div class="ai-acts">${m.actions.map((a, ai) => card(a, mi, ai)).join('')}${m.actions.filter(a => !a.state && !a.error).length > 1 ? `<button class="btn pri sm" data-act="ai-all" data-m="${mi}">تنفيذ الكل</button>` : ''}</div>` : ''}</div>`).join('')}
       ${AI.busy ? '<div class="ai-m assistant"><div class="ai-b ai-think">يفكر…</div></div>' : ''}</div>
-    <form class="ai-f" data-form="ai"><textarea id="ai-q" rows="1" placeholder="اكتب طلبك… مثل: مين غاب أكثر هالأسبوع؟" aria-label="رسالة للمساعد"></textarea><button class="btn pri" type="submit" ${AI.busy ? 'disabled' : ''} aria-label="إرسال">➤</button></form></div>` : ''}`;
+    <form class="ai-f" data-form="ai"><textarea id="ai-q" rows="1" placeholder="${u.role === 'student' ? 'اكتب سؤالك… مثل: كيف أراجع جزء عمّ؟' : 'اكتب طلبك… مثل: مين غاب أكثر هالأسبوع؟'}" aria-label="رسالة للمساعد"></textarea><button class="btn pri" type="submit" ${AI.busy ? 'disabled' : ''} aria-label="إرسال">➤</button></form></div>` : ''}`;
   if (el._h === html) return; el._h = html; el.innerHTML = html;
   const t2 = document.getElementById('ai-q'); if (t2) { t2.value = keep; if (hadFocus) t2.focus(); }
   const l2 = el.querySelector('.ai-list'); if (l2) l2.scrollTop = atBottom ? l2.scrollHeight : st0;
@@ -2658,8 +2659,9 @@ async function aiSend(text) {
   AI.msgs.push({ role: 'user', text: q }); AI.busy = true; aiSave(); aiRender();
   const ta = document.getElementById('ai-q'); if (ta) ta.value = '';
   try {
-    const r = await api('/api/ai', { t: 'chat', messages: AI.msgs.map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
-    AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] });
+    const u0 = me(); const due = u0 && u0.role === 'student' ? planItems(u0).map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${SN[x.surah - 1]} ${x.from === x.to ? x.from : x.from + '-' + x.to}`).join('، ') : '';
+    const r = await api('/api/ai', { t: 'chat', due, messages: AI.msgs.map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
+    AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] }); if (r.left != null) AI.left = r.left;
   } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message }); }
   AI.busy = false; aiSave(); aiRender();
 }
@@ -2711,6 +2713,7 @@ function aiSettingsHtml() {
     <ol class="steps small"><li>ادخل <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> بحساب قوقل، واضغط <b>Create API key</b>.</li><li>سوّ مفتاح جديد خاص بهالموقع (لا تستخدم مفتاح الموقع الثاني)، وانسخه والصقه تحت واضغط حفظ.</li></ol>
     <div class="row"><input id="ai-key" type="password" dir="ltr" autocomplete="off" placeholder="AIza…" style="flex:1 1 220px"><button class="btn pri" data-act="ai-key-save">حفظ</button></div>
     <div class="row"><label class="small">النموذج</label><select id="ai-model" data-change="ai-model"><option value="" ${!c.model ? 'selected' : ''}>Flash-Lite (حد مجاني أعلى، مستحسن)</option><option value="gemini-flash-latest" ${c.model === 'gemini-flash-latest' ? 'selected' : ''}>Flash (أذكى، حد مجاني أقل)</option></select></div>
+    <div class="row"><label class="check"><input type="checkbox" id="ai-stu" data-change="ai-stu" ${c.students !== false ? 'checked' : ''}> متاح للطلاب وأولياء الأمور</label><label class="small">حد الطالب اليومي</label><input id="ai-lim" type="number" min="1" max="200" value="${c.studentLimit || 25}" data-change="ai-lim" style="width:80px"></div>
     <details><summary class="small">أو استخدم مفتاح Claude</summary><div class="row" style="margin-top:8px"><input id="ai-ckey" type="password" dir="ltr" autocomplete="off" placeholder="sk-ant-…" style="flex:1 1 220px"><button class="btn" data-act="ai-ckey-save">حفظ</button></div></details>
     <div class="row">${c.on ? '<button class="btn" data-act="ai-test">جرّب الاتصال</button>' : ''}${c.gemini && !c.fromEnv ? '<button class="btn ghost danger" data-act="ai-key-del">حذف مفتاح Gemini</button>' : ''}${c.claude && !c.fromEnv ? '<button class="btn ghost danger" data-act="ai-ckey-del">حذف مفتاح Claude</button>' : ''}</div>
     <div id="ai-msg" class="small"></div>
@@ -2725,6 +2728,8 @@ Object.assign(ACT, {
   'ai-test': async () => { const m = $('#ai-msg'); if (m) { m.className = 'small muted'; m.textContent = 'جاري التجربة…'; } try { const r = await api('/api/ai', { t: 'test' }); if (m) { m.className = 'small c-ok'; m.textContent = 'الاتصال شغال ✓ الرد: ' + (r.reply || ''); } } catch (e) { if (m) { m.className = 'small c-bad'; m.textContent = e.message; } } },
 });
 CHG['ai-model'] = el => aiCfgSave({ geminiModel: el.value || null }, 'حُفظ النموذج');
+CHG['ai-stu'] = el => aiCfgSave({ students: el.checked }, el.checked ? 'صار متاح للطلاب' : 'انقفل عن الطلاب');
+CHG['ai-lim'] = el => aiCfgSave({ studentLimit: +el.value || 25 }, 'حُفظ الحد');
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
