@@ -25,13 +25,17 @@ const busyErr = (status: number, msg: string) => [429, 500, 502, 503, 504].inclu
 // التفكير الطويل يبطّئ الرد كثير: نطفيه أو نخليه بأقل مستوى. كل نموذج يقبل صيغة مختلفة، فنجرب ونتذكر اللي ينفع
 const THINK = [{ thinkingBudget: 0 }, { thinkingLevel: "minimal" }, { thinkingLevel: "low" }, null];
 const gt = globalThis as unknown as { aiThink?: Record<string, number> };
+export const TRACE: string[] = [];
 async function geminiOnce(key: string, model: string, system: string, history: ChatMsg[], tools: ToolSpec[], ms: number): Promise<LlmOut> {
   gt.aiThink ??= {};
   for (;;) {
     const ti = gt.aiThink[model] ?? 0;
-    try { return await geminiCall(key, model, system, history, tools, ms, THINK[ti]); }
+    const t0 = Date.now();
+    try { const o = await geminiCall(key, model, system, history, tools, ms, THINK[ti]); TRACE.push(`${model}#${ti} ok ${Date.now() - t0}ms`); return o; }
     catch (e: any) {
-      if (Number(e.status) === 400 && /think/i.test(String(e.message)) && ti < THINK.length - 1) { gt.aiThink[model] = ti + 1; continue; }
+      TRACE.push(`${model}#${ti} ${e.status || e.name} ${Date.now() - t0}ms ${String(e.message).slice(0, 80)}`);
+      // إعداد التفكير ما يناسب هالنموذج: نجرب الصيغة اللي بعدها
+      if (Number(e.status) === 400 && /think|invalid argument/i.test(String(e.message)) && ti < THINK.length - 1) { gt.aiThink[model] = ti + 1; continue; }
       throw e;
     }
   }

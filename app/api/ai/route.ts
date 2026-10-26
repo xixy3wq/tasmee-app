@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { SN, AYAS, validRange, ORD, TOTAL, SSTART, gOf } from "@/lib/quran";
 import { mushafData } from "@/lib/pages";
 import { waCfg, fillVars } from "@/lib/wa";
-import { aiCfg, aiOn, callLlm, type ToolSpec, type ChatMsg } from "@/lib/ai";
+import { aiCfg, aiOn, callLlm, TRACE, type ToolSpec, type ChatMsg } from "@/lib/ai";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -497,9 +497,9 @@ export async function POST(req: Request) {
 // فحص مؤقت (ينشال بعد التأكد)
 const gx = globalThis as unknown as { aiSelf?: number };
 export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("selftest") !== "2") return Response.json({ ok: false });
+  if (new URL(req.url).searchParams.get("selftest") !== "3") return Response.json({ ok: false });
   if (Date.now() - (gx.aiSelf || 0) < 60000) return Response.json({ wait: true });
-  gx.aiSelf = Date.now(); const t0 = Date.now();
-  try { const o = await callLlm("أنت مساعد. جاوب باختصار.", [{ role: "user", text: "كم عدد أجزاء القرآن؟ وأضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec)); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c) => c.name), text: o.text.slice(0, 80), think: (globalThis as any).aiThink }); }
-  catch (e: any) { return Response.json({ ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 400), think: (globalThis as any).aiThink }); }
+  gx.aiSelf = Date.now(); const t0 = Date.now(); TRACE.length = 0;
+  try { const o = await callLlm("أنت مساعد. جاوب باختصار.", [{ role: "user", text: "كم عدد أجزاء القرآن؟ وأضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec)); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c) => c.name), text: o.text.slice(0, 80), think: (globalThis as any).aiThink, trace: TRACE }); }
+  catch (e: any) { return Response.json({ ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 400), think: (globalThis as any).aiThink, trace: TRACE }); }
 }
