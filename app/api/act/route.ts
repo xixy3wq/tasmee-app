@@ -282,6 +282,26 @@ const A: Record<string, H> = {
     await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name + (sy.fixed ? ` (تعدّل وقت ${sy.fixed} حصة جاية)` : ""));
     return { fixed: sy.fixed, dropped: sy.dropped };
   },
+  // تغيير وقت حلقة أو أكثر مرة وحدة، والحصص الجاية (التلقائية واليدوية اللي على نفس الوقت القديم) تتعدل معها
+  async "halqa.time"(u, b) {
+    needAdmin(u, "halaqat");
+    const time = str(b.time); if (!/^\d{2}:\d{2}$/.test(time)) fail("الوقت غير صحيح");
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 100); if (!ids.length) fail("اختر الحلقات");
+    let n = 0, fixed = 0; const today = localDate();
+    for (const id of ids) {
+      await needScope(u, id);
+      const old = await prisma.halqa.findUnique({ where: { id } }); if (!old) continue;
+      const h = await prisma.halqa.update({ where: { id }, data: { time } }); n++;
+      fixed += (await syncAutoLessons(h, { create: true })).fixed;
+      if (old.time && old.time !== time) {
+        const ls = await prisma.lesson.findMany({ where: { halqaId: id, autoKey: null, date: { gte: today }, time: old.time, teacherAt: null, cancelled: false } });
+        const free = ls.filter((l) => !Object.keys((l.att as any) || {}).length).map((l) => l.id);
+        if (free.length) { await prisma.lesson.updateMany({ where: { id: { in: free } }, data: { time, reminded: false, lateAlerted: false } }); fixed += free.length; }
+      }
+    }
+    await audit(u, "halqa.save", null, `تغيير وقت ${n} حلقة إلى ${time} (تعدّلت ${fixed} حصة جاية)`);
+    return { n, fixed };
+  },
   // جدول المعلمين: تغيير معلم الحلقة بالسحب
   async "halqa.teacher"(u, b) {
     needAdmin(u, "halaqat");

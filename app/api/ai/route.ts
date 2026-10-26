@@ -281,6 +281,8 @@ const STAFF_TOOLS: Tool[] = [
       if (!ch.length) throw new Error("وش التعديل المطلوب؟");
       return { summary: `✎ تعديل ${h.name}: ${ch.join(" · ")}`, t: "halqa.save", payload: { id: h.id, data } };
     } },
+  { ok: perm("halaqat"), spec: T("set_halaqat_time", "تغيير وقت بداية حلقة أو أكثر (أو كل الحلقات)، وكل الحصص الجاية تتعدل معها مباشرة", P({ halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["halaqat", "time"])),
+    build: (a, c) => { if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time); const hs = many(c.halaqat, a.halaqat); const ch = hs.filter((h) => h.time !== time); return { summary: `🕒 وقت ${ch.length === c.halaqat.length && ch.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} يصير ${time}، والحصص الجاية تتعدل معها`, t: "halqa.time", payload: { ids: hs.map((h) => h.id), time } }; } },
   { ok: perm("settings"), spec: T("add_event", "إضافة اختبار أو مناسبة في تقويم الطلاب", P({ name: S("الاسم"), date: S("YYYY-MM-DD ميلادي"), kind: { type: "string", enum: ["exam", "event"] } }, ["name", "date"])),
     build: (a) => { if (!isDay(a.date)) throw new Error("تاريخ غير صالح"); return { summary: `🗓 ${a.kind === "exam" ? "اختبار" : "مناسبة"}: «${a.name}» — ${wd(a.date)} ${a.date} (${hj(a.date)})`, t: "events.add", payload: { name: a.name, date: a.date, kind: a.kind === "exam" ? "exam" : "event" } }; } },
   { ok: perm("settings"), spec: T("add_holiday", "إضافة إجازة (ما تنعقد فيها حصص)", P({ name: S("الاسم"), from: S("YYYY-MM-DD"), to: S("YYYY-MM-DD") }, ["name", "from"])),
@@ -334,6 +336,18 @@ const STU_TOOLS: { spec: ToolSpec; ok: (c: SCtx) => boolean; build: (a: any, c: 
     } },
 ];
 
+// إذا قال إنه سوّى شي وهو ما استخدم أداة، نطلب منه مرة ثانية يستخدمها (بدل ما يوهم المستخدم)
+const CLAIM = /(أضفت|ألغيت|عدّلت|عدلت|غيّرت|غيرت|أرسلت|نشرت|حضّرت|نقلت|اعتمدت|تم (ال)?(إضافة|تعديل|تغيير|إرسال|نشر|إلغاء|تسجيل|اعتماد))/;
+async function llmActs(system: string, messages: ChatMsg[], specs: ToolSpec[], cfg: any) {
+  let out = await callLlm(system, messages, specs, cfg);
+  if (specs.length && !(out.calls || []).length && CLAIM.test(out.text || "")) {
+    try {
+      const again = await callLlm(system, [...messages, { role: "assistant", text: out.text }, { role: "user", text: "ما استخدمت أي أداة، فما تنفذ شي. استخدم الأداة المناسبة الحين لطلبي، وإذا ما فيه أداة تناسبه قل ذلك بصراحة." }], specs, cfg);
+      if ((again.calls || []).length) out = again; else if (/ما (أقدر|اقدر|عندي|فيه أداة)|ما يمديني|غير متاح/.test(again.text || "")) out = { ...out, text: again.text };
+    } catch {}
+  }
+  return out;
+}
 function runTools(calls: { name: string; args: any }[], find: (n: string) => ((a: any) => Promise<Act | Act[]> | Act | Act[]) | null) {
   return (async () => {
     const actions: Act[] = [];
@@ -391,7 +405,7 @@ async function studentChat(u: U, b: any) {
     `التقويم للأيام الـ 14 القادمة: ${Array.from({ length: 14 }, (_, i) => { const d = localDate(i); return `${d}=${wd(d)}`; }).join("، ")}`,
   ].filter(Boolean).join("\n\n");
   let out: any;
-  try { out = await callLlm(system, messages, tools.map((t) => t.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }
+  try { out = await llmActs(system, messages, tools.map((t) => t.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }
   used[u.id] = (used[u.id] || 0) + 1;
   await prisma.setting.upsert({ where: { key: qk }, create: { key: qk, value: used }, update: { value: used } }).catch(() => {});
   const actions = await runTools(out.calls || [], (n) => { const t = tools.find((x) => x.spec.name === n); return t ? (a: any) => t.build(a, sc) : null; });
@@ -474,7 +488,7 @@ export async function POST(req: Request) {
       `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بلهجة سعودية مهذبة ومختصرة.`,
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
-      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت الحلقات أو كل الحصص استخدم set_halaqat_time، ولحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
@@ -488,7 +502,7 @@ export async function POST(req: Request) {
       `التقويم للأيام الـ 21 القادمة (ميلادي، اليوم، هجري): ${calTxt(21)}`,
     ].filter(Boolean).join("\n\n");
     let out: any;
-    try { out = await callLlm(system, messages, tools.map((x) => x.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }
+    try { out = await llmActs(system, messages, tools.map((x) => x.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }
     const actions = await runTools(out.calls || [], (n) => { const x = tools.find((y) => y.spec.name === n); return x ? (a: any) => x.build(a, ctx, u) : null; });
     return { text: out.text || (actions.length ? "جهزت لك التالي، راجعه واضغط «تنفيذ»:" : "…"), actions };
   });
@@ -497,9 +511,9 @@ export async function POST(req: Request) {
 // فحص مؤقت (ينشال بعد التأكد)
 const gx = globalThis as unknown as { aiSelf?: number };
 export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("selftest") !== "3") return Response.json({ ok: false });
+  if (new URL(req.url).searchParams.get("selftest") !== "4") return Response.json({ ok: false });
   if (Date.now() - (gx.aiSelf || 0) < 60000) return Response.json({ wait: true });
   gx.aiSelf = Date.now(); const t0 = Date.now(); TRACE.length = 0;
-  try { const o = await callLlm("أنت مساعد. جاوب باختصار.", [{ role: "user", text: "كم عدد أجزاء القرآن؟ وأضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec)); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c) => c.name), text: o.text.slice(0, 80), think: (globalThis as any).aiThink, trace: TRACE }); }
+  try { const o = await callLlm("أنت مساعد. جاوب باختصار.", [{ role: "user", text: "كم عدد أجزاء القرآن؟ وأضف اختبار جزء عم يوم 2026-11-05" }], STAFF_TOOLS.map((x) => x.spec), (await aiCfg())); return Response.json({ ok: true, ms: Date.now() - t0, calls: o.calls.map((c) => c.name), text: o.text.slice(0, 80), think: (globalThis as any).aiThink, trace: TRACE }); }
   catch (e: any) { return Response.json({ ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 400), think: (globalThis as any).aiThink, trace: TRACE }); }
 }

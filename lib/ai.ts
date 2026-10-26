@@ -20,16 +20,18 @@ function toGemini(s: unknown): unknown {
 }
 
 // النماذج البديلة: إذا كان نموذج مزحوم أو بطيء ننتقل للي بعده تلقائياً
-const GEMINI_FALLBACK = ["gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+// الترتيب: الأسرع في استدعاء الأدوات أول (فلاش)، وبعده الخفيف
+const GEMINI_FALLBACK = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash"];
 const busyErr = (status: number, msg: string) => [429, 500, 502, 503, 504].includes(status) || /overload|high demand|unavailable|try again|timeout|aborted/i.test(msg);
 // التفكير الطويل يبطّئ الرد كثير: نطفيه أو نخليه بأقل مستوى. كل نموذج يقبل صيغة مختلفة، فنجرب ونتذكر اللي ينفع
-const THINK = [{ thinkingBudget: 0 }, { thinkingLevel: "minimal" }, { thinkingLevel: "low" }, null];
+// نماذج 2.5 نطفي تفكيرها (أسرع بكثير)، والنماذج الأحدث نخليها على وضعها الافتراضي لأن إطفاءه يضعف استخدامها للأدوات
+const THINK = [{ thinkingBudget: 0 }, null];
 const gt = globalThis as unknown as { aiThink?: Record<string, number> };
 export const TRACE: string[] = [];
 async function geminiOnce(key: string, model: string, system: string, history: ChatMsg[], tools: ToolSpec[], ms: number): Promise<LlmOut> {
   gt.aiThink ??= {};
   for (;;) {
-    const ti = gt.aiThink[model] ?? 0;
+    const ti = gt.aiThink[model] ?? (/2\.5/.test(model) ? 0 : 1);
     const t0 = Date.now();
     try { const o = await geminiCall(key, model, system, history, tools, ms, THINK[ti]); TRACE.push(`${model}#${ti} ok ${Date.now() - t0}ms`); return o; }
     catch (e: any) {
