@@ -53,7 +53,8 @@ export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string;
     }
     info = await r.json().catch(() => ({}));
     if (!r.ok || !info.url) throw new Error("تعذّر تجهيز الغرفة: " + (info.error || info.info || r.status));
-    const t = await fetch("https://api.daily.co/v1/meeting-tokens", { method: "POST", headers: H, signal: AbortSignal.timeout(12000), body: JSON.stringify({ properties: { room_name: room, user_name: user.name, user_id: user.id.slice(0, 36), is_owner: moderator, exp } }) });
+    // الطالب يدخل والكاميرا مقفلة (الأهم الصوت) عشان ما تثقل الحصة على الجوالات
+    const t = await fetch("https://api.daily.co/v1/meeting-tokens", { method: "POST", headers: H, signal: AbortSignal.timeout(12000), body: JSON.stringify({ properties: { room_name: room, user_name: user.name, user_id: user.id.slice(0, 36), is_owner: moderator, exp, ...(moderator ? {} : { start_video_off: true }) } }) });
     const tj: any = await t.json().catch(() => ({}));
     if (!t.ok || !tj.token) throw new Error("تعذّر إصدار تصريح الدخول: " + (tj.error || tj.info || t.status));
     return info.url + "?t=" + tj.token;
