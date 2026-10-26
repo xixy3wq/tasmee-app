@@ -12,14 +12,23 @@ export async function videoCfg(): Promise<VideoCfg> {
   const r = await prisma.setting.findUnique({ where: { key: "video" } });
   return { ...VIDEO_DEF, ...((r?.value as any) || {}) };
 }
-export const videoOn = (c: VideoCfg) => (c.provider === "jaas" && !!(c.jaasApp && c.jaasKid && c.jaasKey)) || (c.provider === "daily" && !!c.dailyKey);
+const jaasOk = (c: VideoCfg) => !!(c.jaasApp && c.jaasKid && c.jaasKey);
+const dailyOk = (c: VideoCfg) => !!c.dailyKey;
+/** ترتيب الخدمات: الأساسية أولًا، وبعدها الاحتياطية إذا مفاتيحها موجودة */
+export function videoOrder(c: VideoCfg): ("jaas" | "daily")[] {
+  if (c.provider === "none") return [];
+  const all: ("jaas" | "daily")[] = c.provider === "daily" ? ["daily", "jaas"] : ["jaas", "daily"];
+  return all.filter((p) => (p === "jaas" ? jaasOk(c) : dailyOk(c)));
+}
+export const videoOn = (c: VideoCfg) => videoOrder(c).length > 0;
 /** النسخة اللي تنرسل للمدير: بدون المفاتيح السرية */
-export const videoPublic = (c: VideoCfg) => ({ provider: c.provider, jaasApp: c.jaasApp, jaasKid: c.jaasKid, hasJaasKey: !!c.jaasKey, hasDailyKey: !!c.dailyKey, on: videoOn(c) });
+export const videoPublic = (c: VideoCfg) => ({ provider: c.provider, jaasApp: c.jaasApp, jaasKid: c.jaasKid, hasJaasKey: !!c.jaasKey, hasDailyKey: !!c.dailyKey, on: videoOn(c), jaasOn: jaasOk(c), dailyOn: dailyOk(c), order: videoOrder(c) });
 
 const roomName = (lessonId: string) => "irtaq-" + lessonId.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
 /** رابط الدخول للغرفة لمستخدم معيّن (المعلم مشرف الغرفة) */
-export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string; name: string }, moderator: boolean, hours = 4): Promise<string> {
+export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string; name: string }, moderator: boolean, hours = 4, only?: "jaas" | "daily"): Promise<string> {
+  if (only) c = { ...c, provider: only };
   const room = roomName(lessonId);
   const exp = Math.floor(Date.now() / 1000) + hours * 3600;
   if (c.provider === "jaas") {
@@ -47,4 +56,15 @@ export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string;
     return info.url + "?t=" + tj.token;
   }
   throw new Error("غرفة الحصة غير مفعّلة");
+}
+
+/** يجرب الخدمة الأساسية، وإذا فشلت ينتقل للاحتياطية. alt = ابدأ بالثانية */
+export async function roomUrlAny(c: VideoCfg, lessonId: string, user: { id: string; name: string }, moderator: boolean, alt = false) {
+  let order = videoOrder(c); if (alt && order.length > 1) order = [order[1], order[0]];
+  let lastErr: any = null;
+  for (const p of order) {
+    try { return { url: await roomUrl(c, lessonId, user, moderator, 4, p), provider: p, hasAlt: videoOrder(c).length > 1 }; }
+    catch (e) { lastErr = e; console.error("video " + p, e); }
+  }
+  throw lastErr || new Error("غرفة الحصة غير مفعّلة");
 }

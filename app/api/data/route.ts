@@ -134,6 +134,7 @@ export async function GET() {
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     waOn: staff ? (await waCfg()).enabled : false,
     videoOn: videoOn(await videoCfg()),
+    videoAlt: ((await prisma.setting.findUnique({ where: { key: "videoAlt" } }))?.value as any) || {},
     waFailed: full ? await prisma.outMsg.count({ where: { status: "failed" } }) : 0,
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),

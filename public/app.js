@@ -86,7 +86,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn;
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.videoAlt = d.videoAlt || {};
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -2138,6 +2138,12 @@ function roomBar() {
     extra = `<button class="btn sm" data-act="room-tool" data-k="rec1">${ICO.mic} ${cur ? esc((cur.name || '').split(' ')[0]) : 'التسميع'}</button><button class="btn sm" data-act="room-tool" data-k="swipe">${ICO.swipe}</button><button class="btn sm" data-act="room-tool" data-k="board">${ICO.grid}</button>`;
   }
   const ext = s && (s.link || (S.halaqat[s.halqaId] || {}).link);
+  const PV = { jaas: 'Jitsi', daily: 'Daily' };
+  // المعلم نقل الحصة لخدمة ثانية والطالب للحين في القديمة
+  const moved = u && u.role === 'student' && ROOM.sid !== 'test' && ROOM.hasAlt && !!(S.videoAlt || {})[ROOM.sid] !== !!ROOM.alt;
+  if (moved && !ROOM.movedToast) { ROOM.movedToast = 1; buzz([200, 100, 200]); toast('المعلم نقل الحصة للخدمة الثانية، اضغط «انتقل»'); }
+  if (moved) extra = `<button class="btn pri sm" data-act="room-follow">انتقل مع المعلم</button>` + extra;
+  if (u && u.role !== 'student' && ROOM.hasAlt) extra += `<button class="btn sm" data-act="room-switch" title="لو الصوت أو الصورة فيها مشكلة">بدّل لـ ${PV[ROOM.provider === 'jaas' ? 'daily' : 'jaas']}</button>`;
   r.querySelector('.room-bar').innerHTML = mini
     ? `<button class="room-ib" data-act="room-full" aria-label="تكبير">⤢</button><button class="room-ib bad" data-act="room-close" aria-label="خروج">✕</button>`
     : `<button class="btn sm danger" data-act="room-close">خروج</button><b class="room-t">${s ? esc(halqaName(s.halqaId)) : 'تجربة الغرفة'}</b><div class="room-x">${extra}</div>${ext ? `<a class="btn ghost sm" href="${esc(ext)}" target="_blank" rel="noopener" title="لو ما اشتغلت الغرفة">رابط بديل</a>` : ''}<button class="btn sm" data-act="room-mini">تصغير</button>`;
@@ -2145,13 +2151,13 @@ function roomBar() {
   document.body.classList.toggle('room-full', !mini);
   document.body.classList.toggle('room-mini', mini);
 }
-async function openRoom(sid) {
-  if (ROOM.sid === sid && ROOM.url) { ROOM.mode = 'full'; roomBar(); return; }
+async function openRoom(sid, alt) {
+  if (alt === undefined && ROOM.sid === sid && ROOM.url) { ROOM.mode = 'full'; roomBar(); return; }
   if (ROOM.sid) closeRoom(true);
   toast('جاري تجهيز الغرفة…');
-  let r; try { r = await api('/api/act', { t: 'video.join', lessonId: sid }); } catch (e) { return toast(e.message); }
+  let r; try { r = await api('/api/act', { t: 'video.join', lessonId: sid, ...(alt !== undefined ? { alt } : {}) }); } catch (e) { return toast(e.message); }
   if (!r || !r.url) return;
-  const el = roomEl(); Object.assign(ROOM, { sid, mode: 'full', url: r.url });
+  const el = roomEl(); Object.assign(ROOM, { sid, mode: 'full', url: r.url, provider: r.provider, hasAlt: !!r.hasAlt, alt: !!r.alt, movedToast: 0 });
   el.querySelector('.room-frame').innerHTML = `<iframe src="${esc(r.url)}" allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write; screen-wake-lock" allowfullscreen title="غرفة الحصة"></iframe>`;
   el.hidden = false; wake(true); buzz(20); $('#toast').hidden = true; roomBar(); load();
 }
@@ -2175,6 +2181,9 @@ Object.assign(ACT, {
   'room-full': () => { ROOM.mode = 'full'; roomBar(); },
   'room-tool': el => { const k = el.dataset.k; ROOM.mode = 'mini'; roomBar(); ST.sid = ROOM.sid; ST.view = 'session'; if (k === 'rec1') ACT['rec1-open'](); else if (k === 'swipe') ACT['swipe-open'](); else openFs('board'); },
   'video-test': () => openRoom('test'),
+  'video-test-alt': () => { if (ROOM.sid) closeRoom(true); openRoom('test', true); },
+  'room-follow': () => { const sid = ROOM.sid; ROOM.movedToast = 0; closeRoom(true); openRoom(sid); },
+  'room-switch': () => confirmBox('تنقل الحصة كلها للخدمة الثانية؟ الطلاب يطلع لهم زر «انتقل مع المعلم».', 'انقل', async () => { const sid = ROOM.sid; const to = !ROOM.alt; closeRoom(true); await openRoom(sid, to); }),
 });
 const _render0 = render;
 render = function () { _render0(); roomBar(); };
@@ -2188,13 +2197,14 @@ function videoSettingsHtml() {
   return `<form class="card" data-form="video" style="gap:14px"><div class="sec-head"><h2>غرفة الحصة داخل الموقع</h2><span class="chip ${c.on ? 'ok' : ''}">${c.on ? 'مفعّلة' : 'متوقفة'}</span></div>
     ${tip('بدل Zoom وMeet: الطالب يضغط «ادخل الحصة» وتفتح المكالمة داخل الموقع نفسه. المعلم يقدر يصغّرها ويحضّر ويسمّع وهو في المكالمة. Google Meet ما يسمح بالتشغيل داخل المواقع، فنستخدم خدمة مخصصة لهذا.')}
     <div class="pv-grid">${radio('none', 'بدون', 'الحصص تفتح برابط Zoom أو Meet مثل الحين')}${radio('jaas', 'Jitsi (JaaS)', 'مجاني لين 25 مستخدم بالشهر بدون حد دقائق')}${radio('daily', 'Daily', 'مجاني لين 10,000 دقيقة مشارك بالشهر')}</div>
-    <div ${pv === 'jaas' ? '' : 'hidden'} class="pv-box"><ol class="steps small"><li>سجّل في <a href="https://jaas.8x8.vc" target="_blank" rel="noopener">jaas.8x8.vc</a> (الخطة المجانية).</li><li>من <b>API Keys</b> اضغط <b>Add API key</b> ثم <b>Generate API key pair</b>، ونزّل الملف اللي ينتهي بـ <span dir="ltr">.pk</span>.</li><li>انسخ <b>AppID</b> و <b>Key ID</b> من الصفحة، وافتح ملف المفتاح وانسخ كل اللي فيه.</li></ol>
+    ${pv !== 'none' ? `<div class="small muted">الخدمة اللي تختارها فوق هي الأساسية. إذا حطيت مفاتيح الخدمتين، الثانية تصير احتياط: إذا تعطلت الأساسية يتحول الموقع لها تلقائيًا، والمعلم يقدر ينقل الحصة لها بزر.</div>` : ''}
+    <div ${pv !== 'none' ? '' : 'hidden'} class="pv-box"><b>Jitsi (JaaS) ${pv === 'jaas' ? '<span class="chip acc">الأساسية</span>' : c.jaasOn ? '<span class="chip">احتياط</span>' : '<span class="chip">اختياري</span>'}</b><ol class="steps small"><li>سجّل في <a href="https://jaas.8x8.vc" target="_blank" rel="noopener">jaas.8x8.vc</a> (الخطة المجانية).</li><li>من <b>API Keys</b> اضغط <b>Add API key</b> ثم <b>Generate API key pair</b>، ونزّل الملف اللي ينتهي بـ <span dir="ltr">.pk</span>.</li><li>انسخ <b>AppID</b> و <b>Key ID</b> من الصفحة، وافتح ملف المفتاح وانسخ كل اللي فيه.</li></ol>
       <label class="fld"><span>AppID</span><input id="vd-app" name="jaasApp" dir="ltr" value="${esc(c.jaasApp || '')}" placeholder="vpaas-magic-cookie-xxxxxxxx"></label>
       <label class="fld"><span>Key ID</span><input id="vd-kid" name="jaasKid" dir="ltr" value="${esc(c.jaasKid || '')}" placeholder="vpaas-magic-cookie-xxxx/xxxxxx"></label>
       <label class="fld"><span>المفتاح الخاص ${c.hasJaasKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><textarea id="vd-key" name="jaasKey" dir="ltr" rows="4" placeholder="${c.hasJaasKey ? 'اتركه فاضي عشان يبقى المحفوظ' : '-----BEGIN PRIVATE KEY-----'}"></textarea></label></div>
-    <div ${pv === 'daily' ? '' : 'hidden'} class="pv-box"><ol class="steps small"><li>سجّل في <a href="https://dashboard.daily.co" target="_blank" rel="noopener">dashboard.daily.co</a>.</li><li>من <b>Developers</b> انسخ <b>API key</b>.</li></ol>
+    <div ${pv !== 'none' ? '' : 'hidden'} class="pv-box"><b>Daily ${pv === 'daily' ? '<span class="chip acc">الأساسية</span>' : c.dailyOn ? '<span class="chip">احتياط</span>' : '<span class="chip">اختياري</span>'}</b><ol class="steps small"><li>سجّل في <a href="https://dashboard.daily.co" target="_blank" rel="noopener">dashboard.daily.co</a>.</li><li>من القائمة اضغط <b>Developers</b>، وانسخ <b>API key</b> (اضغط على العين عشان يبان، وانسخه كامل).</li><li>الصقه تحت واضغط حفظ.</li></ol>
       <label class="fld"><span>API key ${c.hasDailyKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><input id="vd-daily" name="dailyKey" dir="ltr" type="password" autocomplete="off" placeholder="${c.hasDailyKey ? 'اتركه فاضي عشان يبقى المحفوظ' : ''}"></label></div>
-    <div class="row"><button class="btn pri" type="submit">حفظ</button>${c.on ? '<button type="button" class="btn" data-act="video-test">جرّب الغرفة</button>' : ''}</div>
+    <div class="row"><button class="btn pri" type="submit">حفظ</button>${c.on ? '<button type="button" class="btn" data-act="video-test">جرّب الغرفة</button>' : ''}${c.jaasOn && c.dailyOn ? '<button type="button" class="btn" data-act="video-test-alt">جرّب الاحتياط</button>' : ''}</div>
     <div class="small muted">المفاتيح تنحفظ في قاعدة البيانات وما تطلع لأحد. لو تبي ترجع لـ Zoom أو Meet اختر «بدون».</div>
   </form>`;
 }

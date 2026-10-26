@@ -5,7 +5,7 @@ import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } 
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
-import { videoCfg, videoOn, videoPublic, roomUrl } from "@/lib/video";
+import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video";
 import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -640,14 +640,18 @@ const A: Record<string, H> = {
     if (d.clearKeys) { value.jaasKey = ""; value.dailyKey = ""; }
     if (value.provider === "jaas" && !(value.jaasApp && value.jaasKid && value.jaasKey)) fail("عبّ معرّف التطبيق ومعرّف المفتاح والمفتاح الخاص");
     if (value.provider === "daily" && !value.dailyKey) fail("الصق مفتاح Daily");
-    if (value.provider === "jaas") { try { await roomUrl(value as any, "test", { id: u.id, name: u.name }, true, 1); } catch (e: any) { fail("المفتاح الخاص غير صالح: " + String(e?.message || e).slice(0, 120)); } }
+    if (value.dailyKey && value.dailyKey !== old.dailyKey) {
+      const r = await fetch("https://api.daily.co/v1/rooms?limit=1", { headers: { Authorization: "Bearer " + value.dailyKey }, signal: AbortSignal.timeout(12000) }).catch(() => null);
+      if (!r || r.status === 401 || r.status === 403) fail("مفتاح Daily غير صحيح، تأكد إنك نسخته كامل");
+    }
+    if (value.jaasApp && value.jaasKid && value.jaasKey) { try { await roomUrl(value as any, "test", { id: u.id, name: u.name }, true, 1, "jaas"); } catch (e: any) { fail("المفتاح الخاص غير صالح: " + String(e?.message || e).slice(0, 120)); } }
     await prisma.setting.upsert({ where: { key: "video" }, create: { key: "video", value }, update: { value } });
     await audit(u, "video.save", null, "غرفة الحصة: " + value.provider);
     return videoPublic(value as any);
   },
   async "video.join"(u, b) {
     const c = await videoCfg(); if (!videoOn(c)) fail("غرفة الحصة غير مفعّلة");
-    if (str(b.lessonId) === "test") { if (!isFull(u)) fail("غير مسموح", 403); try { return { url: await roomUrl(c, "test-" + u.id.slice(-6), { id: u.id, name: u.name }, true, 1), provider: c.provider }; } catch (e: any) { fail(String(e?.message || e)); } }
+    if (str(b.lessonId) === "test") { if (!isFull(u)) fail("غير مسموح", 403); try { return await roomUrlAny(c, "test-" + u.id.slice(-6), { id: u.id, name: u.name }, true, !!b.alt); } catch (e: any) { fail(String(e?.message || e)); } }
     const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
     if (!l) fail("الحصة غير موجودة", 404);
     if (l!.cancelled) fail("هذه الحصة ملغاة");
@@ -659,7 +663,14 @@ const A: Record<string, H> = {
       await lessonFor(u, l!.id); mod = true;
       if (u.role === "teacher" && !l!.teacherAt) await prisma.lesson.update({ where: { id: l!.id }, data: { teacherAt: new Date(), teacherBy: u.id } });
     }
-    try { return { url: await roomUrl(c, l!.id, { id: u.id, name: u.name }, mod), provider: c.provider }; }
+    // المعلم يقدر ينقل الحصة كلها للخدمة الثانية، والطلاب يتبعونه
+    const altRow = await prisma.setting.findUnique({ where: { key: "videoAlt" } }); const altMap: Record<string, boolean> = { ...((altRow?.value as any) || {}) };
+    if (mod && b.alt !== undefined) {
+      if (b.alt) altMap[l!.id] = true; else delete altMap[l!.id];
+      for (const k of Object.keys(altMap)) if (!(await prisma.lesson.findFirst({ where: { id: k, date: { gte: localDate(-1) } }, select: { id: true } }))) delete altMap[k];
+      await prisma.setting.upsert({ where: { key: "videoAlt" }, create: { key: "videoAlt", value: altMap }, update: { value: altMap } });
+    }
+    try { return { ...(await roomUrlAny(c, l!.id, { id: u.id, name: u.name }, mod, !!altMap[l!.id])), alt: !!altMap[l!.id] }; }
     catch (e: any) { fail(String(e?.message || e)); }
   },
   // رسالة يدوية لولي الأمر تطلع من رقم الحلقة المربوط (بدل واتساب المعلم)
