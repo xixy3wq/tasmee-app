@@ -456,3 +456,25 @@ body.fs-on{overscroll-behavior:none}
 @media (max-width:760px){#modal{padding:0;padding-top:max(16px,env(safe-area-inset-top,0px))}}
 #toast{z-index:60}
 @media (max-width:760px){#toast{bottom:calc(76px + env(safe-area-inset-bottom,0px))}body.fs-on #toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}}
+/* غرفة الحصة */
+.vroom{position:fixed;z-index:45;background:#0b0f0e;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.vroom.full{inset:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.room-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--line);direction:rtl;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.room-t{font-family:var(--f-display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.room-x{display:flex;gap:6px;margin-inline-start:auto;align-items:center}
+.room-bar .btn{white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.room-frame{flex:1;position:relative}
+.room-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+.vroom.mini{width:min(46vw,240px);height:min(60vw,300px);bottom:calc(84px + env(safe-area-inset-bottom,0px));inset-inline-start:12px;border-radius:16px;overflow:hidden;border:2px solid var(--accent)}
+.vroom.mini .room-bar{position:absolute;top:0;inset-inline:0;z-index:2;background:transparent;border:0;justify-content:space-between;padding:6px}
+.room-ib{width:34px;height:34px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:1rem;cursor:pointer;display:grid;place-items:center}
+.room-ib.bad{background:rgba(176,65,58,.9)}
+body.room-full{overflow:hidden}
+body.room-mini .fs-foot{padding-inline-start:calc(min(46vw,240px) + 24px)}
+@media (min-width:761px){.vroom.mini{bottom:20px;width:320px;height:220px}}
+.pv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.pv{display:grid;gap:2px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--surface)}
+.pv input{position:absolute;opacity:0;pointer-events:none}
+.pv span{font-size:.78rem;color:var(--muted)}
+.pv.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 -3px 0 var(--accent)}
+.pv-box{display:grid;gap:10px;padding:12px;border-radius:12px;background:var(--sunk)}

@@ -86,7 +86,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0;
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn;
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -211,7 +211,7 @@ function attStats(st, days) {
   return c;
 }
 
-const effLink = s => (s && (s.link || (S.halaqat[s.halqaId] || {}).link)) || '';
+const effLink = s => (s && (S.videoOn ? '#room' : (s.link || (S.halaqat[s.halqaId] || {}).link))) || '';
 const lessonTs = s => new Date(s.date + 'T' + (s.time || '00:00')).getTime();
 function recPages(r) { let w = 0; const a = SSTART[r.surah - 1]; for (let i = r.from; i <= r.to; i++) w += W[a + i - 1] || 0; return w; }
 const fmtPages = n => { const q = Math.round(n * 4) / 4; return q ? String(q) : '0'; };
@@ -528,7 +528,7 @@ function sessionV(u) {
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="session-hero"><div class="datebox"><b>${dd.getDate()}</b><span>${DAYN[dd.getDay()]}</span></div>
     <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
-    <div class="row">${link && !s.cancelled ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener">افتح الحصة</a><button class="btn" data-act="copy" data-text="${esc(link)}">نسخ الرابط</button>` : (s.cancelled ? '' : `<span class="chip warn">ما فيه رابط</span>`)}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>`;
+    <div class="row">${link && !s.cancelled ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${S.videoOn ? ICO.live + ' ادخل الغرفة' : 'افتح الحصة'}</a>${S.videoOn ? '' : `<button class="btn" data-act="copy" data-text="${esc(link)}">نسخ الرابط</button>`}` : (s.cancelled ? '' : `<span class="chip warn">ما فيه رابط</span>`)}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>`;
   if (u.role === 'teacher' && s.date === today() && !s.teacherAt && !(ST.opened || {})[s.id]) { ST.opened = { ...(ST.opened || {}), [s.id]: 1 }; act('lesson.open', { id: s.id }); }
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}. ما تنحسب في الحضور ولا تظهر للطلاب كحصة قادمة.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
   const issues = Object.entries(s.issues || {}).filter(([id]) => S.users[id]);
@@ -665,6 +665,7 @@ const SET_TABS = [
   ['days', 'الدوام والحضور', 'أيام الدوام، الفصول الدراسية، الإجازات وتنبيه الغياب'],
   ['reg', 'التسجيل', 'حقول نموذج تسجيل الطلاب الجدد'],
   ['msg', 'الرسائل والواتساب', 'نصوص الرسائل لأولياء الأمور وربط الواتس الذكي'],
+  ['video', 'غرفة الحصة', 'الحصص بالفيديو داخل الموقع بدل Zoom وMeet'],
   ['site', 'إعدادات الموقع', 'الاسم، جهة التواصل، النسخ الاحتياطي، Google Sheets'],
 ];
 function settingsV() {
@@ -676,7 +677,7 @@ function settingsV() {
   const saveBtn = `<div class="set-save"><button class="btn pri" type="submit">حفظ الإعدادات</button></div>`;
   return `<h1>الإعدادات</h1>
   <nav class="set-tabs" aria-label="أقسام الإعدادات">${SET_TABS.map(([k, t, d]) => `<button type="button" class="set-tab ${k === cur ? 'on' : ''}" data-act="set-tab" data-k="${k}" aria-pressed="${k === cur}"><b>${t}</b><span>${d}</span></button>`).join('')}</nav>
-  <form class="card" data-form="settings" style="gap:18px">
+  <form class="card" data-form="settings" style="gap:18px" ${cur === 'video' ? 'hidden' : ''}>
     <div class="set-pane" ${P('rec')}>${H('التسميع والتقدير', 'كيف يُحسب التقدير، ومقادير الخطط الجاهزة، ونقاط الطلاب')}
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
       <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
@@ -718,10 +719,11 @@ function settingsV() {
     <form data-form="hol-add" class="fgrid" style="align-items:end"><label class="fld"><span>اسم الإجازة</span><input id="hl-name" name="name" required placeholder="مثال: إجازة عيد الفطر"></label><label class="fld"><span>من</span><input id="hl-from" name="from" type="date" required></label><label class="fld"><span>إلى</span><input id="hl-to" name="to" type="date"></label><button class="btn" type="submit">إضافة إجازة</button></form>
   </section>
   ${full && cur === 'msg' ? waSettingsHtml() : ''}
+  ${full && cur === 'video' ? videoSettingsHtml() : ''}
   ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
     ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">النسخ الأسبوعية تشتغل لحالها كل خميس بعد ما تضيف CRON_SECRET في Vercel (الشرح في الدليل).</div>'}</section>
   <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
-  ${!full && (cur === 'msg' || cur === 'site') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
+  ${!full && (cur === 'msg' || cur === 'site' || cur === 'video') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
 }
 
 /* ---- student / parent home ---- */
@@ -2115,6 +2117,92 @@ Object.assign(ACT, {
   'bd-iss': el => { closeModal(); act('issue.clear', { id: ST.sid, uid: el.dataset.id }); },
   'open-student-fs': el => { closeModal(); ST.fs = null; wake(false); go('student', { uid: el.dataset.id }); },
 });
+
+/* ================= غرفة الحصة داخل الموقع (فيديو) ================= */
+// الغرفة في عنصر ثابت خارج #app، عشان ما تنقطع المكالمة لما تتنقل في الموقع أو تفتح التسميع والتحضير.
+const ROOM = { sid: null, mode: 'full', url: '' };
+function roomEl() {
+  let r = document.getElementById('room');
+  if (!r) { r = document.createElement('div'); r.id = 'room'; r.hidden = true; r.innerHTML = '<div class="room-bar"></div><div class="room-frame"></div>'; document.body.appendChild(r); }
+  return r;
+}
+function roomBar() {
+  const r = document.getElementById('room'); if (!r || r.hidden) return;
+  const u = me(); const s = ROOM.sid && S.sessions[ROOM.sid]; const mini = ROOM.mode === 'mini';
+  let extra = '';
+  if (u && u.role === 'student' && s && ROOM.sid !== 'test') {
+    const pos = (s.queue || []).indexOf(u.id) + 1;
+    extra = s.current === u.id ? '<span class="chip gold">دورك الآن</span>' : pos ? `<span class="chip acc">ترتيبك ${pos}</span>` : `<button class="btn sm" data-act="ready" data-id="${ROOM.sid}" data-v="1">${ICO.mic} جاهز</button>`;
+  } else if (u && u.role !== 'student' && s) {
+    const cur = s.current && S.users[s.current];
+    extra = `<button class="btn sm" data-act="room-tool" data-k="rec1">${ICO.mic} ${cur ? esc((cur.name || '').split(' ')[0]) : 'التسميع'}</button><button class="btn sm" data-act="room-tool" data-k="swipe">${ICO.swipe}</button><button class="btn sm" data-act="room-tool" data-k="board">${ICO.grid}</button>`;
+  }
+  const ext = s && (s.link || (S.halaqat[s.halqaId] || {}).link);
+  r.querySelector('.room-bar').innerHTML = mini
+    ? `<button class="room-ib" data-act="room-full" aria-label="تكبير">⤢</button><button class="room-ib bad" data-act="room-close" aria-label="خروج">✕</button>`
+    : `<button class="btn sm danger" data-act="room-close">خروج</button><b class="room-t">${s ? esc(halqaName(s.halqaId)) : 'تجربة الغرفة'}</b><div class="room-x">${extra}</div>${ext ? `<a class="btn ghost sm" href="${esc(ext)}" target="_blank" rel="noopener" title="لو ما اشتغلت الغرفة">رابط بديل</a>` : ''}<button class="btn sm" data-act="room-mini">تصغير</button>`;
+  r.className = 'vroom ' + ROOM.mode;
+  document.body.classList.toggle('room-full', !mini);
+  document.body.classList.toggle('room-mini', mini);
+}
+async function openRoom(sid) {
+  if (ROOM.sid === sid && ROOM.url) { ROOM.mode = 'full'; roomBar(); return; }
+  if (ROOM.sid) closeRoom(true);
+  toast('جاري تجهيز الغرفة…');
+  let r; try { r = await api('/api/act', { t: 'video.join', lessonId: sid }); } catch (e) { return toast(e.message); }
+  if (!r || !r.url) return;
+  const el = roomEl(); Object.assign(ROOM, { sid, mode: 'full', url: r.url });
+  el.querySelector('.room-frame').innerHTML = `<iframe src="${esc(r.url)}" allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write; screen-wake-lock" allowfullscreen title="غرفة الحصة"></iframe>`;
+  el.hidden = false; wake(true); buzz(20); $('#toast').hidden = true; roomBar(); load();
+}
+function closeRoom(silent) {
+  const el = document.getElementById('room'); if (!el) return;
+  const sid = ROOM.sid; el.querySelector('.room-frame').innerHTML = ''; el.hidden = true;
+  Object.assign(ROOM, { sid: null, url: '', mode: 'full' });
+  document.body.classList.remove('room-full', 'room-mini'); if (!ST.fs) wake(false);
+  const u = me(); if (!silent && u && u.role === 'student' && sid && sid !== 'test') act('leave', { lessonId: sid });
+}
+window.addEventListener('beforeunload', () => { if (ROOM.sid && ROOM.sid !== 'test') { const u = me(); if (u && u.role === 'student') try { navigator.sendBeacon('/api/act', new Blob([JSON.stringify({ t: 'leave', lessonId: ROOM.sid })], { type: 'application/json' })); } catch {} } });
+// أزرار «ادخل الحصة» تفتح الغرفة داخل الموقع لما تكون مفعّلة
+document.addEventListener('click', e => {
+  if (!S.videoOn) return;
+  const a = e.target.closest('a[data-act=join][data-id], a[data-room]'); if (!a) return;
+  e.preventDefault(); e.stopPropagation(); openRoom(a.dataset.id || a.dataset.room);
+}, true);
+Object.assign(ACT, {
+  'room-close': () => { if (me() && me().role !== 'student') return confirmBox('تطلع من الحصة؟ المكالمة تنقفل عندك بس، والطلاب يكملون.', 'اطلع', async () => closeRoom()); closeRoom(); },
+  'room-mini': () => { ROOM.mode = 'mini'; roomBar(); },
+  'room-full': () => { ROOM.mode = 'full'; roomBar(); },
+  'room-tool': el => { const k = el.dataset.k; ROOM.mode = 'mini'; roomBar(); ST.sid = ROOM.sid; ST.view = 'session'; if (k === 'rec1') ACT['rec1-open'](); else if (k === 'swipe') ACT['swipe-open'](); else openFs('board'); },
+  'video-test': () => openRoom('test'),
+});
+const _render0 = render;
+render = function () { _render0(); roomBar(); };
+
+/* إعدادات الغرفة (المدير الكامل) */
+function videoSettingsHtml() {
+  if (!ST.video && !ST.videoLoading) { ST.videoLoading = true; act('video.get', {}).then(r => { ST.videoLoading = false; ST.video = r || {}; render(); }); }
+  if (!ST.video) return `<section class="card"><div class="row"><div class="spin"></div></div></section>`;
+  const c = ST.video; const pv = ST.videoPv || c.provider || 'none';
+  const radio = (v, t, d) => `<label class="pv ${pv === v ? 'on' : ''}"><input type="radio" name="provider" value="${v}" ${pv === v ? 'checked' : ''} data-change="video-pv"><b>${t}</b><span>${d}</span></label>`;
+  return `<form class="card" data-form="video" style="gap:14px"><div class="sec-head"><h2>غرفة الحصة داخل الموقع</h2><span class="chip ${c.on ? 'ok' : ''}">${c.on ? 'مفعّلة' : 'متوقفة'}</span></div>
+    ${tip('بدل Zoom وMeet: الطالب يضغط «ادخل الحصة» وتفتح المكالمة داخل الموقع نفسه. المعلم يقدر يصغّرها ويحضّر ويسمّع وهو في المكالمة. Google Meet ما يسمح بالتشغيل داخل المواقع، فنستخدم خدمة مخصصة لهذا.')}
+    <div class="pv-grid">${radio('none', 'بدون', 'الحصص تفتح برابط Zoom أو Meet مثل الحين')}${radio('jaas', 'Jitsi (JaaS)', 'مجاني لين 25 مستخدم بالشهر بدون حد دقائق')}${radio('daily', 'Daily', 'مجاني لين 10,000 دقيقة مشارك بالشهر')}</div>
+    <div ${pv === 'jaas' ? '' : 'hidden'} class="pv-box"><ol class="steps small"><li>سجّل في <a href="https://jaas.8x8.vc" target="_blank" rel="noopener">jaas.8x8.vc</a> (الخطة المجانية).</li><li>من <b>API Keys</b> اضغط <b>Add API key</b> ثم <b>Generate API key pair</b>، ونزّل الملف اللي ينتهي بـ <span dir="ltr">.pk</span>.</li><li>انسخ <b>AppID</b> و <b>Key ID</b> من الصفحة، وافتح ملف المفتاح وانسخ كل اللي فيه.</li></ol>
+      <label class="fld"><span>AppID</span><input id="vd-app" name="jaasApp" dir="ltr" value="${esc(c.jaasApp || '')}" placeholder="vpaas-magic-cookie-xxxxxxxx"></label>
+      <label class="fld"><span>Key ID</span><input id="vd-kid" name="jaasKid" dir="ltr" value="${esc(c.jaasKid || '')}" placeholder="vpaas-magic-cookie-xxxx/xxxxxx"></label>
+      <label class="fld"><span>المفتاح الخاص ${c.hasJaasKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><textarea id="vd-key" name="jaasKey" dir="ltr" rows="4" placeholder="${c.hasJaasKey ? 'اتركه فاضي عشان يبقى المحفوظ' : '-----BEGIN PRIVATE KEY-----'}"></textarea></label></div>
+    <div ${pv === 'daily' ? '' : 'hidden'} class="pv-box"><ol class="steps small"><li>سجّل في <a href="https://dashboard.daily.co" target="_blank" rel="noopener">dashboard.daily.co</a>.</li><li>من <b>Developers</b> انسخ <b>API key</b>.</li></ol>
+      <label class="fld"><span>API key ${c.hasDailyKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><input id="vd-daily" name="dailyKey" dir="ltr" type="password" autocomplete="off" placeholder="${c.hasDailyKey ? 'اتركه فاضي عشان يبقى المحفوظ' : ''}"></label></div>
+    <div class="row"><button class="btn pri" type="submit">حفظ</button>${c.on ? '<button type="button" class="btn" data-act="video-test">جرّب الغرفة</button>' : ''}</div>
+    <div class="small muted">المفاتيح تنحفظ في قاعدة البيانات وما تطلع لأحد. لو تبي ترجع لـ Zoom أو Meet اختر «بدون».</div>
+  </form>`;
+}
+CHG['video-pv'] = el => { ST.videoPv = el.value; render(); };
+FORMS.video = async (f, d) => {
+  const r = await act('video.save', { data: { provider: d.get('provider'), jaasApp: d.get('jaasApp') || '', jaasKid: d.get('jaasKid') || '', jaasKey: d.get('jaasKey') || '', dailyKey: d.get('dailyKey') || '' } }, 'حُفظت إعدادات الغرفة');
+  if (r) { ST.video = r; ST.videoPv = null; clean(); render(); }
+};
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}

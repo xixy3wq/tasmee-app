@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { APP_V } from "@/lib/version";
 import { processQueue, waCfg } from "@/lib/wa";
+import { videoCfg, videoOn } from "@/lib/video";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -132,6 +133,7 @@ export async function GET() {
     backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     waOn: staff ? (await waCfg()).enabled : false,
+    videoOn: videoOn(await videoCfg()),
     waFailed: full ? await prisma.outMsg.count({ where: { status: "failed" } }) : 0,
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),

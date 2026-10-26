@@ -5,6 +5,7 @@ import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } 
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
+import { videoCfg, videoOn, videoPublic, roomUrl } from "@/lib/video";
 import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -622,6 +623,44 @@ const A: Record<string, H> = {
     } catch {}
     if (!devices.length) devices = [...new Set(d.t.match(/\b[a-f0-9]{24}\b/gi) || [])].map((id) => ({ id, name: "", status: "" }));
     return { jwt, devices, raw: devices.length ? "" : (d.status + " " + d.t.slice(0, 300)) };
+  },
+  // ---------- غرفة الحصة داخل الموقع ----------
+  async "video.get"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    return videoPublic(await videoCfg());
+  },
+  async "video.save"(u, b) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const d = b.data || {}; const old = await videoCfg();
+    const value = {
+      provider: ["none", "jaas", "daily"].includes(d.provider) ? d.provider : "none",
+      jaasApp: str(d.jaasApp, 200).trim(), jaasKid: str(d.jaasKid, 300).trim(),
+      jaasKey: str(d.jaasKey, 6000).trim() || old.jaasKey, dailyKey: str(d.dailyKey, 300).trim() || old.dailyKey,
+    };
+    if (d.clearKeys) { value.jaasKey = ""; value.dailyKey = ""; }
+    if (value.provider === "jaas" && !(value.jaasApp && value.jaasKid && value.jaasKey)) fail("عبّ معرّف التطبيق ومعرّف المفتاح والمفتاح الخاص");
+    if (value.provider === "daily" && !value.dailyKey) fail("الصق مفتاح Daily");
+    if (value.provider === "jaas") { try { await roomUrl(value as any, "test", { id: u.id, name: u.name }, true, 1); } catch (e: any) { fail("المفتاح الخاص غير صالح: " + String(e?.message || e).slice(0, 120)); } }
+    await prisma.setting.upsert({ where: { key: "video" }, create: { key: "video", value }, update: { value } });
+    await audit(u, "video.save", null, "غرفة الحصة: " + value.provider);
+    return videoPublic(value as any);
+  },
+  async "video.join"(u, b) {
+    const c = await videoCfg(); if (!videoOn(c)) fail("غرفة الحصة غير مفعّلة");
+    if (str(b.lessonId) === "test") { if (!isFull(u)) fail("غير مسموح", 403); try { return { url: await roomUrl(c, "test-" + u.id.slice(-6), { id: u.id, name: u.name }, true, 1), provider: c.provider }; } catch (e: any) { fail(String(e?.message || e)); } }
+    const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
+    if (!l) fail("الحصة غير موجودة", 404);
+    if (l!.cancelled) fail("هذه الحصة ملغاة");
+    let mod = false;
+    if (u.role === "student") {
+      if (l!.halqaId !== u.halqaId) fail("الحصة غير موجودة", 404);
+      await prisma.join.upsert({ where: { lessonId_userId: { lessonId: l!.id, userId: u.id } }, create: { lessonId: l!.id, userId: u.id }, update: { leftAt: null } });
+    } else {
+      await lessonFor(u, l!.id); mod = true;
+      if (u.role === "teacher" && !l!.teacherAt) await prisma.lesson.update({ where: { id: l!.id }, data: { teacherAt: new Date(), teacherBy: u.id } });
+    }
+    try { return { url: await roomUrl(c, l!.id, { id: u.id, name: u.name }, mod), provider: c.provider }; }
+    catch (e: any) { fail(String(e?.message || e)); }
   },
   // رسالة يدوية لولي الأمر تطلع من رقم الحلقة المربوط (بدل واتساب المعلم)
   async "wa.sendText"(u, b) {
