@@ -638,6 +638,8 @@ details.help[open] summary{margin-bottom:8px}
 .ai-b{max-width:88%;white-space:pre-line;font-size:.9rem;line-height:1.7;padding:8px 12px;border-radius:16px}
 .ai-m.user .ai-b{background:var(--accent);color:var(--accent-ink);border-top-right-radius:4px}
 .ai-m.assistant .ai-b{background:var(--surface);border:1px solid var(--line);border-top-left-radius:4px}
+.ai-m.err .ai-b{border-color:color-mix(in srgb,var(--bad,#c0392b) 45%,var(--line));color:var(--ink)}
+.ai-rt{display:flex;margin-top:8px}
 .ai-think{color:var(--muted);animation:pulseRed 1.2s ease-in-out infinite}
 .ai-acts{width:92%;display:grid;gap:6px}
 .ai-act{display:grid;gap:6px;padding:10px;border-radius:12px;border:1px solid var(--accent-soft);background:var(--surface);font-size:.84rem}

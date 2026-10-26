@@ -2647,22 +2647,37 @@ function aiRender() {
   const html = `<button class="ai-fab ${AI.open ? 'on' : ''}" data-act="ai-toggle" aria-label="المساعد الذكي" title="المساعد الذكي (Ctrl+J)">${AI.open ? '✕' : AI_ICON}</button>
   ${AI.open ? `<div class="ai-panel" role="dialog" aria-label="المساعد الذكي"><div class="ai-h"><span class="ai-badge">${AI_ICON}</span><div class="grow"><b>مساعد ارتق</b><span>${u.role === 'student' ? (AI.left != null ? 'باقي لك اليوم ' + AI.left + ' سؤال' : 'اسألني أي شي عن حفظك وحصصك') : 'يجاوب ويجهز لك، وأنت تأكد قبل التنفيذ'}</span></div>${AI.msgs.length ? '<button class="linkbtn" data-act="ai-new">محادثة جديدة</button>' : ''}</div>
     <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، ${u.role === 'student' ? 'اسألني عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع وتثبت. جرّب:' : 'أقدر أجاوبك عن طلابك وحضورهم وتسميعهم، وأضيف إعلانات وتصويت وإجازات وحصص، وأقترح أفكار. جرّب:'}</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
-      ${AI.msgs.map((m, mi) => `<div class="ai-m ${m.role}"><div class="ai-b">${esc(m.text)}</div>${(m.actions || []).length ? `<div class="ai-acts">${m.actions.map((a, ai) => card(a, mi, ai)).join('')}${m.actions.filter(a => !a.state && !a.error).length > 1 ? `<button class="btn pri sm" data-act="ai-all" data-m="${mi}">تنفيذ الكل</button>` : ''}</div>` : ''}</div>`).join('')}
+      ${AI.msgs.map((m, mi) => `<div class="ai-m ${m.role}${m.err ? ' err' : ''}"><div class="ai-b">${esc(m.text)}${m.err && mi === AI.msgs.length - 1 && !AI.busy ? '<button class="btn sm ai-rt" data-act="ai-retry">↻ إعادة المحاولة</button>' : ''}</div>${(m.actions || []).length ? `<div class="ai-acts">${m.actions.map((a, ai) => card(a, mi, ai)).join('')}${m.actions.filter(a => !a.state && !a.error).length > 1 ? `<button class="btn pri sm" data-act="ai-all" data-m="${mi}">تنفيذ الكل</button>` : ''}</div>` : ''}</div>`).join('')}
       ${AI.busy ? '<div class="ai-m assistant"><div class="ai-b ai-think">يفكر…</div></div>' : ''}</div>
     <form class="ai-f" data-form="ai"><textarea id="ai-q" rows="1" placeholder="${u.role === 'student' ? 'اكتب سؤالك… مثل: كيف أراجع جزء عمّ؟' : 'اكتب طلبك… مثل: مين غاب أكثر هالأسبوع؟'}" aria-label="رسالة للمساعد"></textarea><button class="btn pri" type="submit" ${AI.busy ? 'disabled' : ''} aria-label="إرسال">➤</button></form></div>` : ''}`;
   if (el._h === html) return; el._h = html; el.innerHTML = html;
   const t2 = document.getElementById('ai-q'); if (t2) { t2.value = keep; if (hadFocus) t2.focus(); }
   const l2 = el.querySelector('.ai-list'); if (l2) l2.scrollTop = atBottom ? l2.scrollHeight : st0;
 }
-async function aiSend(text) {
-  const q = String(text || '').trim(); if (!q || AI.busy) return;
-  AI.msgs.push({ role: 'user', text: q }); AI.busy = true; aiSave(); aiRender();
-  const ta = document.getElementById('ai-q'); if (ta) ta.value = '';
+// طلب المساعد بمهلة واضحة: سفاري الآيفون يقطع الطلب الطويل ويطلع «Load failed»
+async function aiApi(body) {
+  const c = new AbortController(); const tm = setTimeout(() => c.abort(), 58000);
+  try {
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: c.signal });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (!r.ok) throw new Error(j.error || (r.status >= 500 ? 'خدمة الذكاء الاصطناعي مزحومة الحين، جرّب بعد دقيقة' : 'تعذّر الاتصال، حاول مرة ثانية'));
+    return j;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('تأخر الرد كثير، الخدمة مزحومة. جرّب بعد شوي');
+    if (e instanceof TypeError) throw new Error(navigator.onLine ? 'انقطع الاتصال قبل ما يوصل الرد، جرّب مرة ثانية' : 'ما فيه إنترنت، تأكد من الاتصال');
+    throw e;
+  } finally { clearTimeout(tm); }
+}
+async function aiSend(text, retry) {
+  const q = String(text || '').trim(); if ((!q && !retry) || AI.busy) return;
+  if (!retry) AI.msgs.push({ role: 'user', text: q });
+  AI.busy = true; aiSave(); aiRender();
+  const ta = document.getElementById('ai-q'); if (ta && !retry) ta.value = '';
   try {
     const u0 = me(); const due = u0 && u0.role === 'student' ? planItems(u0).map(x => `${x.retry ? 'إعادة ' : ''}${TYPE[x.type]}: ${SN[x.surah - 1]} ${x.from === x.to ? x.from : x.from + '-' + x.to}`).join('، ') : '';
-    const r = await api('/api/ai', { t: 'chat', due, messages: AI.msgs.map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
+    const r = await aiApi({ t: 'chat', due, messages: AI.msgs.filter(m => !m.err && !/^⚠ /.test(m.text)).map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
     AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] }); if (r.left != null) AI.left = r.left;
-  } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message }); }
+  } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message, err: true }); }
   AI.busy = false; aiSave(); aiRender();
 }
 async function aiRun(mi, ai) {
@@ -2676,6 +2691,7 @@ Object.assign(ACT, {
   'ai-toggle': () => { AI.open = !AI.open; aiRender(); if (AI.open) setTimeout(() => { const t = document.getElementById('ai-q'); if (t && window.innerWidth > 760) t.focus(); }, 30); },
   'ai-new': () => { AI.msgs = []; aiSave(); aiRender(); },
   'ai-sg': el => aiSend(el.dataset.t),
+  'ai-retry': () => { while (AI.msgs.length && AI.msgs[AI.msgs.length - 1].err) AI.msgs.pop(); aiSend('', true); },
   'ai-run': el => aiRun(+el.dataset.m, +el.dataset.a),
   'ai-skip': el => { const a = AI.msgs[+el.dataset.m].actions[+el.dataset.a]; a.state = 'skip'; aiSave(); aiRender(); },
   'ai-all': async el => { const mi = +el.dataset.m; const acts = AI.msgs[mi].actions; for (let i = 0; i < acts.length; i++) if (!acts[i].state && !acts[i].error) await aiRun(mi, i); },
@@ -2692,7 +2708,7 @@ async function aiParentMsg(sid, tone) {
   const box = document.getElementById('aipm'); if (!box) return;
   box.innerHTML = '<div class="row"><div class="spin"></div><span class="small muted">يكتب الرسالة…</span></div>';
   try {
-    const r = await api('/api/ai', { t: 'parentMsg', studentId: sid, tone, extra: (document.getElementById('aipm-x') || {}).value || '' });
+    const r = await aiApi({ t: 'parentMsg', studentId: sid, tone, extra: (document.getElementById('aipm-x') || {}).value || '' });
     const st = S.users[sid] || {};
     box.innerHTML = `<textarea id="aipm-t" rows="6">${esc(r.text)}</textarea><div class="row">${st.parentPhone ? `<button class="btn wa" data-act="aipm-send" data-id="${sid}">إرسال لولي الأمر</button>` : '<span class="small muted">ما فيه رقم ولي أمر</span>'}<button class="btn" data-act="aipm-dm" data-id="${sid}">إرسال داخل الموقع</button><button class="btn ghost" data-act="copy-aipm">نسخ</button></div>`;
   } catch (e) { box.innerHTML = `<div class="c-bad small">${esc(e.message)}</div>`; }
