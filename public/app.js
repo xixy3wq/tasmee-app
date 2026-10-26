@@ -69,7 +69,7 @@ const ST = { meId: null, view: null, sid: null, uid: null, halqa: '', range: 30,
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   let j = {}; try { j = await r.json(); } catch {}
-  if (!r.ok) { const e = new Error(j.error || 'تعذّر الاتصال، حاول مرة ثانية'); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(j.error || 'تعذّر الاتصال، حاول مرة ثانية'); e.status = r.status === 503 && r.headers.get('x-irtaq-cache') ? 0 : r.status; throw e; }
   return j;
 }
 let loading = null;
@@ -77,6 +77,7 @@ async function load() {
   if (loading) return loading;
   loading = (async () => {
     try {
+      if (outbox().length && navigator.onLine) await flushOutbox();
       const r0 = await fetch('/api/data', { cache: 'no-store' });
       if (!r0.ok && r0.status !== 200) throw new Error('net');
       const d = await r0.json();
@@ -85,8 +86,8 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn;
-      READY = true; scheduleRender();
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0;
+      READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
   })();
@@ -95,10 +96,11 @@ async function load() {
 async function act(t, payload, okMsg) {
   try {
     const r = await api('/api/act', { t, ...(payload || {}) });
-    if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg);
+    if (okMsg) { const m = typeof okMsg === 'function' ? okMsg(r || {}) : okMsg; if (m) toast(m); }
     await load();
     return r || {};
   } catch (e) {
+    if (!e.status && OUTBOX_T.includes(t)) { queueOffline(t, payload); return { offline: true }; }
     toast(e.message);
     if (e.status === 401) { await load(); }
     return null;
@@ -306,6 +308,7 @@ const allTpls = () => { const st = SET(); return [{ id: 'absent', name: 'غيا�
 let rq = 0;
 function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; render(); }); }
 function render() {
+  if (DRAG.on) { DRAG.pending = true; return; }
   const app = $('#app'); const saved = {};
   app.querySelectorAll('[data-dirty][id]').forEach(el => { if (el.id.startsWith('rk-')) return; saved[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? { c: el.checked } : { v: el.value }; });
   const a = document.activeElement; const fid = app.contains(a) ? a.id : null; let sel = null;
@@ -334,7 +337,7 @@ function view() {
   if (!u) return loginV();
   return shellV(u);
 }
-const banner = () => OFFLINE ? `<div class="banner">ما فيه اتصال، تعرض آخر نسخة محفوظة. التعديلات تحتاج إنترنت.</div>` : '';
+const banner = () => { const n = outbox().length; return OFFLINE || n ? `<div class="banner">${OFFLINE ? 'ما فيه اتصال، تعرض آخر نسخة محفوظة.' : ''}${n ? ` ${n} تعديل محفوظ على جوالك وبيترسل لحاله لما يرجع النت.` : ' التحضير والتسميع ينحفظ على الجوال لين يرجع النت.'}</div>` : ''; };
 function fieldHtml(f, val, pre, opt = {}) {
   const t = f.type || 'text'; const req = opt.forceReq ?? f.req; const lab = `${esc(f.label)}${req ? ' <i>*</i>' : ''}`;
   if (t === 'choice') {
@@ -444,12 +447,14 @@ function shellV(u) {
   const activeTab = PARENT_TAB[ST.view] || ST.view;
   const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV })[ST.view](u);
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
+  if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
+  document.body.classList.remove('fs-on');
   if (u.role === 'student' && LANG !== 'en' && !ST.tourShown && !tourSeen(u)) { ST.tourShown = true; setTimeout(() => { if ($('#modal').hidden) showTour(0); }, 600); }
   return `${banner()}<header class="top"><div class="top-in">
     <div class="brand-row"><div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
       <div class="who"><span class="small">${esc(u.name)}</span><span class="chip acc">${ROLE[u.role]}</span>${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : `<button class="btn ghost sm" data-act="kids">${accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن'}</button><button class="btn ghost sm" data-act="zoom" aria-label="تكبير الخط">أ${ZOOM > 1 ? '−' : '+'}</button><button class="btn ghost sm" data-act="lang">${LANG === 'en' ? 'عربي' : 'English'}</button>`}${S.push && 'PushManager' in window ? `<button class="btn ghost sm" data-act="push">${PUSH_ON ? 'الإشعارات مفعّلة' : 'الإشعارات'}</button>` : ''}${INSTALL_EVT ? '<button class="btn ghost sm" data-act="install">تثبيت</button>' : ''}<button class="btn ghost sm theme-btn" data-act="theme" aria-label="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> فاتح' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg> داكن'}</button><button class="btn ghost sm" data-act="my-pw">كلمة المرور</button><button class="btn ghost sm" data-act="logout">خروج</button></div></div>
     ${tabs.length > 1 ? `<nav class="tabs">${tabs.map(([k, l, c]) => `<button class="tab ${k === activeTab ? 'on' : ''}" data-act="tab" data-v="${k}">${l}${c ? ` <span class="count">${c}</span>` : ''}</button>`).join('')}</nav>` : '<div style="height:10px"></div>'}
-  </div></header><main class="wrap">${body}</main>`;
+  </div></header><main class="wrap">${body}</main>${bottomNav(u, tabs, activeTab)}`;
 }
 
 /* ---- admin: requests ---- */
@@ -533,7 +538,8 @@ function sessionV(u) {
     ${v === 'a' && wA ? `<a class="btn wa sm" href="${wA}" target="_blank" rel="noopener">واتساب غياب</a>` : ''}${(v === 'p' || v === 'l') && wE ? `<a class="btn wa sm" href="${wE}" target="_blank" rel="noopener">واتساب تميّز</a>` : ''}</div>`; };
   const recHere = ST.rec && ST.rec.sid === s.id && ST.rec.where === 'inline';
   const presentFirst = [...studs].sort((a, b) => ((att[b.id] === 'p' || att[b.id] === 'l') - (att[a.id] === 'p' || att[a.id] === 'l')));
-  return head + `
+  const tools = `<div class="tools3"><button class="tool" data-act="rec1-open">${ICO.mic}<b>وضع التسميع</b><span>بإبهام واحد</span></button><button class="tool" data-act="swipe-open">${ICO.swipe}<b>التحضير بالسحب</b><span>${Object.keys(att).length}/${studs.length}</span></button><button class="tool" data-act="board-open">${ICO.grid}<b>لوحة الحصة</b><span>مباشرة</span></button></div>`;
+  return head + tools + `
   ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول:</b><div class="list">${issues.map(([id, x]) => `<div class="item"><div class="grow"><b>${esc(S.users[id].name)}</b>: ${esc(x.msg)} <span class="small muted">${clock(x.at)}</span></div><button class="btn sm" data-act="issue-clear" data-id="${id}">تم الحل</button></div>`).join('')}</div></div>` : ''}
   ${waSessionHtml(s)}
   <div class="grid2">
@@ -749,6 +755,7 @@ function homeV(u) {
   <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
   ${studentAnnsHtml(u)}
   ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
+  ${liveSession(u) ? `<button class="live-cta" data-act="live-open"><span class="live-dot"></span><div class="grow"><b>الحصة قربت أو بدأت</b><span>افتح شاشة الحصة: الدخول وترتيبك في الطابور</span></div>${ICO.live}</button>` : ''}
   ${dueCard(u)}
   ${next ? lessonCard(u, next) : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
   <div class="grid2">
@@ -889,6 +896,7 @@ function dashV(u) {
   const issues = todayL.flatMap(s => Object.entries(s.issues || {}).map(([id, x]) => ({ s, id, x })));
   const pg = pagesSum(recsW);
   return `<h1>لوحة المدير</h1><div class="muted">${fmtDateH(t)}</div>
+  ${todayAlertsHtml(u)}
   <div class="stats"><div class="stat"><b>${studs.length}</b><span>طالب نشط</span></div><div class="stat"><b>${hs.length}</b><span>حلقة</span></div><div class="stat"><b>${todayL.length}</b><span>حصص اليوم</span></div><div class="stat"><b>${marked.length ? Math.round(pres / marked.length * 100) + '٪' : '—'}</b><span>حضور اليوم</span></div><div class="stat"><b>${recsW.length}</b><span>تسميع هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div></div>
   ${pend ? `<div class="note"><b>${pend}</b> طلب تسجيل ينتظر الاعتماد. <button class="btn sm" data-act="tab" data-v="req">اعرضها</button></div>` : ''}
   ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول الآن:</b> ${issues.map(o => esc(subName(o.id)) + ' (' + esc(halqaName(o.s.halqaId)) + ')').join('، ')}</div>` : ''}
@@ -1308,11 +1316,12 @@ async function saveRec(next) {
     if (R.quick && !g.q) return toast('اختر التقدير لكل مقطع');
     items.push({ type: g.type, surah: s, from, to, full: !!g.full, mistakes: g.m, alerts: g.a, quickGrade: R.quick ? g.q : undefined });
   }
-  const r = await act('rec.addMany', { uid: R.uid, lessonId: R.sid, date: R.date, secs: recSecs(), note: R.note, items }, x => 'سُجّل التسميع: ' + (x.grade || ''));
+  const r = await act('rec.addMany', { uid: R.uid, lessonId: R.sid, date: R.date, secs: recSecs(), note: R.note, items }, x => x.offline ? '' : 'سُجّل التسميع: ' + (x.grade || ''));
   if (!r) return;
-  const where = R.where, sid = R.sid; ST.rec = null;
+  const where = R.where, sid = R.sid; ST.rec = null; ST.busyFs = where === 'fs';
   if (where === 'modal') closeModal();
-  if (next && sid) { const s = { ...S.sessions[sid], id: sid }; const q = [...(s.queue || [])]; const nx = q.shift() || null; await setQueue(s, q, nx); if (nx && S.users[nx]) startRec(nx, sid, 'inline'); }
+  if (next && sid) { const s = { ...S.sessions[sid], id: sid }; const q = [...(s.queue || [])]; const nx = q.shift() || null; await setQueue(s, q, nx); if (nx && S.users[nx]) { startRec(nx, sid, where === 'fs' ? 'fs' : 'inline'); if (where === 'fs') ST.rec.cur = 0; } }
+  ST.busyFs = false;
   render();
 }
 function recEditModal(r) {
@@ -1600,6 +1609,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const fn = ACT[el.dataset.act]; if (!fn) return;
   if (el.tagName !== 'A') e.preventDefault();
+  if (el.classList.contains('ms-it')) closeModal();
   fn(el, e);
 });
 
@@ -1783,6 +1793,329 @@ document.addEventListener('submit', e => {
 });
 window.addEventListener('hashchange', () => render());
 
+/* ================= تجربة الجوال: شاشات كاملة، سحب، اهتزاز، بدون نت ================= */
+const buzz = p => { try { if (navigator.vibrate) navigator.vibrate(p); } catch {} };
+let WAKE = null;
+async function wake(on) { try { if (on && !WAKE && navigator.wakeLock) { WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => { WAKE = null; }); } else if (!on && WAKE) { await WAKE.release(); WAKE = null; } } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ST.fs) wake(true); });
+
+const ICO = (() => {
+  const s = d => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  return {
+    dash: s('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'), home: s('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'),
+    req: s('<path d="M4 4h16v12H4z"/><path d="M4 13h5l1 2h4l1-2h5"/>'), sessions: s('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+    students: s('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.3 0 4 1.5 4.6 4"/>'),
+    teachers: s('<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>'), halaqat: s('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>'),
+    anns: s('<path d="M3 10v4h4l6 4V6L7 10z"/><path d="M17 9a4 4 0 0 1 0 6"/>'), room: s('<path d="M4 5h16v11H9l-5 4z"/>'),
+    reports: s('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'), logs: s('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+    settings: s('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+    help: s('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/>'),
+    more: s('<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'),
+    live: s('<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/>'),
+    back: s('<path d="M9 6l6 6-6 6"/>'), undo: s('<path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
+    search: s('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'), kids: s('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M19 8v6M16 11h6"/>'),
+    zoom: s('<path d="M4 20l6-16 6 16M6.5 14h7"/><path d="M19 7v6M16 10h6"/>'), lang: s('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'),
+    bell: s('<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/>'), install: s('<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>'),
+    theme: s('<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>'), key: s('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>'),
+    logout: s('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/>'), mic: s('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
+    swipe: s('<path d="M7 12h10M13 8l4 4-4 4"/><rect x="3" y="4" width="18" height="16" rx="3"/>'), grid: s('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+    check: s('<path d="M5 12l5 5 9-10"/>'),
+  };
+})();
+
+/* ---------- بدون نت: التعديلات المهمة تنحفظ على الجوال وتنرسل لما يرجع الاتصال ---------- */
+const OUTBOX_T = ['lesson.att', 'rec.addMany', 'wird.save', 'queue.ready'];
+const outbox = () => { try { return JSON.parse(localStorage.getItem('irtaq-outbox') || '[]'); } catch { return []; } };
+const saveOutbox = a => { try { localStorage.setItem('irtaq-outbox', JSON.stringify(a)); } catch {} };
+let flushing = false;
+async function flushOutbox() {
+  if (flushing) return; const box = outbox(); if (!box.length || !navigator.onLine) return;
+  flushing = true; let sent = 0; const left = [];
+  for (const it of box) {
+    if (left.length) { left.push(it); continue; }
+    try { await api('/api/act', it.body); sent++; }
+    catch (e) { if (e.status) { sent++; } else left.push(it); } // خطأ من الخادم = ما فيه فايدة نعيده
+  }
+  saveOutbox(left); flushing = false;
+  if (sent) { toast('انرسلت ' + sent + ' تعديلات كانت محفوظة على الجوال ✓'); buzz(20); }
+}
+window.addEventListener('online', () => { flushOutbox().then(load); });
+function queueOffline(t, payload) {
+  const box = outbox(); box.push({ at: Date.now(), body: { t, ...(payload || {}) } }); saveOutbox(box);
+  OFFLINE = true; toast('ما فيه نت. انحفظ على جوالك وبيترسل لحاله لما يرجع الاتصال'); buzz([20, 60, 20]); scheduleRender();
+}
+
+/* ---------- تنبيه دور الطالب ---------- */
+function liveSession(u) {
+  const t = today();
+  return L('sessions').filter(x => x.halqaId === u.halqaId && x.date === t && !x.cancelled).sort((a, b) => a.time.localeCompare(b.time))
+    .find(x => { const d = lessonTs(x) - Date.now(); return d < 30 * 60000 && d > -3 * 3600000; }) || null;
+}
+function checkTurn() {
+  const u = me(); if (!u || u.role !== 'student') return;
+  const s = liveSession(u); if (!s) { ST.lastTurn = null; return; }
+  const pos = (s.queue || []).indexOf(u.id) + 1; const st = s.current === u.id ? 'cur' : pos ? 'q' + pos : '';
+  const prev = ST.lastTurn; ST.lastTurn = st;
+  if (prev === undefined || prev === null || prev === st) return;
+  if (st === 'cur') { buzz([300, 120, 300, 120, 400]); toast('دورك الآن! المعلم ينتظرك'); notifyLocal('دورك الآن', 'المعلم ينتظرك في الحصة'); }
+  else if (st === 'q1') { buzz([150, 80, 150]); toast('أنت التالي، استعد'); notifyLocal('أنت التالي', 'استعد، دورك بعد اللي يسمّع الحين'); }
+}
+function notifyLocal(title, body) {
+  try { if (document.visibilityState === 'visible' || !SW_REG || Notification.permission !== 'granted') return; SW_REG.showNotification(title, { body, tag: 'turn', renotify: true, vibrate: [300, 100, 300], icon: '/icon-192.png' }); } catch {}
+}
+
+/* ---------- الشاشات الكاملة ---------- */
+function fsWrap(title, sub, body, foot = '', cls = '') {
+  return `<div class="fs ${cls}"><header class="fs-top"><button class="fs-x" data-act="fs-close" aria-label="رجوع">${ICO.back}</button><div class="fs-t"><b>${title}</b>${sub ? `<span>${sub}</span>` : ''}</div></header>
+  <div class="fs-body">${body}</div>${foot ? `<footer class="fs-foot">${foot}</footer>` : ''}</div>`;
+}
+function fsV(u) {
+  if (ST.fs === 'live') return u.role === 'student' ? liveV(u) : '';
+  const s = S.sessions[ST.sid] && { ...S.sessions[ST.sid], id: ST.sid };
+  if (!s || u.role === 'student') return '';
+  if (ST.fs === 'rec1') return rec1V(s);
+  if (ST.fs === 'swipe') return swipeV(s);
+  if (ST.fs === 'board') return boardV(s);
+  return '';
+}
+function openFs(k, extra) { clean(); Object.assign(ST, { fs: k }, extra || {}); wake(true); render(); window.scrollTo(0, 0); }
+function closeFs() { ST.fs = null; ST.sw = null; if (ST.rec && ST.rec.where === 'fs') ST.rec = null; wake(false); render(); window.scrollTo(0, 0); }
+
+/* شاشة الحصة الحية للطالب وولي الأمر */
+function liveV(u) {
+  const s = liveSession(u); const hs = S.halaqat[u.halqaId] || {};
+  if (!s) return fsWrap('شاشة الحصة', esc(hs.name || ''), `<div class="lv-empty">${ICO.live}<b>ما فيه حصة الحين</b><span>هالشاشة تشتغل قبل الحصة بنص ساعة. ارجع لها وقت الحصة.</span></div>`);
+  const link = effLink(s); const q = s.queue || []; const pos = q.indexOf(u.id) + 1; const isCur = s.current === u.id;
+  const issue = (s.issues || {})[u.id]; const j = S.joins[s.id + '_' + u.id]; const ts = lessonTs(s); const started = ts <= Date.now(); const v = (s.att || {})[u.id];
+  const qn = s.qnames || [];
+  let ring;
+  if (isCur) ring = `<div class="lv-ring cur"><b>الآن</b><span>دورك، المعلم ينتظرك</span></div>`;
+  else if (pos) ring = `<div class="lv-ring q"><b class="num">${pos}</b><span>${pos === 1 ? 'أنت التالي، استعد' : 'ترتيبك في الطابور'}</span></div>`;
+  else if (!started) ring = `<div class="lv-ring wait"><b class="lv-cd" data-cd="${ts}">${cdText(ts)}</b><span>${fmtTime(s.time)}</span></div>`;
+  else ring = `<div class="lv-ring idle"><b>${ICO.mic}</b><span>${j ? 'إذا جاهز تسمّع اضغط تحت' : 'الحصة بدأت، ادخل الحين'}</span></div>`;
+  const body = `
+    <div class="lv-stage">${ring}
+      ${pos > 1 ? `<div class="lv-sub">قدامك ${pos - 1} ${pos - 1 === 1 ? 'طالب' : 'طلاب'}، نعلمك بالاهتزاز لما يقرب دورك.</div>` : ''}
+      ${v ? `<span class="chip ${ATTC[v]}">${ATT[v]}</span>` : ''}
+    </div>
+    ${(s.cname || qn.length) ? `<section class="lv-q"><div class="small muted">طابور التسميع</div><ol>${s.cname ? `<li class="cur"><span class="dot"></span>${esc(s.cname)} <em>يسمّع الآن</em></li>` : ''}${qn.map((x, i) => `<li class="${x.id === u.id ? 'me' : ''}"><span class="n">${i + 1}</span>${esc(x.n)}${x.id === u.id ? ' <em>(أنت)</em>' : ''}</li>`).join('')}</ol></section>` : ''}
+    <div class="lv-actions">
+      ${isCur ? '' : pos ? `<button class="btn" data-act="ready" data-id="${s.id}" data-v="0">اطلع من الطابور</button>` : `<button class="btn big lv-ready" data-act="ready" data-id="${s.id}" data-v="1">${ICO.mic} جاهز للتسميع</button>`}
+      ${issue ? `<div class="note">وصلت مشكلتك للمعلم: ${esc(issue.msg)} <button class="btn ghost sm" data-act="issue-cancel" data-id="${s.id}">انحلت</button></div>` : `<button class="btn ghost" data-act="issue-open" data-id="${s.id}">عندي مشكلة في الدخول</button>`}
+    </div>
+    ${tip('خلّ هالشاشة مفتوحة جنب الحصة: ترتيبك يتحدث لحاله، والجوال يهتز لما تكون التالي ولما يجي دورك.')}`;
+  const foot = link ? `<a class="btn pri huge" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${ICO.live} ${j ? 'ارجع للحصة' : 'ادخل الحصة'}</a>` : '<span class="chip warn">الرابط ينزل قبل الحصة</span>';
+  return fsWrap(esc(hs.name || 'الحصة'), fmtDate(s.date) + ' · ' + fmtTime(s.time), body, foot, isCur ? 'lv-hot' : '');
+}
+
+/* وضع التسميع بإبهام واحد */
+function rec1V(s) {
+  const R = ST.rec; if (!R || R.where !== 'fs') return '';
+  const st = S.users[R.uid] || {}; const q = (s.queue || []).filter(id => S.users[id] && id !== R.uid); const nx = q[0] ? S.users[q[0]] : null;
+  const i = Math.min(R.cur || 0, R.segs.length - 1); R.cur = i; const g = R.segs[i]; if (!g.surah && R.edit === undefined) R.edit = true; const gr = segGrade(g); const n = AYAS[+g.surah - 1];
+  const segLabel = x => x.surah ? `${esc(SN[x.surah - 1])} ${x.full ? 'كاملة' : '﴿' + (x.from === x.to ? x.from : x.from + '–' + x.to) + '﴾'}` : 'حدد المقطع';
+  const tabs = R.segs.length > 1 ? `<div class="r1-tabs">${R.segs.map((x, k) => { const gk = segGrade(x); return `<button class="r1-tab ${k === i ? 'on' : ''}" data-act="r1-seg" data-i="${k}"><span>${TYPE[x.type]}</span>${gk ? `<i class="c-${gk.k}">${gk.t}</i>` : ''}</button>`; }).join('')}</div>` : '';
+  const counters = R.quick
+    ? `<div class="r1-quick">${['ممتاز', 'جيد جدًا', 'جيد', 'يعاد'].map(t => `<button class="r1-q ${g.q === t ? 'on ' + GRADE_K[t] : ''}" data-act="rk-q" data-i="${i}" data-v="${t}">${t}</button>`).join('')}</div>`
+    : `<div class="r1-pads">
+        <div class="r1-pad bad"><button class="r1-hit" data-act="r1-inc" data-k="m" data-d="1"><b class="num">${g.m}</b><span>+ خطأ</span></button><button class="r1-undo" data-act="r1-inc" data-k="m" data-d="-1" aria-label="إنقاص خطأ">−</button></div>
+        <div class="r1-pad warn"><button class="r1-hit" data-act="r1-inc" data-k="a" data-d="1"><b class="num">${g.a}</b><span>+ تنبيه</span></button><button class="r1-undo" data-act="r1-inc" data-k="a" data-d="-1" aria-label="إنقاص تنبيه">−</button></div>
+      </div>`;
+  const body = `
+    <div class="r1-head"><div class="r1-who"><b>${esc(st.name || '')}</b>${nx ? `<span>التالي: ${esc((nx.name || '').split(' ').slice(0, 2).join(' '))}</span>` : '<span>آخر واحد في الطابور</span>'}</div>
+      <button class="r1-timer ${R.run ? 'run' : ''}" data-act="rk-timer"><span class="num" data-timer>${fmtDur(recSecs())}</span><small>${R.run ? 'إيقاف' : 'توقيت'}</small></button></div>
+    ${tabs}
+    <div class="r1-seg"><div class="r1-seg-t"><span class="chip">${TYPE[g.type]}</span>${g.retry ? '<span class="chip bad">إعادة</span>' : ''}<b>${segLabel(g)}</b>${g.surah ? pageTag(+g.surah, g.full ? 1 : +g.from, g.full ? n : +g.to) : ''}</div>
+      <button class="btn ghost sm" data-act="r1-edit">${R.edit ? 'تم' : 'تعديل'}</button></div>
+    ${R.edit ? `${segHtml(g, i)}<div class="row"><button class="btn sm" data-act="rk-add">+ مقطع</button><label class="check small"><input type="checkbox" id="rk-quick" data-rn="quick" ${R.quick ? 'checked' : ''}> تقييم سريع بدون عدّ</label></div>` : counters}
+    <div class="r1-grade ${gr ? gr.k : ''}">${gr ? gr.t : 'اختر التقدير'}</div>
+    <label class="fld"><span>ملاحظة (اختياري)</span><input id="rk-note" data-rn="note" value="${esc(R.note)}" placeholder="مثال: انتبه للمدود"></label>`;
+  const foot = `${nx ? `<button class="btn pri huge" data-act="r1-save" data-next="1">حفظ والتالي</button>` : `<button class="btn pri huge" data-act="r1-save">حفظ وإنهاء</button>`}${nx ? `<button class="btn" data-act="r1-skip">تخطي</button>` : ''}`;
+  return fsWrap('وضع التسميع', esc(halqaName(s.halqaId)), body, foot, 'r1');
+}
+
+/* تحضير بالسحب */
+function swipeV(s) {
+  const studs = studentsOf(s.halqaId); const att = s.att || {};
+  if (!ST.sw || ST.sw.sid !== s.id) ST.sw = { sid: s.id, order: [...studs].sort((a, b) => (!!att[a.id]) - (!!att[b.id])).map(x => x.id), i: 0, hist: [] };
+  const W = ST.sw; const ids = W.order.filter(id => S.users[id]); const done = ids.filter(id => att[id]).length;
+  const joins = {}; L('joins').filter(j => j.sid === s.id).forEach(j => joins[j.uid] = j);
+  const prog = `<div class="sw-prog"><div style="width:${ids.length ? Math.round(done / ids.length * 100) : 0}%"></div></div><div class="sw-count small muted">محضّر ${done} من ${ids.length}</div>`;
+  if (!ids.length) return fsWrap('التحضير', '', '<div class="empty">ما فيه طلاب في هالحلقة.</div>');
+  if (W.i >= ids.length) {
+    const c = k => Object.values(att).filter(v => v === k).length;
+    const body = `${prog}<div class="sw-done">${ICO.check}<b>خلص التحضير</b><div class="stats"><div class="stat"><b>${c('p')}</b><span>حاضر</span></div><div class="stat"><b>${c('l')}</b><span>متأخر</span></div><div class="stat"><b>${c('a')}</b><span>غائب</span></div><div class="stat"><b>${c('e')}</b><span>مستأذن</span></div></div></div>`;
+    const foot = `${c('a') ? `<button class="btn wa" data-act="wa-absent">راسل الغائبين (${c('a')})</button>` : ''}<button class="btn" data-act="sw-again">راجع من البداية</button><button class="btn pri" data-act="fs-close">تم</button>`;
+    return fsWrap('التحضير', esc(halqaName(s.halqaId)), body, foot);
+  }
+  const uid = ids[W.i]; const st = S.users[uid]; const v = att[uid]; const nxt = ids[W.i + 1] && S.users[ids[W.i + 1]]; const streak = absentStreak({ ...st, id: uid });
+  const body = `${prog}
+    <div class="sw-stack">
+      ${nxt ? `<div class="sw-card back"><b>${esc(nxt.name)}</b></div>` : ''}
+      <div class="sw-card" data-uid="${uid}"><span class="sw-tag p">حاضر</span><span class="sw-tag a">غائب</span>
+        <div class="sw-av">${esc((st.name || '?').trim()[0] || '?')}</div><b class="sw-name">${esc(st.name)}</b>
+        <div class="small muted">${joinText(joins[uid], s)}</div>
+        ${streak >= absentLimit() ? `<span class="chip bad">غاب ${streak} متتالية</span>` : ''}${v ? `<span class="chip ${ATTC[v]}">الحين: ${ATT[v]}</span>` : ''}
+        <div class="sw-hint"><span>← غائب</span><span>حاضر →</span></div></div>
+    </div>`;
+  const foot = `<div class="sw-btns"><button class="sw-b a" data-act="sw-mark" data-v="a">غائب</button><button class="sw-b e" data-act="sw-mark" data-v="e">مستأذن</button><button class="sw-b l" data-act="sw-mark" data-v="l">متأخر</button><button class="sw-b p" data-act="sw-mark" data-v="p">حاضر</button></div>
+    <div class="row sw-sub"><button class="btn ghost sm" data-act="sw-undo" ${W.hist.length ? '' : 'disabled'}>${ICO.undo} تراجع</button><button class="btn ghost sm" data-act="sw-skip">تخطي</button></div>`;
+  return fsWrap('التحضير بالسحب', esc(halqaName(s.halqaId)) + ' · ' + fmtTime(s.time), body, foot, 'sw');
+}
+function swMark(v) {
+  const s = curSession(); const W = ST.sw; if (!W) return; const ids = W.order.filter(id => S.users[id]); const uid = ids[W.i]; if (!uid) return;
+  const prev = (s.att || {})[uid] || null; W.hist.push({ uid, prev, i: W.i });
+  const att = { ...(s.att || {}), [uid]: v }; S.sessions[s.id] = { ...S.sessions[s.id], att };
+  W.i++; buzz(v === 'a' ? [25, 50, 25] : 18); render();
+  act('lesson.att', { id: s.id, uid, v });
+}
+
+/* لوحة الحصة المباشرة للمعلم */
+function boardV(s) {
+  const studs = studentsOf(s.halqaId); const att = s.att || {}; const q = (s.queue || []).filter(id => S.users[id]); const iss = s.issues || {};
+  const joins = {}; L('joins').filter(j => j.sid === s.id).forEach(j => joins[j.uid] = j);
+  const inNow = studs.filter(x => joins[x.id] && !joins[x.id].left).length;
+  const tile = x => {
+    const j = joins[x.id]; const qi = q.indexOf(x.id); const cur = s.current === x.id; const is = iss[x.id]; const v = att[x.id];
+    const cls = cur ? 'cur' : is ? 'iss' : qi >= 0 ? 'q' : j && !j.left ? 'in' : v === 'a' ? 'abs' : '';
+    const line = cur ? 'يسمّع الآن' : is ? 'مشكلة: ' + esc(is.msg) : qi >= 0 ? 'الطابور ' + (qi + 1) : j ? (j.left ? 'طلع ' + clock(j.left) : 'داخل من ' + clock(j.at)) : 'ما دخل';
+    return `<button class="bd-tile ${cls}" data-act="bd-tile" data-id="${x.id}">${qi >= 0 ? `<i class="bd-n">${qi + 1}</i>` : ''}<b>${esc((x.name || '').split(' ').slice(0, 2).join(' '))}</b><span>${line}</span>${v ? `<em class="c-${ATTC[v]}">${ATT[v]}</em>` : ''}</button>`;
+  };
+  const order = [...studs].sort((a, b) => { const r = x => s.current === x.id ? 0 : iss[x.id] ? 1 : q.includes(x.id) ? 2 + q.indexOf(x.id) / 1000 : joins[x.id] && !joins[x.id].left ? 3 : 4; return r(a) - r(b); });
+  const body = `<div class="bd-stats"><div><b class="num">${inNow}/${studs.length}</b><span>داخلين</span></div><div><b class="num">${q.length}</b><span>بالطابور</span></div><div class="${Object.keys(iss).length ? 'bad' : ''}"><b class="num">${Object.keys(iss).length}</b><span>مشاكل</span></div><div><b class="num">${Object.keys(att).length}</b><span>محضّر</span></div></div>
+    <div class="bd-grid">${order.map(tile).join('')}</div><div class="small muted center">تتحدث لحالها كل كم ثانية. اضغط على أي طالب للخيارات.</div>`;
+  const foot = `<button class="btn pri" data-act="rec1-open">${ICO.mic} وضع التسميع</button><button class="btn" data-act="swipe-open">${ICO.swipe} التحضير</button>`;
+  return fsWrap('لوحة الحصة', esc(halqaName(s.halqaId)) + ' · ' + fmtTime(s.time), body, foot, 'bd');
+}
+function boardSheet(uid) {
+  const s = curSession(); const st = S.users[uid]; if (!st) return; const v = (s.att || {})[uid]; const inQ = (s.queue || []).includes(uid); const is = (s.issues || {})[uid];
+  openModal(`${dlgHead(esc(st.name))}<div class="sheet">
+    ${is ? `<div class="note bad-note">مشكلة دخول: ${esc(is.msg)}</div>` : ''}
+    <div class="sw-btns">${['a', 'e', 'l', 'p'].map(k => `<button class="sw-b ${k} ${v === k ? 'on' : ''}" data-act="bd-att" data-id="${uid}" data-v="${k}">${ATT[k]}</button>`).join('')}</div>
+    <button class="btn pri big" data-act="bd-rec" data-id="${uid}">${ICO.mic} سمّعه الحين</button>
+    <button class="btn big" data-act="bd-q" data-id="${uid}">${inQ ? 'اطلعه من الطابور' : 'أضفه للطابور'}</button>
+    ${is ? `<button class="btn big" data-act="bd-iss" data-id="${uid}">تم حل المشكلة</button>` : ''}
+    <button class="btn ghost" data-act="open-student-fs" data-id="${uid}">ملف الطالب</button></div>`);
+}
+
+/* تنبيهات اليوم للمدير: كل تنبيه معه زر يحله */
+function todayAlertsHtml(u) {
+  const t = today(); const now = Date.now(); const todayL = L('sessions').filter(s => s.date === t && !s.cancelled);
+  const items = [];
+  todayL.filter(s => !effLink(s) && lessonTs(s) + 3600000 > now).forEach(s => items.push({ k: 'warn', t: `حصة ${halqaName(s.halqaId)} ${fmtTime(s.time)} بدون رابط`, b: `<button class="btn sm" data-act="edit-session" data-id="${s.id}">أضف الرابط</button>` }));
+  todayL.filter(s => !s.teacherAt && lessonTs(s) + 10 * 60000 < now && lessonTs(s) + 3 * 3600000 > now).forEach(s => {
+    const h = S.halaqat[s.halqaId] || {}; const tid = s.subId || h.teacherId; const tch = S.users[tid] || {};
+    const l = tch.phone && waLink(tch.phone, `السلام عليكم، حصة ${h.name || ''} بدأت ${fmtTime(s.time)}، الطلاب ينتظرونك.`);
+    items.push({ k: 'bad', t: `معلم ${halqaName(s.halqaId)} ما فتح الحصة (${esc(tch.name || 'بدون معلم')})`, b: l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">راسله</a>` : `<button class="btn sm" data-act="open-session" data-id="${s.id}">افتح</button>` });
+  });
+  todayL.filter(s => lessonTs(s) + 25 * 60000 < now && !Object.keys(s.att || {}).length && studentsOf(s.halqaId).length).forEach(s => items.push({ k: 'warn', t: `حصة ${halqaName(s.halqaId)} ما تحضّرت`, b: `<button class="btn sm" data-act="open-session" data-id="${s.id}">حضّرها</button>` }));
+  todayL.forEach(s => { const n = Object.keys(s.issues || {}).length; if (n) items.push({ k: 'bad', t: `${n} ${n === 1 ? 'طالب عنده' : 'طلاب عندهم'} مشكلة دخول في ${halqaName(s.halqaId)}`, b: `<button class="btn sm" data-act="open-session" data-id="${s.id}">شوف</button>` }); });
+  const pend = L('users').filter(x => x.role === 'student' && x.status === 'pending').length;
+  if (pend) items.push({ k: 'info', t: `${pend} طلب تسجيل ينتظرك`, b: `<button class="btn sm" data-act="tab" data-v="req">راجعها</button>` });
+  if (S.waFailed) items.push({ k: 'bad', t: `${S.waFailed} رسالة واتساب ما انرسلت`, b: `<button class="btn sm" data-act="go-wa">السجل</button>` });
+  if (isFullAdmin(u) && !S.waOn) items.push({ k: 'info', t: 'ربط الواتساب متوقف: رسائل الغياب والتقارير ما تطلع تلقائي', b: `<button class="btn sm" data-act="go-wa">اربطه</button>` });
+  const lim = absentLimit(); const abs = L('users').filter(x => x.role === 'student' && x.status === 'active' && absentStreak(x) >= lim).length;
+  if (abs) items.push({ k: 'warn', t: `${abs} ${abs === 1 ? 'طالب غاب' : 'طلاب غابوا'} ${lim} حصص متتالية أو أكثر`, b: `<button class="btn sm" data-act="scroll-abs">شوفهم</button>` });
+  return `<section class="card al-card"><div class="sec-head"><h2>تنبيهات اليوم</h2>${items.length ? `<span class="chip ${items.some(x => x.k === 'bad') ? 'bad' : 'warn'}">${items.length}</span>` : ''}</div>
+    ${items.length ? `<div class="al-list">${items.map(x => `<div class="al-item ${x.k}"><span class="al-dot"></span><div class="grow">${x.t}</div>${x.b}</div>`).join('')}</div>` : `<div class="al-ok">${ICO.check}<span>كل شي تمام اليوم</span></div>`}</section>`;
+}
+
+/* شريط التنقل السفلي في الجوال + قائمة «المزيد» */
+function bottomNav(u, tabs, active) {
+  const prim = u.role === 'student' ? tabs.slice(0, 1) : tabs.slice(0, 4);
+  const live = u.role === 'student' && liveSession(u);
+  const cnt = tabs.slice(prim.length).reduce((a, t) => a + (+t[2] || 0), 0);
+  return `<nav class="bnav" aria-label="التنقل">${prim.map(([k, l, c]) => `<button class="bn ${k === active ? 'on' : ''}" data-act="tab" data-v="${k}">${ICO[k] || ICO.more}<span>${l}</span>${c ? `<i>${c}</i>` : ''}</button>`).join('')}
+    ${u.role === 'student' ? `<button class="bn ${live ? 'hot' : ''}" data-act="live-open">${ICO.live}<span>${LANG === 'en' ? 'Class' : 'الحصة'}</span>${live ? '<i class="pulse"></i>' : ''}</button>` : ''}
+    <button class="bn" data-act="more">${ICO.more}<span>${LANG === 'en' ? 'More' : 'المزيد'}</span>${cnt ? `<i>${cnt}</i>` : ''}</button></nav>`;
+}
+function moreSheet() {
+  const u = me(); if (!u) return; const tabs = TABS[u.role](u); const prim = u.role === 'student' ? 1 : 4;
+  const it = (act, icon, label, extra = '') => `<button class="ms-it" data-act="${act}" ${extra}>${ICO[icon] || ICO.more}<span>${label}</span></button>`;
+  const rest = tabs.slice(prim).map(([k, l, c]) => it('tab-m', k, l + (c ? ` (${c})` : ''), `data-v="${k}"`)).join('');
+  openModal(`${dlgHead(esc(u.name))}<div class="ms-grid">${rest}
+    ${u.role !== 'student' ? it('search-m', 'search', 'بحث') : it('kids-m', 'kids', accounts().length > 1 ? 'الأبناء (' + accounts().length + ')' : 'إضافة ابن') + it('zoom', 'zoom', ZOOM > 1 ? 'تصغير الخط' : 'تكبير الخط') + it('lang', 'lang', LANG === 'en' ? 'عربي' : 'English')}
+    ${S.push && 'PushManager' in window ? it('push', 'bell', PUSH_ON ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات') : ''}
+    ${INSTALL_EVT ? it('install', 'install', 'تثبيت كتطبيق') : ''}
+    ${it('theme', 'theme', isDarkNow() ? 'المظهر الفاتح' : 'المظهر الداكن')}${it('my-pw', 'key', 'كلمة المرور')}${it('logout', 'logout', 'خروج')}</div>`);
+}
+
+/* ---------- السحب: بطاقة التحضير، سحب للتحديث، والتنقل بين الأقسام ---------- */
+const DRAG = { on: false, pending: false };
+document.addEventListener('pointerdown', e => {
+  const c = e.target.closest('.sw-card:not(.back)'); if (!c || e.target.closest('button')) return;
+  Object.assign(DRAG, { on: true, el: c, x0: e.clientX, y0: e.clientY, dx: 0, id: e.pointerId }); try { c.setPointerCapture(e.pointerId); } catch {} c.style.transition = 'none';
+});
+document.addEventListener('pointermove', e => {
+  if (!DRAG.on || e.pointerId !== DRAG.id) return; const dx = e.clientX - DRAG.x0; DRAG.dx = dx;
+  DRAG.el.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; const d = dx > 50 ? 'p' : dx < -50 ? 'a' : '';
+  if (DRAG.el.dataset.dir !== d) { DRAG.el.dataset.dir = d; if (d) buzz(8); }
+});
+function dragEnd(e) {
+  if (!DRAG.on || (e && e.pointerId !== DRAG.id)) return; DRAG.on = false; const el = DRAG.el; const dx = DRAG.dx; el.style.transition = '';
+  if (Math.abs(dx) > 95) { el.style.transform = `translateX(${dx > 0 ? 700 : -700}px) rotate(${dx > 0 ? 25 : -25}deg)`; el.style.opacity = '0'; setTimeout(() => { DRAG.pending = false; swMark(dx > 0 ? 'p' : 'a'); }, 170); }
+  else { el.style.transform = ''; el.dataset.dir = ''; if (DRAG.pending) { DRAG.pending = false; scheduleRender(); } }
+}
+document.addEventListener('pointerup', dragEnd); document.addEventListener('pointercancel', dragEnd);
+
+let PTR = null;
+function ptrEl() { if (!PTR) { PTR = document.createElement('div'); PTR.className = 'ptr'; PTR.innerHTML = '<div class="spin"></div>'; document.body.appendChild(PTR); } return PTR; }
+const TOUCH = {};
+const noSwipeZone = t => t.closest('.tbl-wrap, input, textarea, select, .sw-card, .seg, .tabs, .bnav, .set-tabs, .qgrades, .r1-tabs, .fs, #modal:not([hidden]), .tally, .cal');
+document.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) return; const t = e.touches[0];
+  Object.assign(TOUCH, { x: t.clientX, y: t.clientY, at: Date.now(), top: window.scrollY <= 0, ok: !noSwipeZone(e.target), dy: 0 });
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!TOUCH.ok || !TOUCH.top || ST.fs || !$('#modal').hidden) return; const dy = e.touches[0].clientY - TOUCH.y; const dx = e.touches[0].clientX - TOUCH.x; TOUCH.dy = dy;
+  if (dy > 10 && Math.abs(dx) < dy) { const p = ptrEl(); const h = Math.min(90, dy * 0.5); p.style.transform = `translate(-50%, ${h - 50}px) rotate(${dy * 2}deg)`; p.style.opacity = Math.min(1, dy / 140); p.classList.toggle('ready', dy > 150); }
+}, { passive: true });
+document.addEventListener('touchend', e => {
+  const t = e.changedTouches[0]; const dx = t.clientX - TOUCH.x; const dy = t.clientY - TOUCH.y;
+  if (PTR && PTR.style.opacity) {
+    if (TOUCH.dy > 150 && TOUCH.top) { buzz(12); PTR.classList.add('busy'); PTR.style.transform = 'translate(-50%, 24px)'; flushOutbox().then(load).finally(() => { PTR.classList.remove('busy', 'ready'); PTR.style.opacity = ''; PTR.style.transform = ''; }); }
+    else { PTR.style.opacity = ''; PTR.style.transform = ''; PTR.classList.remove('ready'); }
+  }
+  // سحب أفقي سريع يتنقل بين الأقسام
+  if (!TOUCH.ok || ST.fs || !$('#modal').hidden || Date.now() - TOUCH.at > 600 || Math.abs(dx) < 90 || Math.abs(dy) > 50) return;
+  const u = me(); if (!u || window.innerWidth > 760) return; const keys = TABS[u.role](u).map(x => x[0]); const cur = PARENT_TAB[ST.view] || ST.view; const i = keys.indexOf(cur); if (i < 0) return;
+  const j = dx > 0 ? i + 1 : i - 1; if (j < 0 || j >= keys.length) return; buzz(8); go(keys[j]);
+}, { passive: true });
+
+/* ---------- أزرار الشاشات الجديدة ---------- */
+Object.assign(ACT, {
+  'fs-close': () => { const R = ST.rec; if (ST.fs === 'rec1' && R && R.segs.some(g => g.m || g.a || g.q)) return confirmBox('تطلع بدون حفظ التسميع؟', 'اطلع', async () => closeFs()); closeFs(); },
+  'live-open': () => { openFs('live'); const u = me(); const s = u && liveSession(u); if (s) ST.lastTurn = s.current === u.id ? 'cur' : ((s.queue || []).indexOf(u.id) + 1 ? 'q' + ((s.queue || []).indexOf(u.id) + 1) : ''); },
+  'more': () => moreSheet(),
+  'tab-m': el => { closeModal(); go(el.dataset.v); },
+  'search-m': () => { closeModal(); setTimeout(() => searchModal(), 30); },
+  'kids-m': () => { closeModal(); setTimeout(() => kidsModal(), 30); },
+  'go-wa': () => go('settings', { setTab: 'msg' }),
+  'scroll-abs': () => { const el = document.querySelector('.alert-card'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'rec1-open': async () => {
+    let s = curSession(); let uid = s.current;
+    if (!uid) { const q = [...(s.queue || [])]; if (!q.length) return toast('الطابور فاضي. أضف طلاب أو خلهم يضغطون «جاهز للتسميع»'); uid = q.shift(); await setQueue(s, q, uid); }
+    closeModal(); startRec(uid, ST.sid, 'fs'); ST.rec.cur = 0; openFs('rec1');
+  },
+  'swipe-open': () => { closeModal(); ST.sw = null; openFs('swipe'); },
+  'board-open': () => openFs('board'),
+  'r1-seg': el => { ST.rec.cur = +el.dataset.i; ST.rec.edit = false; render(); },
+  'r1-edit': () => { ST.rec.edit = !ST.rec.edit; render(); },
+  'r1-inc': el => { const R = ST.rec; const g = R.segs[R.cur || 0]; const k = el.dataset.k; const d = +el.dataset.d; g[k] = Math.max(0, (+g[k] || 0) + d); buzz(d > 0 ? (k === 'm' ? 35 : 15) : 8); if (!R.run && !R.secs && d > 0) { R.run = true; R.t0 = Date.now(); } render(); },
+  'r1-save': async el => { buzz(20); await saveRec(el.dataset.next === '1'); if (ST.fs === 'rec1' && !ST.rec) closeFs(); else render(); },
+  'r1-skip': async () => { const s = curSession(); const q = [...(s.queue || [])].filter(id => id !== ST.rec.uid); const nx = q.shift() || null; await setQueue(s, q, nx); if (nx) { startRec(nx, s.id, 'fs'); ST.rec.cur = 0; render(); } else closeFs(); },
+  'sw-mark': el => swMark(el.dataset.v),
+  'sw-skip': () => { ST.sw.i++; buzz(8); render(); },
+  'sw-again': () => { ST.sw.i = 0; ST.sw.hist = []; render(); },
+  'sw-undo': () => { const W = ST.sw; const h = W && W.hist.pop(); if (!h) return; const s = curSession(); const att = { ...(s.att || {}) }; if (h.prev) att[h.uid] = h.prev; else delete att[h.uid]; S.sessions[s.id] = { ...S.sessions[s.id], att }; W.i = h.i; buzz(10); render(); act('lesson.att', { id: s.id, uid: h.uid, v: h.prev }); },
+  'bd-tile': el => boardSheet(el.dataset.id),
+  'bd-att': el => { const s = curSession(); const uid = el.dataset.id; const v = el.dataset.v; S.sessions[s.id] = { ...S.sessions[s.id], att: { ...(s.att || {}), [uid]: v } }; closeModal(); buzz(15); render(); act('lesson.att', { id: s.id, uid, v }); },
+  'bd-q': el => { const s = curSession(); const uid = el.dataset.id; let q = [...(s.queue || [])]; q = q.includes(uid) ? q.filter(x => x !== uid) : [...q, uid]; closeModal(); setQueue(s, q); },
+  'bd-rec': el => { closeModal(); startRec(el.dataset.id, ST.sid, 'fs'); ST.rec.cur = 0; openFs('rec1'); },
+  'bd-iss': el => { closeModal(); act('issue.clear', { id: ST.sid, uid: el.dataset.id }); },
+  'open-student-fs': el => { closeModal(); ST.fs = null; wake(false); go('student', { uid: el.dataset.id }); },
+});
+
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
 function isDarkNow() { if (THEME) return THEME === 'dark'; try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; } }
@@ -1810,12 +2143,12 @@ load();
 loadPages();
 function liveNow() {
   const u = me(); if (!u) return false; const t = today();
-  if (ST.view === 'session') { const s = S.sessions[ST.sid]; return !!s && s.date === t; }
+  if (ST.view === 'session' || ST.fs) { const s = S.sessions[ST.sid]; if (s && s.date === t) return true; }
   if (u.role === 'student') return L('sessions').some(s => s.halqaId === u.halqaId && s.date === t && !s.cancelled && Math.abs(lessonTs(s) - Date.now()) < 3 * 3600000);
   return false;
 }
 async function pollLoop() {
-  if (document.visibilityState === 'visible' && ST.meId && ($('#modal').hidden || (ST.rec && ST.rec.where === 'modal'))) { if (!(ST.rec && ST.rec.where === 'modal')) await load(); }
+  if (document.visibilityState === 'visible' && ST.meId && !DRAG.on && ($('#modal').hidden || (ST.rec && ST.rec.where === 'modal'))) { if (!(ST.rec && ST.rec.where === 'modal')) await load(); }
   setTimeout(pollLoop, liveNow() ? 8000 : 30000);
 }
 setTimeout(pollLoop, 8000);
