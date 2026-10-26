@@ -86,7 +86,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.videoAlt = d.videoAlt || {};
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {};
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -668,6 +668,7 @@ const SET_TABS = [
   ['reg', 'التسجيل', 'حقول نموذج تسجيل الطلاب الجدد'],
   ['msg', 'الرسائل والواتساب', 'نصوص الرسائل لأولياء الأمور وربط الواتس الذكي'],
   ['video', 'غرفة الحصة', 'الحصص بالفيديو داخل الموقع بدل Zoom وMeet'],
+  ['ai', 'المساعد الذكي', 'مفتاح الذكاء الاصطناعي الخاص بالموقع'],
   ['site', 'إعدادات الموقع', 'الاسم، الفروع، حالة الخدمات، النسخ الاحتياطي'],
 ];
 function settingsV() {
@@ -678,7 +679,7 @@ function settingsV() {
   const H = (t, d) => `<div class="set-h"><h2>${t}</h2>${d ? `<span class="small muted">${d}</span>` : ''}</div>`;
   const saveBtn = `<div class="set-save"><button class="btn pri" type="submit">حفظ الإعدادات</button></div>`;
   return `<div><h1>الإعدادات</h1><div class="muted">${(SET_TABS.find(t => t[0] === cur) || [])[1] || ''}</div></div>
-  <form class="card" data-form="settings" style="gap:18px" ${cur === 'video' ? 'hidden' : ''}>
+  <form class="card" data-form="settings" style="gap:18px" ${cur === 'video' || cur === 'ai' ? 'hidden' : ''}>
     <div class="set-pane" ${P('rec')}>${H('التسميع والتقدير', 'كيف يُحسب التقدير، ومقادير الخطط الجاهزة، ونقاط الطلاب')}
     <div class="fld"><span>سلّم التقدير بعدد الأخطاء</span>
       <div class="fgrid"><label class="fld"><span>ممتاز إذا الأخطاء حتى</span><input id="sg-ex" name="ex" type="number" min="0" value="${st.grade.ex}"></label><label class="fld"><span>جيد جدًا حتى</span><input id="sg-vg" name="vg" type="number" min="0" value="${st.grade.vg}"></label><label class="fld"><span>جيد حتى</span><input id="sg-gd" name="gd" type="number" min="0" value="${st.grade.gd}"></label><label class="fld"><span>كل كم تنبيه = خطأ</span><input id="sg-al" name="alertsPer" type="number" min="1" value="${st.grade.alertsPer}"></label></div>
@@ -728,11 +729,12 @@ function settingsV() {
   </section>
   ${full && cur === 'msg' ? waSettingsHtml() : ''}
   ${full && cur === 'video' ? videoSettingsHtml() : ''}
+  ${full && cur === 'ai' ? aiSettingsHtml() : ''}
   ${full && cur === 'site' ? statusHtml() : ''}
   ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
     ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">ما فيه نسخ تلقائية بعد (الشرح في الدليل).</div>'}</section>
   <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
-  ${!full && (cur === 'msg' || cur === 'site' || cur === 'video') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
+  ${!full && (cur === 'msg' || cur === 'site' || cur === 'video' || cur === 'ai') ? '<div class="note small">ربط الواتساب والنسخ الاحتياطي للمدير الكامل فقط.</div>' : ''}`;
 }
 
 /* ---- student / parent home ---- */
@@ -852,7 +854,7 @@ function tplPickModal(st) {
   openModal(`${dlgHead('رسالة لولي أمر ' + esc(st.name))}<div class="list">
     ${[...allTpls(), { id: 'week', name: 'التقرير الأسبوعي', text: weekMsg(st) }].map(t => { const txt = t.id === 'week' ? t.text : fillTpl(t.text, v); const l = waLink(st.parentPhone, txt); return `<div class="item"><div class="grow"><b>${esc(t.name)}</b><div class="small muted tpl-prev">${esc(txt)}</div></div>${l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">إرسال</a>` : ''}</div>`; }).join('')}
     <div class="item"><div class="grow"><b>رسالة فاضية</b></div><a class="btn wa sm" href="${waLink(st.parentPhone, 'السلام عليكم ورحمة الله، ')}" target="_blank" rel="noopener">فتح</a></div>
-  </div>`);
+  </div>${aiPmHtml(st)}`);
 }
 function tplApplyModal(u) {
   const hs = myHalaqat(u); const hids = hs.map(h => h.id);
@@ -1002,9 +1004,9 @@ function helpV(u) {
     ${sub('لولي الأمر', ['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير.', 'عندك أكثر من ولد؟ من «المزيد» اضغط «إضافة ابن» مرة وحدة، وبعدها «أولادي» يعرض ملخصهم كلهم في شاشة وحدة وتنتقل بينهم.', 'زر «English» يعرض الصفحة بالإنجليزي، و«تكبير الخط» يكبّر الكلام.'])}
     ${cal}${install}${notif}
     <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
-  const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.']);
+  const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.', 'المساعد الذكي (الزر الدائري تحت يسار، أو Ctrl+J): اسأله عن طلابك (مين غاب، مين يحتاج متابعة)، أو اطلب منه إعلان أو تصويت أو حصة إضافية أو إلغاء حصة أو رسالة للطلاب. يجهزها لك وأنت تضغط «تنفيذ».', 'في «واتساب ولي الأمر» بصفحة الطالب: «اكتبها لي بالذكاء» يكتب رسالة من حضوره وتسميعه بالنبرة اللي تختارها.']);
   const admin = u.role === 'admin' ? sub('للمدير', ['أنشئ الحلقات وفعّل «جدول ثابت» وحط الرابط الثابت.', 'أضف المعلمين، و«جدول الأسبوع» في صفحة المعلمين يعرض الحلقات بالأيام. اسحب الحلقة لصف معلم ثاني عشان تنقلها له، أو اضغط عليها في الجوال.', 'المشرفين الإداريين: حدد صلاحياتهم، ومن «يتابع» اختر حلقات أو فروع محددة، ويشوف المشرف حلقاته بس.', 'الفروع: اكتبها في الإعدادات ← إعدادات الموقع، وبعدها اختر فرع كل حلقة. يطلع فوق الصفحات شريط تختار منه الفرع.', 'الطلاب: «استيراد» يضيف طلاب من ملف إكسل أو جدول تلصقه، ويعطيك أسماء المستخدمين وكلمات المرور ترسلها لأولياء الأمور.', '«منقطعين أسبوعين» في صفحة الطلاب: اللي ما فتحوا الموقع من أسبوعين.', 'أرسل رابط التسجيل لكل حلقة، واعتمد الطلبات من «الطلبات».', 'الإعدادات مقسمة: التسميع والتقدير، الدوام والحضور (الإجازات والاختبارات)، التسجيل، الرسائل والواتساب، غرفة الحصة، إعدادات الموقع.', 'لتكليف معلم احتياط: افتح الحصة ← تعديل ← المعلم الاحتياط.']) +
-    (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: الإعدادات ← الرسائل والواتساب ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.']) +
+    (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: الإعدادات ← الرسائل والواتساب ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.', 'المساعد الذكي: الإعدادات ← المساعد الذكي، تسوي مفتاح من aistudio.google.com خاص بهالموقع وتلصقه وتحفظ.']) +
       `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
       sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
   return `<h1>الدليل</h1>${admin}${teacher}${cal}${install}${notif}`;
@@ -2617,6 +2619,112 @@ Object.assign(ACT, {
   }, { passive: true });
 })();
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.drawer) { ST.drawer = false; render(); } });
+
+/* ================= المساعد الذكي (مساعد ارتق) ================= */
+// يتكلم معك، ويجاوب من بيانات حلقاتك، ويجهز إجراءات (إعلان، تصويت، إجازة، حصة…) تنفذها بعد تأكيدك.
+const AI = { open: false, msgs: [], busy: false };
+try { AI.msgs = JSON.parse(sessionStorage.getItem('irtaq-ai') || '[]'); } catch {}
+const AI_SUGGEST = {
+  admin: ['مين الطلاب اللي غابوا أكثر هالشهر؟', 'مين يحتاج متابعة ومن أي حلقة؟', 'أضف اختبار جزء عمّ يوم الخميس الجاي', 'أعلن لكل الحلقات إن حصص الأسبوع الجاي تبدأ بعد العشاء', 'اقترح 5 أفكار تحفيزية للطلاب هالشهر'],
+  teacher: ['مين من طلابي ما سمّع هالأسبوع؟', 'لخص لي وضع حلقتي', 'سوّ تصويت لطلابي: أي وقت يناسبهم السبت؟', 'ألغِ حصة بكرة لظرف', 'اقترح طريقة تساعد طالب يعيد كثير'],
+};
+const AI_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4-1.4-.6 1.4-.6z"/></svg>';
+function aiEl() {
+  let r = document.getElementById('ai');
+  if (!r) { r = document.createElement('div'); r.id = 'ai'; document.body.appendChild(r); }
+  return r;
+}
+function aiSave() { try { sessionStorage.setItem('irtaq-ai', JSON.stringify(AI.msgs.slice(-30))); } catch {} }
+function aiRender() {
+  const u = me(); const el = aiEl();
+  if (!u || u.role === 'student' || !S.aiOn || ST.fs) { el.innerHTML = ''; el._h = ''; return; }
+  const ta = document.getElementById('ai-q'); const keep = ta ? ta.value : ''; const hadFocus = ta && document.activeElement === ta;
+  const listEl = el.querySelector('.ai-list'); const atBottom = !listEl || listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 40; const st0 = listEl ? listEl.scrollTop : 0;
+  const card = (a, mi, ai) => `<div class="ai-act ${a.state || ''} ${a.error ? 'err' : ''}"><b>${esc(a.summary)}</b>${a.error || a.msg ? `<div class="c-bad small">${esc(a.error || a.msg)}</div>` : ''}
+    ${!a.error && !a.state ? `<div class="row"><button class="btn pri sm" data-act="ai-run" data-m="${mi}" data-a="${ai}">تنفيذ</button><button class="btn ghost sm" data-act="ai-skip" data-m="${mi}" data-a="${ai}">إلغاء</button></div>` : ''}
+    ${a.state === 'busy' ? '<div class="small muted">جاري التنفيذ…</div>' : a.state === 'done' ? '<div class="small c-ok">✓ تم</div>' : a.state === 'skip' ? '<div class="small muted">أُلغي</div>' : a.state === 'err' ? `<button class="linkbtn" data-act="ai-run" data-m="${mi}" data-a="${ai}">إعادة المحاولة</button>` : ''}</div>`;
+  const html = `<button class="ai-fab ${AI.open ? 'on' : ''}" data-act="ai-toggle" aria-label="المساعد الذكي" title="المساعد الذكي (Ctrl+J)">${AI.open ? '✕' : AI_ICON}</button>
+  ${AI.open ? `<div class="ai-panel" role="dialog" aria-label="المساعد الذكي"><div class="ai-h"><span class="ai-badge">${AI_ICON}</span><div class="grow"><b>مساعد ارتق</b><span>يجاوب ويجهز لك، وأنت تأكد قبل التنفيذ</span></div>${AI.msgs.length ? '<button class="linkbtn" data-act="ai-new">محادثة جديدة</button>' : ''}</div>
+    <div class="ai-list">${!AI.msgs.length ? `<div class="ai-hello"><p>هلا ${esc((u.name || '').split(' ')[0])}، أقدر أجاوبك عن طلابك وحضورهم وتسميعهم، وأضيف إعلانات وتصويت وإجازات وحصص، وأقترح أفكار. جرّب:</p>${(AI_SUGGEST[u.role] || AI_SUGGEST.teacher).map(s => `<button class="ai-sg" data-act="ai-sg" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+      ${AI.msgs.map((m, mi) => `<div class="ai-m ${m.role}"><div class="ai-b">${esc(m.text)}</div>${(m.actions || []).length ? `<div class="ai-acts">${m.actions.map((a, ai) => card(a, mi, ai)).join('')}${m.actions.filter(a => !a.state && !a.error).length > 1 ? `<button class="btn pri sm" data-act="ai-all" data-m="${mi}">تنفيذ الكل</button>` : ''}</div>` : ''}</div>`).join('')}
+      ${AI.busy ? '<div class="ai-m assistant"><div class="ai-b ai-think">يفكر…</div></div>' : ''}</div>
+    <form class="ai-f" data-form="ai"><textarea id="ai-q" rows="1" placeholder="اكتب طلبك… مثل: مين غاب أكثر هالأسبوع؟" aria-label="رسالة للمساعد"></textarea><button class="btn pri" type="submit" ${AI.busy ? 'disabled' : ''} aria-label="إرسال">➤</button></form></div>` : ''}`;
+  if (el._h === html) return; el._h = html; el.innerHTML = html;
+  const t2 = document.getElementById('ai-q'); if (t2) { t2.value = keep; if (hadFocus) t2.focus(); }
+  const l2 = el.querySelector('.ai-list'); if (l2) l2.scrollTop = atBottom ? l2.scrollHeight : st0;
+}
+async function aiSend(text) {
+  const q = String(text || '').trim(); if (!q || AI.busy) return;
+  AI.msgs.push({ role: 'user', text: q }); AI.busy = true; aiSave(); aiRender();
+  const ta = document.getElementById('ai-q'); if (ta) ta.value = '';
+  try {
+    const r = await api('/api/ai', { t: 'chat', messages: AI.msgs.map(m => ({ role: m.role, text: m.text + ((m.actions || []).length ? '\n[إجراءات: ' + m.actions.map(a => `${a.summary} (${a.state === 'done' ? 'نُفّذ' : a.state === 'skip' ? 'أُلغي' : 'لم يُنفذ'})`).join('؛ ') + ']' : '') })) });
+    AI.msgs.push({ role: 'assistant', text: r.text || '…', actions: r.actions || [] });
+  } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message }); }
+  AI.busy = false; aiSave(); aiRender();
+}
+async function aiRun(mi, ai) {
+  const a = AI.msgs[mi] && AI.msgs[mi].actions[ai]; if (!a || a.state === 'done' || a.error) return;
+  a.state = 'busy'; aiRender();
+  try { await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; buzz(15); await load(); }
+  catch (e) { a.state = 'err'; a.msg = e.message; }
+  aiSave(); aiRender();
+}
+Object.assign(ACT, {
+  'ai-toggle': () => { AI.open = !AI.open; aiRender(); if (AI.open) setTimeout(() => { const t = document.getElementById('ai-q'); if (t && window.innerWidth > 760) t.focus(); }, 30); },
+  'ai-new': () => { AI.msgs = []; aiSave(); aiRender(); },
+  'ai-sg': el => aiSend(el.dataset.t),
+  'ai-run': el => aiRun(+el.dataset.m, +el.dataset.a),
+  'ai-skip': el => { const a = AI.msgs[+el.dataset.m].actions[+el.dataset.a]; a.state = 'skip'; aiSave(); aiRender(); },
+  'ai-all': async el => { const mi = +el.dataset.m; const acts = AI.msgs[mi].actions; for (let i = 0; i < acts.length; i++) if (!acts[i].state && !acts[i].error) await aiRun(mi, i); },
+});
+FORMS.ai = async (f) => { const t = document.getElementById('ai-q'); await aiSend(t ? t.value : ''); };
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && ['j', 'J', 'ت'].includes(e.key) && S.aiOn) { e.preventDefault(); ACT['ai-toggle'](); }
+  if (e.key === 'Enter' && !e.shiftKey && e.target && e.target.id === 'ai-q') { e.preventDefault(); aiSend(e.target.value); }
+});
+{ const _r = render; render = function () { _r(); aiRender(); }; }
+
+/* ---- رسالة لولي الأمر بالذكاء ---- */
+async function aiParentMsg(sid, tone) {
+  const box = document.getElementById('aipm'); if (!box) return;
+  box.innerHTML = '<div class="row"><div class="spin"></div><span class="small muted">يكتب الرسالة…</span></div>';
+  try {
+    const r = await api('/api/ai', { t: 'parentMsg', studentId: sid, tone, extra: (document.getElementById('aipm-x') || {}).value || '' });
+    const st = S.users[sid] || {};
+    box.innerHTML = `<textarea id="aipm-t" rows="6">${esc(r.text)}</textarea><div class="row">${st.parentPhone ? `<button class="btn wa" data-act="aipm-send" data-id="${sid}">إرسال لولي الأمر</button>` : '<span class="small muted">ما فيه رقم ولي أمر</span>'}<button class="btn" data-act="aipm-dm" data-id="${sid}">إرسال داخل الموقع</button><button class="btn ghost" data-act="copy-aipm">نسخ</button></div>`;
+  } catch (e) { box.innerHTML = `<div class="c-bad small">${esc(e.message)}</div>`; }
+}
+Object.assign(ACT, {
+  'aipm': el => aiParentMsg(el.dataset.id, el.dataset.tone),
+  'aipm-send': el => { const st = S.users[el.dataset.id] || {}; const t = (document.getElementById('aipm-t') || {}).value || ''; if (!t.trim()) return; if (waAuto()) act('wa.sendText', { phone: st.parentPhone, text: t }).then(r => r && (closeModal(), toast(r.ok ? 'انرسلت من رقم الحلقة ✓' : 'بتنعاد تلقائيًا'))); else window.open(waLink(st.parentPhone, t), '_blank', 'noopener'); },
+  'aipm-dm': el => { const t = (document.getElementById('aipm-t') || {}).value || ''; if (!t.trim()) return; act('dm.send', { studentId: el.dataset.id, text: t }, 'انرسلت داخل الموقع').then(r => r && closeModal()); },
+  'copy-aipm': () => copyText((document.getElementById('aipm-t') || {}).value || ''),
+});
+const aiPmHtml = st => S.aiOn ? `<div class="aipm"><b>${AI_ICON} اكتبها لي بالذكاء</b><input id="aipm-x" maxlength="200" placeholder="شي تبي تضيفه (اختياري)"><div class="row"><button class="btn sm" data-act="aipm" data-id="${st.id}" data-tone="praise">ثناء وتشجيع</button><button class="btn sm" data-act="aipm" data-id="${st.id}" data-tone="neutral">اطمئنان</button><button class="btn sm" data-act="aipm" data-id="${st.id}" data-tone="concern">طلب تعاون</button></div><div id="aipm"></div></div>` : '';
+
+/* ---- إعداد المساعد ---- */
+function aiSettingsHtml() {
+  if (!ST.aiCfg && !ST.aiLoading) { ST.aiLoading = true; api('/api/ai', { t: 'get' }).then(r => { ST.aiLoading = false; ST.aiCfg = r; render(); }).catch(e => { ST.aiLoading = false; ST.aiCfg = { err: e.message }; render(); }); }
+  const c = ST.aiCfg; if (!c) return '<section class="card"><div class="row"><div class="spin"></div></div></section>';
+  return `<section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>المساعد الذكي</h2><span class="chip ${c.on ? 'ok' : ''}">${c.on ? 'مفعّل' + (c.gemini ? ' · Gemini ' + esc(c.gemini) : ' · Claude ' + esc(c.claude || '')) : 'متوقف'}</span></div>
+    <ol class="steps small"><li>ادخل <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> بحساب قوقل، واضغط <b>Create API key</b>.</li><li>سوّ مفتاح جديد خاص بهالموقع (لا تستخدم مفتاح الموقع الثاني)، وانسخه والصقه تحت واضغط حفظ.</li></ol>
+    <div class="row"><input id="ai-key" type="password" dir="ltr" autocomplete="off" placeholder="AIza…" style="flex:1 1 220px"><button class="btn pri" data-act="ai-key-save">حفظ</button></div>
+    <div class="row"><label class="small">النموذج</label><select id="ai-model" data-change="ai-model"><option value="" ${!c.model ? 'selected' : ''}>Flash-Lite (حد مجاني أعلى، مستحسن)</option><option value="gemini-flash-latest" ${c.model === 'gemini-flash-latest' ? 'selected' : ''}>Flash (أذكى، حد مجاني أقل)</option></select></div>
+    <details><summary class="small">أو استخدم مفتاح Claude</summary><div class="row" style="margin-top:8px"><input id="ai-ckey" type="password" dir="ltr" autocomplete="off" placeholder="sk-ant-…" style="flex:1 1 220px"><button class="btn" data-act="ai-ckey-save">حفظ</button></div></details>
+    <div class="row">${c.on ? '<button class="btn" data-act="ai-test">جرّب الاتصال</button>' : ''}${c.gemini && !c.fromEnv ? '<button class="btn ghost danger" data-act="ai-key-del">حذف مفتاح Gemini</button>' : ''}${c.claude && !c.fromEnv ? '<button class="btn ghost danger" data-act="ai-ckey-del">حذف مفتاح Claude</button>' : ''}</div>
+    <div id="ai-msg" class="small"></div>
+    <div class="note small">في باقة Gemini المجانية، قوقل تستخدم المحادثات لتحسين خدماتها. المساعد يرسل أسماء الطلاب وحضورهم وتسميعهم عشان يقدر يجاوب.</div></section>`;
+}
+async function aiCfgSave(body, msg) { try { await api('/api/ai', { t: 'save', ...body }); ST.aiCfg = null; await load(); toast(msg); } catch (e) { toast(e.message); } }
+Object.assign(ACT, {
+  'ai-key-save': () => { const k = ($('#ai-key') || {}).value || ''; if (k.trim().length < 20) return toast('الصق المفتاح كامل'); aiCfgSave({ gemini: k.trim() }, 'حُفظ المفتاح، جرّب الاتصال'); },
+  'ai-ckey-save': () => { const k = ($('#ai-ckey') || {}).value || ''; if (k.trim().length < 20) return toast('الصق المفتاح كامل'); aiCfgSave({ claude: k.trim() }, 'حُفظ المفتاح، جرّب الاتصال'); },
+  'ai-key-del': () => confirmBox('تحذف مفتاح Gemini؟ المساعد يتوقف إذا ما فيه مفتاح ثاني.', 'حذف', () => aiCfgSave({ gemini: null }, 'حُذف')),
+  'ai-ckey-del': () => confirmBox('تحذف مفتاح Claude؟', 'حذف', () => aiCfgSave({ claude: null }, 'حُذف')),
+  'ai-test': async () => { const m = $('#ai-msg'); if (m) { m.className = 'small muted'; m.textContent = 'جاري التجربة…'; } try { const r = await api('/api/ai', { t: 'test' }); if (m) { m.className = 'small c-ok'; m.textContent = 'الاتصال شغال ✓ الرد: ' + (r.reply || ''); } } catch (e) { if (m) { m.className = 'small c-bad'; m.textContent = e.message; } } },
+});
+CHG['ai-model'] = el => aiCfgSave({ geminiModel: el.value || null }, 'حُفظ النموذج');
 
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}

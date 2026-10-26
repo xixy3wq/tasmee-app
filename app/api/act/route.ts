@@ -722,6 +722,23 @@ const A: Record<string, H> = {
     await prisma.pollVote.upsert({ where: { pollId_userId: { pollId: p!.id, userId: u.id } }, create: { pollId: p!.id, userId: u.id, choice }, update: { choice, at: new Date() } });
   },
 
+  // ---------- إضافات المساعد الذكي (تنفذ بعد تأكيد المستخدم) ----------
+  async "events.add"(u, b) {
+    needAdmin(u, "settings");
+    const date = str(b.date, 10); if (!validDate(date)) fail("تاريخ غير صالح");
+    const cur = await getSettings(); const list = [...((cur as any).events || []), { date, name: str(b.name, 80) || "مناسبة", kind: b.kind === "exam" ? "exam" : "event" }];
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, events: list } }, update: { value: { ...cur, events: list } } });
+  },
+  async "holidays.add"(u, b) {
+    const cur = await getSettings();
+    return A["holidays.save"](u, { list: [...(cur.holidays || []), { name: b.name, from: b.from, to: b.to || b.from }] });
+  },
+  async "dm.bulk"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const ids = (Array.isArray(b.studentIds) ? b.studentIds : []).map(String).slice(0, 300); let n = 0;
+    for (const id of ids) { await A["dm.send"](u, { studentId: id, text: b.text }); n++; }
+    return { n };
+  },
   // ---------- مناسبات التقويم ----------
   async "events.save"(u, b) {
     needAdmin(u, "settings");
