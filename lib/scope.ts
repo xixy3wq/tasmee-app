@@ -1,7 +1,14 @@
 import { prisma } from "./db";
-// نطاق المشرف: مدير مساعد يتابع حلقات أو فروع محددة فقط.
-// يُخزن داخل perms كعناصر "h:<halqaId>" أو "b:<اسم الفرع>". بدونها = كل الحلقات.
-type U = { role: string; perms?: unknown };
+// الموقع قسمين منفصلين: البنين (m) والبنات (f). المدير العام بس يشوف القسمين ويتنقل بينهم،
+// وكل مشرف أو معلم أو طالب يشوف قسمه بس.
+// نطاق المشرف داخل قسمه: "h:<halqaId>" أو "b:<اسم الفرع>" داخل perms. بدونها = كل حلقات قسمه.
+type U = { id?: string; role: string; perms?: unknown; side?: string | null; halqaId?: string | null };
+export type Side = "m" | "f";
+export const isSuper = (u: U) => u.role === "admin" && !Array.isArray(u.perms);
+export const sideVal = (v: unknown): Side => (v === "f" ? "f" : "m");
+/** شرط الحلقات حسب القسم */
+export const genderWhere = (s: Side) => (s === "f" ? { gender: "f" } : { gender: { not: "f" } });
+
 export function scopeSpec(u: U): { h: string[]; b: string[] } | null {
   if (u.role !== "admin" || !Array.isArray(u.perms)) return null;
   const p = u.perms as string[];
@@ -9,26 +16,31 @@ export function scopeSpec(u: U): { h: string[]; b: string[] } | null {
   const b = p.filter((x) => typeof x === "string" && x.startsWith("b:")).map((x) => x.slice(2));
   return h.length || b.length ? { h, b } : null;
 }
-/** الحلقات اللي يقدر يشوفها المدير، أو null = كلها.
- *  حلقات البنات يشوفها المدير العام بس، أو المشرف اللي اختيرت له بالاسم (h:) */
-export async function scopeHalqaIds(u: U): Promise<string[] | null> {
-  if (u.role !== "admin" || !Array.isArray(u.perms)) return null;
-  const s = scopeSpec(u);
-  if (!s) {
-    const all = await prisma.halqa.findMany({ select: { id: true, gender: true } });
-    if (!all.some((h) => h.gender === "f")) return null;
-    return all.filter((h) => h.gender !== "f").map((h) => h.id);
+
+/** قسم المستخدم، أو null للمدير العام */
+export async function sideOf(u: U): Promise<Side | null> {
+  if (isSuper(u)) return null;
+  if (u.role === "student" && u.halqaId) {
+    const h = await prisma.halqa.findUnique({ where: { id: u.halqaId }, select: { gender: true } });
+    if (h) return sideVal(h.gender);
   }
-  const hs = await prisma.halqa.findMany({ where: { OR: [{ id: { in: s.h } }, { branch: { in: s.b }, gender: { not: "f" } }] }, select: { id: true } });
-  return hs.map((x) => x.id);
+  if (u.role === "teacher" && u.side !== "f" && u.id) {
+    // معلمة أُسندت لها حلقات بنات قبل ما يكون لها قسم
+    const hs = await prisma.halqa.findMany({ where: { teacherId: u.id }, select: { gender: true } });
+    if (hs.length && hs.every((h) => h.gender === "f")) return "f";
+  }
+  return sideVal(u.side);
 }
-/** جهة الموظف لغرفة المعلمين: f معلمات ومشرفات حلقات البنات، m الباقي، all المدير العام */
-export async function staffSide(u: U & { id: string }): Promise<"all" | "f" | "m"> {
-  if (u.role === "admin" && !Array.isArray(u.perms)) return "all";
-  let ids: string[] = [];
-  if (u.role === "teacher") ids = (await prisma.halqa.findMany({ where: { teacherId: u.id }, select: { id: true } })).map((h) => h.id);
-  else if (u.role === "admin") { const s = scopeSpec(u); if (!s || s.b.length) return "m"; ids = s.h; }
-  if (!ids.length) return "m";
-  const hs = await prisma.halqa.findMany({ where: { id: { in: ids } }, select: { gender: true } });
-  return hs.length && hs.every((h) => h.gender === "f") ? "f" : "m";
+/** القسم المعروض: المدير العام يختار، والباقي قسمهم */
+export async function viewSide(u: U, want?: unknown): Promise<Side> {
+  return (await sideOf(u)) ?? sideVal(want);
+}
+
+/** الحلقات اللي يقدر يشوفها المدير، أو null = كل الحلقات (المدير العام) */
+export async function scopeHalqaIds(u: U): Promise<string[] | null> {
+  if (u.role !== "admin" || isSuper(u)) return null;
+  const s = scopeSpec(u);
+  const where: any = genderWhere(sideVal(u.side));
+  if (s) where.OR = [{ id: { in: s.h } }, { branch: { in: s.b } }];
+  return (await prisma.halqa.findMany({ where, select: { id: true } })).map((x) => x.id);
 }

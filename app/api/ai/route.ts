@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { currentUser, handle, fail, str, cleanUsername, USERNAME_RE } from "@/lib/auth";
 import { getSettings, localDate, GRADES } from "@/lib/settings";
-import { scopeHalqaIds } from "@/lib/scope";
+import { scopeHalqaIds, viewSide, genderWhere, sideVal } from "@/lib/scope";
 import { audit } from "@/lib/audit";
 import { SN, AYAS, validRange, ORD, TOTAL, SSTART, gOf } from "@/lib/quran";
 import { mushafData } from "@/lib/pages";
@@ -78,9 +78,10 @@ const staff = (u: U) => u.role === "admin" || u.role === "teacher";
 const planner = (u: U) => isAdm(u) || (u.role === "teacher" && !!u.canPlan);
 
 /* ---------- بيانات المحادثة للمعلم والمدير ---------- */
-async function context(u: U) {
+async function context(u: U, want?: unknown) {
   const sc = isAdm(u) ? await scopeHalqaIds(u) : null;
-  const halaqat = await prisma.halqa.findMany({ where: isAdm(u) ? (sc ? { id: { in: sc } } : {}) : { teacherId: u.id }, orderBy: { name: "asc" } });
+  const view = await viewSide(u as any, want);
+  const halaqat = await prisma.halqa.findMany({ where: isAdm(u) ? (sc ? { id: { in: sc } } : genderWhere(view)) : { teacherId: u.id }, orderBy: { name: "asc" } });
   const hIds = halaqat.map((h) => h.id);
   const allStuds = await prisma.user.findMany({ where: { role: "student", status: { in: ["active", "disabled", "archived"] }, halqaId: { in: hIds } }, orderBy: { name: "asc" }, take: 600 });
   const studs = allStuds.filter((x) => x.status === "active");
@@ -88,14 +89,14 @@ async function context(u: U) {
   const [lessons, recs, teachers, pending, polls, wa, recAll] = await Promise.all([
     prisma.lesson.findMany({ where: { halqaId: { in: hIds }, date: { gte: since, lte: to } }, orderBy: [{ date: "asc" }, { time: "asc" }] }),
     prisma.rec.findMany({ where: { userId: { in: studs.map((s) => s.id) }, date: { gte: since } }, orderBy: { at: "desc" } }),
-    isAdm(u) ? prisma.user.findMany({ where: { role: "teacher" }, orderBy: { name: "asc" } }) : Promise.resolve([] as any[]),
+    isAdm(u) ? prisma.user.findMany({ where: { role: "teacher" }, orderBy: { name: "asc" } }).then((ts) => ts.filter((t) => halaqat.some((h) => h.teacherId === t.id) || (!sc && sideVal(t.side) === view))) : Promise.resolve([] as any[]),
     perm("req")(u) ? prisma.user.findMany({ where: { role: "student", status: "pending" }, orderBy: { createdAt: "asc" }, take: 100 }) : Promise.resolve([] as any[]),
-    prisma.poll.findMany({ where: { closed: false, OR: [{ halqaId: { in: hIds } }, ...(isAdm(u) && !sc ? [{ halqaId: null }] : [])] }, orderBy: { at: "desc" }, take: 20 }),
+    prisma.poll.findMany({ where: { closed: false, OR: [{ halqaId: { in: hIds } }, ...(isAdm(u) ? [{ halqaId: null, side: view }] : [])] }, orderBy: { at: "desc" }, take: 20 }),
     waCfg(),
     prisma.rec.groupBy({ by: ["userId"], where: { userId: { in: studs.map((x) => x.id) } }, _count: { _all: true } }),
   ]);
   const recTotal: Record<string, number> = Object.fromEntries((recAll as any[]).map((x) => [x.userId, x._count?._all || 0]));
-  return { halaqat, studs, allStuds, lessons, recs, recTotal, teachers, pending: sc ? pending.filter((p: any) => !p.reqHalqaId || sc.includes(p.reqHalqaId)) : pending, polls, waOn: !!(wa.enabled && wa.url), wa, sc, settings: await getSettings() };
+  return { halaqat, studs, allStuds, lessons, recs, recTotal, teachers, pending: pending.filter((p: any) => (p.reqHalqaId ? hIds.includes(p.reqHalqaId) : sideVal(p.side) === view)), view, polls, waOn: !!(wa.enabled && wa.url), wa, sc, settings: await getSettings() };
 }
 type Ctx = Awaited<ReturnType<typeof context>>;
 type Act = { summary: string; t: string; payload: any; error?: string };
@@ -457,7 +458,7 @@ export async function POST(req: Request) {
     if (t === "parentMsg") {
       const st = await prisma.user.findUnique({ where: { id: str(b.studentId) } });
       if (!st || st.role !== "student") fail("الطالب غير موجود", 404);
-      const ctx = await context(u); if (!ctx.studs.some((x) => x.id === st!.id)) fail("الطالب خارج نطاقك", 403);
+      const ctx = await context(u, b._side); if (!ctx.studs.some((x) => x.id === st!.id)) fail("الطالب خارج نطاقك", 403);
       const since = localDate(-14);
       const ls = ctx.lessons.filter((l) => l.halqaId === st!.halqaId && !l.cancelled && l.date >= since && l.date <= localDate());
       const att = ls.map((l) => ((l.att as any) || {})[st!.id]).filter(Boolean);
@@ -478,7 +479,7 @@ export async function POST(req: Request) {
     const messages: ChatMsg[] = (Array.isArray(b.messages) ? b.messages : []).slice(-12).map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", text: str(m.text, 4000) })).filter((m: ChatMsg) => m.text);
     if (!messages.length || messages[messages.length - 1].role !== "user") fail("اكتب سؤالك");
     const cfg = await aiCfg(); if (!aiOn(cfg)) fail("المساعد غير مفعّل. المدير يضيف المفتاح من الإعدادات ← المساعد الذكي");
-    const ctx = await context(u);
+    const ctx = await context(u, b._side);
     const today = localDate(); const s = ctx.settings;
     const tools = STAFF_TOOLS.filter((x) => x.ok(u));
     const hName = (id: string | null) => ctx.halaqat.find((h) => h.id === id)?.name || "";
@@ -503,6 +504,7 @@ export async function POST(req: Request) {
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
       "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      ctx.view === "f" ? `أنت الحين في قسم البنات (الدار النسائية)، منفصل تمامًا عن البنين.${!(u!.role === "admin" && !Array.isArray(u!.perms)) ? " والمستخدمة من منسوبات القسم: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.halaqat.some((h: any) => h.gender === "f") ? `الحلقات النسائية: تكلّم عن طالباتها بصيغة المؤنث، وأي رسالة لأولياء أمورهن تكون بصيغة المؤنث (ابنتكم، بارك الله فيها).${u!.role === "teacher" && ctx.halaqat.length && ctx.halaqat.every((h: any) => h.gender === "f") ? " والمستخدمة معلمة: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""}${(h as any).gender === "f" ? " · نسائية" : ""})`).join("؛ ") || "لا يوجد"}`,

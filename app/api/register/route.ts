@@ -5,12 +5,16 @@ import { handle, fail, cleanUsername, USERNAME_RE, str } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 // الحقول العامة لنموذج التسجيل (بدون تسجيل دخول)
-export async function GET() {
+export async function GET(req: Request) {
   return handle(async () => {
     const s = await getSettings();
-    const halaqat = await prisma.halqa.findMany({ select: { id: true, name: true, branch: true }, orderBy: { name: "asc" } });
+    // رابط تسجيل البنات فيه side=f، ورابط حلقة محددة يحدد قسمه من الحلقة
+    const q = new URL(req.url).searchParams; const join = q.get("join") || "";
+    const jh = join ? await prisma.halqa.findUnique({ where: { id: join }, select: { gender: true } }) : null;
+    const side = jh ? (jh.gender === "f" ? "f" : "m") : q.get("side") === "f" ? "f" : "m";
+    const halaqat = await prisma.halqa.findMany({ where: side === "f" ? { gender: "f" } : { gender: { not: "f" } }, select: { id: true, name: true, branch: true }, orderBy: { name: "asc" } });
     const x: any = s;
-    return { center: s.center, fields: s.fields.filter((f) => f.on), halaqat, supportName: x.supportName || "", supportPhone: x.supportPhone || "" };
+    return { center: s.center, fields: s.fields.filter((f) => f.on), halaqat, side, supportName: x.supportName || "", supportPhone: x.supportPhone || "" };
   });
 }
 
@@ -32,10 +36,11 @@ export async function POST(req: Request) {
       if (v) info[f.k] = v;
     }
     let reqHalqaId: string | null = str(b.reqHalqa, 40) || null;
-    if (reqHalqaId && !(await prisma.halqa.findUnique({ where: { id: reqHalqaId } }))) reqHalqaId = null;
+    const rh = reqHalqaId ? await prisma.halqa.findUnique({ where: { id: reqHalqaId } }) : null; if (!rh) reqHalqaId = null;
+    const side = rh ? (rh.gender === "f" ? "f" : "m") : b.side === "f" ? "f" : "m";
     const pending = await prisma.user.count({ where: { status: "pending" } });
     if (pending > 200) fail("طلبات التسجيل كثيرة حاليًا، تواصل مع الإدارة");
-    await prisma.user.create({ data: { role: "student", status: "pending", name, username, passwordHash: await bcrypt.hash(password, 10), info, reqHalqaId } });
+    await prisma.user.create({ data: { role: "student", status: "pending", name, username, passwordHash: await bcrypt.hash(password, 10), info, reqHalqaId, side } });
     return { ok: true };
   });
 }

@@ -21,6 +21,8 @@ model User {
   info         Json      @default("{}")
   halqaId      String?
   reqHalqaId   String?
+  /// القسم: m البنين، f البنات (للمعلمين والمشرفين والطلاب قبل الاعتماد)
+  side         String   @default("m")
   canPlan      Boolean   @default(false)
   canAuto      Boolean   @default(false)
   autoAllowed  Boolean   @default(false)
@@ -163,6 +165,7 @@ model AuditLog {
 model Ann {
   id      String   @id @default(cuid())
   halqaId String?
+  side    String   @default("m")
   title   String
   body    String   @default("")
   byId    String?
@@ -277,6 +280,7 @@ model Behav {
 model Poll {
   id       String   @id @default(cuid())
   halqaId  String?
+  side     String   @default("m")
   question String
   options  Json     @default("[]")
   multi    Boolean  @default(false)
@@ -349,6 +353,7 @@ model Reward {
   target    Int?
   halqaId   String?
   winnerId  String?
+  side      String    @default("m")
   closed    Boolean   @default(false)
   active    Boolean   @default(true)
   at        DateTime  @default(now())

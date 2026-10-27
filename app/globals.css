@@ -789,3 +789,13 @@ html[data-fem] .stat{border-radius:12px}
 :root[data-theme="dark"] .g-opt.f b,:root[data-theme="dark"] .g-opt.f .flower{color:#eba3c3}
 @media (max-width:480px){.g-pick{grid-template-columns:1fr}}
 .g-opt svg{width:28px;height:28px;color:var(--accent)}
+/* ===== التنقل بين قسم البنين وقسم البنات (للمدير العام) ===== */
+.sec-sw{display:inline-flex;background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.sec-sw button{display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:.88rem;padding:5px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.sec-sw button:hover{color:var(--ink)}
+.sec-sw button.on{background:#1c6a5a;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.sec-sw button.f.on{background:#a23c6b}
+.sec-sw .flower{width:.95em;height:.95em}
+body.sec-switching main.wrap{opacity:.45;transition:opacity .15s;pointer-events:none}
+@media (max-width:640px){.top-in.has-sec{height:auto;padding-block:8px}.brand-row.has-sec{flex-wrap:wrap;row-gap:8px}.brand-row.has-sec .brand{flex:1 1 0;min-width:0}.sec-sw{order:3;width:100%;justify-content:stretch}.sec-sw button{flex:1;justify-content:center}}
+@media (max-width:640px){:root:has(.top-in.has-sec){--hdr:104px}}

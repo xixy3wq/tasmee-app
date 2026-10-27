@@ -58,7 +58,7 @@ function normPhone(p) {
   return d;
 }
 const waLink = (phone, text) => { const p = normPhone(phone); return p ? 'https://wa.me/' + p + '?text=' + encodeURIComponent(text) : ''; };
-function toast(msg) { const t = $('#toast'); t.textContent = document.documentElement.hasAttribute('data-fem') ? femUiTxt(msg) : msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, Math.max(3500, String(msg).length * 75)); }
+function toast(msg) { const t = $('#toast'); t.textContent = FEM_MODE === 'ui' ? femUiTxt(msg) : FEM_MODE === 'noun' ? femMsg(msg) : msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, Math.max(3500, String(msg).length * 75)); }
 
 /* ---------------- server ---------------- */
 const COLS = ['users', 'halaqat', 'sessions', 'recs', 'joins', 'settings', 'anns', 'wirds', 'msgs', 'dms', 'behav', 'polls', 'rewards', 'orders', 'ptx'];
@@ -78,7 +78,7 @@ async function load() {
   loading = (async () => {
     try {
       if (outbox().length && navigator.onLine) await flushOutbox();
-      const r0 = await fetch('/api/data', { cache: 'no-store' });
+      const r0 = await fetch('/api/data?side=' + SEC, { cache: 'no-store' });
       if (!r0.ok && r0.status !== 200) throw new Error('net');
       const d = await r0.json();
       // نسخة جديدة من الموقع انرفعت: حدّث الصفحة مرة وحدة تلقائيًا — بس مو وهو داخل الحصة أو يسجّل تسميع أو يكتب، نأجلها لين يطلع
@@ -87,7 +87,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm';
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm'; S.isSuper = !!d.isSuper;
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -96,7 +96,7 @@ async function load() {
 }
 async function act(t, payload, okMsg) {
   try {
-    const r = await api('/api/act', { t, ...(payload || {}) });
+    const r = await api('/api/act', { t, _side: SEC, ...(payload || {}) });
     if (okMsg) { const m = typeof okMsg === 'function' ? okMsg(r || {}) : okMsg; if (m) toast(m); }
     await load();
     return r || {};
@@ -116,26 +116,26 @@ const fillTpl = (t, v) => { const o = t.replace(/\{الطالب\}/g, v.student |
 /* ---- الحلقات النسائية: صيغة المؤنث ---- */
 const FEM_L = '\u0621-\u0652';
 const FEM_MSG = [['ابنكم', 'ابنتكم'], ['ولدكم', 'ابنتكم'], ['لابنكم', 'لابنتكم'], ['ابنك', 'ابنتك'], ['ولدك', 'ابنتك'], ['بارك الله فيه', 'بارك الله فيها'], ['زاده الله', 'زادها الله'], ['وزاده', 'وزادها'], ['زاده', 'زادها'], ['حفظه الله', 'حفظها الله'], ['وفقه الله', 'وفقها الله'], ['أعانه الله', 'أعانها الله'], ['المطلوب منه', 'المطلوب منها'], ['نسأل الله له', 'نسأل الله لها'],
-  ['طالب جديد', 'طالبة جديدة'], ['الطالب', 'الطالبة'], ['للطالب', 'للطالبة'], ['والطالب', 'والطالبة'], ['طالب', 'طالبة'], ['الطلاب', 'الطالبات'], ['للطلاب', 'للطالبات'], ['والطلاب', 'والطالبات'], ['طلاب', 'طالبات'], ['طلابي', 'طالباتي'], ['طلابك', 'طالباتك'],
-  ['المعلم', 'المعلمة'], ['للمعلم', 'للمعلمة'], ['والمعلم', 'والمعلمة'], ['معلم', 'معلمة'], ['معلمك', 'معلمتك'], ['لمعلمك', 'لمعلمتك'], ['معلمه', 'معلمتها'],
+  ['طالب جديد', 'طالبة جديدة'], ['معلم جديد', 'معلمة جديدة'], ['المشرفون الإداريون', 'المشرفات'], ['مشرف إداري', 'مشرفة'], ['مشرفين', 'مشرفات'], ['المشرفين', 'المشرفات'], ['معلم احتياط', 'معلمة احتياط'], ['طلاب جدد', 'طالبات جدد'], ['الطالب', 'الطالبة'], ['للطالب', 'للطالبة'], ['والطالب', 'والطالبة'], ['طالب', 'طالبة'], ['الطلاب', 'الطالبات'], ['للطلاب', 'للطالبات'], ['والطلاب', 'والطالبات'], ['طلاب', 'طالبات'], ['طلابي', 'طالباتي'], ['طلابك', 'طالباتك'],
+  ['المعلمون', 'المعلمات'], ['المعلمين', 'المعلمات'], ['للمعلمين', 'للمعلمات'], ['معلمين', 'معلمات'], ['المعلم', 'المعلمة'], ['للمعلم', 'للمعلمة'], ['والمعلم', 'والمعلمة'], ['معلم', 'معلمة'], ['معلمك', 'معلمتك'], ['لمعلمك', 'لمعلمتك'], ['معلمه', 'معلمتها'],
   ['غاب', 'غابت'], ['حضر', 'حضرت'], ['انصرف', 'انصرفت'], ['حاضر', 'حاضرة'], ['غائب', 'غائبة'], ['متأخر', 'متأخرة'], ['مستأذن', 'مستأذنة'], ['منقطع', 'منقطعة'], ['متميز', 'متميزة'], ['متميّز', 'متميّزة'], ['مبدع', 'مبدعة'], ['مجتهد', 'مجتهدة'], ['متفوق', 'متفوقة'], ['بطل', 'بطلة'], ['سمّعوا', 'سمّعن'], ['حضروا', 'حضرن'], ['غابوا', 'غبن'], ['تحضّروا', 'تحضّرن'], ['محفوظه', 'محفوظها'], ['لم يُحضَّر', 'لم تُحضَّر'], ['تسميعه', 'تسميعها'], ['حفظه', 'حفظها'], ['خطته', 'خطتها'], ['رصيده', 'رصيدها'], ['ولي أمره', 'ولي أمرها'], ['عنه', 'عنها'], ['بطاقته', 'بطاقتها']];
 const FEM_UI = [...FEM_MSG, ['أحسنت', 'أحسنتِ'], ['أنت', 'أنتِ'], ['احفظ', 'احفظي'], ['راجع', 'راجعي'], ['اكتب', 'اكتبي'], ['اختر', 'اختاري'], ['ابدأ', 'ابدئي'], ['سجّل', 'سجّلي'], ['أرسل', 'أرسلي'], ['ادخل', 'ادخلي'], ['انضم', 'انضمي'], ['اضغط', 'اضغطي'], ['جرّب', 'جرّبي'], ['شوف', 'شوفي'], ['تقدر', 'تقدرين'], ['تبي', 'تبين'], ['تحتاج', 'تحتاجين'], ['مستعد', 'مستعدة'], ['جاهز', 'جاهزة'], ['سمّع', 'سمّعي'], ['اسأل', 'اسألي'], ['تابع', 'تابعي'], ['حمّل', 'حمّلي'], ['افتح', 'افتحي'], ['ارجع', 'ارجعي'], ['خلّك', 'خلّيك'], ['تعال', 'تعالي'], ['ما حدد لك المعلم', 'ما حددت لكِ المعلمة'], ['جائزة له', 'جائزة لها'], ['ما راجع', 'ما راجعت'], ['عندك', 'عندكِ'], ['عليك', 'عليكِ'], ['لك', 'لكِ'], ['معك', 'معكِ']];
 const femRx = pairs => { const m = Object.fromEntries(pairs); const rx = new RegExp('(^|[^' + FEM_L + '])(' + pairs.map(p => p[0]).sort((a, b) => b.length - a.length).join('|') + ')(?![' + FEM_L + '])', 'g'); return s => String(s).replace(rx, (_, p, w) => p + (m[w] || w)); };
 const femMsg = femRx(FEM_MSG), femUiTxt = femRx(FEM_UI);
 const femSt = st => !!st && (S.halaqat[st.halqaId] || {}).gender === 'f';
-const isFemH = hid => (S.halaqat[hid] || {}).gender === 'f';
-function femMe() {
-  const u = me(); if (!u || LANG === 'en' && u.role === 'student') return false;
-  if (u.role === 'student') return femSt(u);
-  const hs = L('halaqat').filter(h => u.role === 'teacher' ? h.teacherId === u.id && !h.sub : true);
-  if (u.role === 'admin' && !(u.perms || []).some(x => /^(h|b):/.test(x))) return false;
-  return hs.length > 0 && hs.every(h => h.gender === 'f');
-}
+/* الأقسام: البنين والبنات منفصلين. المدير العام يتنقل بينهم، والباقي قسمهم بس */
+let SEC = 'm'; try { SEC = localStorage.getItem('irtaq-sec') === 'f' ? 'f' : 'm'; } catch {}
+const inGirls = () => S.side === 'f';
+/** منسوبات قسم البنات (طالبة، معلمة، مشرفة): الكلام موجّه لها بصيغة المؤنث */
+function femMe() { const u = me(); if (!u || S.isSuper || (LANG === 'en' && u.role === 'student')) return false; return inGirls(); }
+/** ui: صيغة المؤنث للمستخدمة نفسها، noun: المدير العام في قسم البنات (أسماء وأفعال عن الطالبات بس) */
+let FEM_MODE = '';
 function femify(root) {
-  if (!root || !document.documentElement.hasAttribute('data-fem')) return;
+  if (!root || !FEM_MODE) return;
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => { const p = n.parentElement; return !p || p.closest('textarea,script,style,[data-nofem],.verse,.ann-body,.ai-m,.tpl-prev,.wa-pv') || !/[\u0621-\u064A]/.test(n.nodeValue) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; } });
   const ns = []; while (w.nextNode()) ns.push(w.currentNode);
-  for (const n of ns) { const v = femUiTxt(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; }
+  const fn = FEM_MODE === 'ui' ? femUiTxt : femMsg;
+  for (const n of ns) { const v = fn(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; }
 }
 function gradeOf(m, al) {
   const g = SET().grade; const e = (+m || 0) + Math.floor((+al || 0) / (+g.alertsPer || 3));
@@ -340,7 +340,9 @@ function render() {
   const a = document.activeElement; const fid = app.contains(a) ? a.id : null; let sel = null;
   try { if (fid && a.selectionStart != null) sel = [a.selectionStart, a.selectionEnd]; } catch {}
   const sy = window.scrollY;
-  const fem = !!READY && femMe(); if (fem !== document.documentElement.hasAttribute('data-fem')) { document.documentElement.toggleAttribute('data-fem', fem); const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.setAttribute('content', fem ? '#a23c6b' : '#1c6a5a'); }
+  const regF = !me() && (ST.reg || isRegRoute()) && (ST.regInfo || {}).side === 'f';
+  FEM_MODE = READY && me() ? (inGirls() ? (femMe() ? 'ui' : 'noun') : '') : regF ? 'ui' : '';
+  const fem = !!FEM_MODE; if (fem !== document.documentElement.hasAttribute('data-fem')) { document.documentElement.toggleAttribute('data-fem', fem); const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.setAttribute('content', fem ? '#a23c6b' : '#1c6a5a'); }
   app.innerHTML = view(); applyZoom(); if (fem) femify(app);
   for (const id in saved) { const el = document.getElementById(id); if (!el || !app.contains(el)) continue; el.dataset.dirty = 1; if ('c' in saved[id]) el.checked = saved[id].c; else el.value = saved[id].v; }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); try { if (sel) el.setSelectionRange(sel[0], sel[1]); } catch {} } }
@@ -356,7 +358,8 @@ const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="4" widt
 
 /* ---------------- views ---------------- */
 function joinHid() { const p = new URLSearchParams(location.search); const h = location.hash.replace('#', ''); return p.get('join') || (h.startsWith('join-') ? h.slice(5) : ''); }
-function isRegRoute() { const h = location.hash.replace('#', ''); return h === 'register' || !!joinHid() || location.pathname === '/register'; }
+function isRegRoute() { const h = location.hash.replace('#', ''); return h === 'register' || h === 'register-f' || !!joinHid() || location.pathname === '/register'; }
+const regSideQ = () => { const j = joinHid(); return j ? '?join=' + encodeURIComponent(j) : location.hash === '#register-f' || new URLSearchParams(location.search).get('side') === 'f' ? '?side=f' : ''; };
 function view() {
   if (!READY) return `<div class="center-box"><div class="row"><div class="spin"></div><span class="muted">جاري التحميل…</span></div></div>`;
   if (ST.regDone) return regDoneV();
@@ -446,7 +449,7 @@ function regV(hid) {
 let regLoading = false;
 async function loadRegInfo() {
   if (regLoading) return; regLoading = true;
-  try { ST.regInfo = await api('/api/register'); } catch (e) { ST.regInfo = { center: 'حلقات ارتق', fields: [], halaqat: [] }; toast(e.message); }
+  try { ST.regInfo = await api('/api/register' + regSideQ()); } catch (e) { ST.regInfo = { center: 'حلقات ارتق', fields: [], halaqat: [] }; toast(e.message); }
   regLoading = false; scheduleRender();
 }
 function regDoneV() {
@@ -473,9 +476,10 @@ function shellV(u) {
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
   if (u.role === 'student' && LANG !== 'en' && !ST.tourShown && !tourSeen(u)) { ST.tourShown = true; setTimeout(() => { if ($('#modal').hidden) showTour(0); }, 600); }
-  return `${banner()}<header class="top"><div class="top-in"><div class="brand-row">
+  return `${banner()}<header class="top"><div class="top-in ${S.isSuper ? 'has-sec' : ''}"><div class="brand-row ${S.isSuper ? 'has-sec' : ''}">
       <button class="hb only-n" data-act="drawer" aria-label="القائمة"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       <div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
+      ${S.isSuper ? `<div class="sec-sw" role="tablist" aria-label="القسم"><button role="tab" class="${inGirls() ? '' : 'on'}" data-act="sec" data-v="m" aria-selected="${!inGirls()}">البنين</button><button role="tab" class="f ${inGirls() ? 'on' : ''}" data-act="sec" data-v="f" aria-selected="${inGirls()}">${FLOWER} البنات</button></div>` : ''}
       <div class="who">${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : ''}<span class="small hide-n">${esc(u.name)}</span><span class="chip acc hide-n">${ROLE[u.role]}</span>
         <button class="hb" data-act="theme" aria-label="تبديل المظهر" title="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>'}</button>
         <button class="hb" data-act="account" aria-label="حسابي" title="حسابي">${ICO.settings}</button>
@@ -556,7 +560,7 @@ function sessionV(u) {
   const dd = new Date(s.date + 'T00:00');
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="session-hero"><div class="datebox"><b>${dd.getDate()}</b><span>${DAYN[dd.getDay()]}</span></div>
-    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${isFemH(s.halqaId) && !femMe() ? `<span class="chip fem">${FLOWER} بنات</span>` : ''}${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
+    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
     <div class="row">${link && !s.cancelled ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${S.videoOn ? ICO.live + ' ادخل الغرفة' : 'افتح الحصة'}</a>${S.videoOn ? '' : `<button class="btn" data-act="copy" data-text="${esc(link)}">نسخ الرابط</button>`}` : (s.cancelled ? '' : `<span class="chip warn">ما فيه رابط</span>`)}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>`;
   if (u.role === 'teacher' && s.date === today() && !s.teacherAt && !(ST.opened || {})[s.id]) { ST.opened = { ...(ST.opened || {}), [s.id]: 1 }; act('lesson.open', { id: s.id }); }
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}. ما تنحسب في الحضور ولا تظهر للطلاب كحصة قادمة.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
@@ -674,14 +678,11 @@ function teachersV() {
 
 /* ---- admin: halaqat ---- */
 function halaqatV() {
-  const all = myHalaqat(me()).sort((a, b) => ((a.branch || '') + a.name).localeCompare((b.branch || '') + b.name, 'ar'));
-  const nF = all.filter(h => h.gender === 'f').length; const hg = nF && nF < all.length ? ST.hg || '' : '';
-  const hs = all.filter(h => !hg || (hg === 'f' ? h.gender === 'f' : h.gender !== 'f'));
+  const hs = myHalaqat(me()).sort((a, b) => ((a.branch || '') + a.name).localeCompare((b.branch || '') + b.name, 'ar'));
   return `<div class="sec-head"><h1>الحلقات</h1><div class="row">${can(me(), 'students') ? '<button class="btn" data-act="assign">توزيع الطلاب</button>' : ''}<button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div></div>
-  ${nF && nF < all.length ? `<div><div class="seg">${[['', 'الكل ' + all.length], ['m', 'بنين ' + (all.length - nF)], ['f', 'بنات ' + nF]].map(([k, l]) => `<button class="${hg === k ? 'on' : ''}" data-act="hg-filter" data-v="${k}">${l}</button>`).join('')}</div></div>` : ''}
-  ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; const f = h.gender === 'f'; return `<section class="card ${f ? 'halqa-f' : ''}" style="display:grid;gap:10px">
-    <div class="sec-head"><div><h2>${esc(h.name)}</h2>${f ? `<span class="chip fem">${FLOWER} بنات</span> ` : ''}${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
-    <dl class="kv"><dt>${f ? 'المعلمة' : 'المعلم'}</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
+  ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; return `<section class="card" style="display:grid;gap:10px">
+    <div class="sec-head"><div><h2>${esc(h.name)}</h2>${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
+    <dl class="kv"><dt>المعلم</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
     <dt>الجدول</dt><dd>${h.auto ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
     <div class="row"><button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل</button><button class="btn sm" data-act="handover" data-h="${h.id}">ملخص التسليم</button><button class="btn ghost sm" data-act="copy" data-text="https://${location.host}/api/ics/${h.id}.ics">رابط التقويم</button></div></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
 }
@@ -992,11 +993,10 @@ function teachersReport(days) {
 
 /* ---- غرفة المعلمين ---- */
 function roomV(u) {
-  const two = S.side === 'all' && L('halaqat').some(h => h.gender === 'f'); const rs = two ? (ST.roomSide || 'm') : S.side === 'f' ? 'f' : 'm';
-  const ms = L('msgs').filter(m => !two || (m.side || 'm') === rs).sort((a, b) => a.at - b.at);
+  const rs = inGirls() ? 'f' : 'm';
+  const ms = L('msgs').sort((a, b) => a.at - b.at);
   try { localStorage.setItem('irtaq-room-' + u.id, String(Date.now())); } catch {}
-  return `<h1>${rs === 'f' ? 'غرفة المعلمات' : 'غرفة المعلمين'}</h1><div class="small muted">${rs === 'f' ? 'للمعلمات والمدير العام فقط، ما يشوفها غيرهم.' : 'للمعلمين والإدارة فقط، الطلاب ما يشوفونها.'}</div>
-  ${two ? `<div><div class="seg">${[['m', 'المعلمين'], ['f', 'المعلمات']].map(([k, l]) => `<button class="${rs === k ? 'on' : ''}" data-act="room-side" data-v="${k}">${k === 'f' ? FLOWER + ' ' : ''}${l}</button>`).join('')}</div></div>` : ''}
+  return `<h1>${rs === 'f' ? 'غرفة المعلمات' : 'غرفة المعلمين'}</h1><div class="small muted">${rs === 'f' ? 'لمعلمات وإدارة قسم البنات فقط.' : 'للمعلمين والإدارة فقط، الطلاب ما يشوفونها.'}</div>
   <section class="card room">${ms.length ? ms.map(m => `<div class="msg ${m.by === u.id ? 'mine' : ''}"><div class="small muted">${esc(m.byName)} · ${fmtDate(isoDate(new Date(m.at)))} ${clock(m.at)}${m.by === u.id || u.role === 'admin' ? ` <button class="linkbtn" data-act="msg-del" data-id="${m.id}">حذف</button>` : ''}</div><div class="ann-body">${esc(m.text)}</div></div>`).join('') : '<div class="empty small">ما فيه رسائل بعد.</div>'}</section>
   <form class="card" data-form="msg" style="gap:8px"><textarea id="rm-text" name="text" rows="2" maxlength="1000" placeholder="اكتب رسالة…" required></textarea><div><button class="btn pri" type="submit">إرسال</button></div></form>`;
 }
@@ -1067,7 +1067,7 @@ function helpV(u) {
   const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «سجّل حضوري» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
     + sub('النقاط والمتجر', ['النقاط تنحسب لحالها من الحضور والتسميع والحفظ، وتقدر تضيف أو تخصم يدويًا من ⭐ في بطاقة الطالب أو من «المتجر والنقاط ← النقاط» لأكثر من طالب.', 'الطالب ما يفتح جواله في الحلقة، فتقدر تطلب الجائزة عنه من ⭐ في بطاقته.', 'تسليم الجائزة: «المتجر والنقاط ← الطلبات»، أدخل الكود اللي عند الطالب واضغط تسليم.']);
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الحين»، أو الصق رابط قوقل ماب، واختر النطاق المسموح.', 'بعدها ما يقدر المعلم يسجل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مين وصل ومتى وكم طالب حاضر.', 'تتنقل بين المجمعات من الشريط اللي فوق الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، ويشوف مجمعه بس.'])
-    + sub('حلقات البنات', ['من «الحلقات» اضغط «حلقة جديدة» واختر «حلقة بنات» (للمدير العام بس).', 'حلقة البنات يشوفها المدير العام ومعلمتها بس. المشرفين ما يشوفونها ولا طالباتها إلا إذا اخترتها لمشرف بالاسم من صلاحياته، ومعلمة الحلقة ما تشوف إلا حلقتها.', 'المعلمات لهم «غرفة المعلمات» منفصلة عن غرفة المعلمين، والمدير العام يتنقل بينهم.', 'الطالبات والمعلمة يشوفون الموقع بتصميم وردي هادئ، والكلام بصيغة المؤنث (أحسنتِ، حاضرة، المعلمة).', 'رسائل أولياء الأمور التلقائية والجاهزة تصير «ابنتكم» و«بارك الله فيها»، والمساعد الذكي يخاطب الطالبة بصيغة المؤنث.'])
+    + (S.isSuper ? sub('قسم البنات', ['فوق الصفحة زر «البنين | البنات» تتنقل فيه بين القسمين، وكل قسم منفصل تمامًا: حلقاته وطلابه ومعلميه وطلبات التسجيل والحصص والتقارير والمتجر والإعلانات وغرفة المعلمين.', 'لما تكون في قسم البنات: أي حلقة أو معلمة أو مشرفة أو جائزة أو إعلان تضيفه يصير للبنات.', 'إدارة قسم البنات: أضف مشرفة من «المعلمون» وأنت في قسم البنات، وتشوف قسم البنات بس. ومشرفين البنين ما يشوفون شي من البنات، والعكس.', 'رابط التسجيل العام وأنت في قسم البنات يكون خاص بالبنات، وطلباتهم توصل لقسمهم.', 'الطالبات والمعلمات يشوفون الموقع بتصميم وردي هادئ وكلام بصيغة المؤنث، ورسائل أولياء الأمور تصير «ابنتكم» و«بارك الله فيها».']) : '')
     + sub('المتجر والجوائز والميزانية', ['«المتجر والنقاط ← الجوائز»: أضف وعدّل واحذف براحتك. الأنواع: جائزة عادية، عرض لفترة محدودة، جائزة جماعية للحلقة كاملة توصلها بمجموع نقاطهم، ومزاد شهري.', 'حط التكلفة الفعلية لكل جائزة، و«الميزانية» تعرض المصروف هالشهر.', 'قواعد النقاط والخصم: الإعدادات ← التسميع والتقدير ← النقاط التلقائية.', 'التقرير الشهري لولي الأمر: رسائل الواتساب ← التقرير الشهري، ترسله الحين أو يطلع لحاله أول كل شهر.']) : '';
   return `<h1>الدليل</h1>${adminOn}${admin}${onsite}${teacher}${cal}${install}${notif}`;
 }
@@ -1075,7 +1075,7 @@ function helpV(u) {
 /* ---- مودالات المرحلة 3 ---- */
 function adminModal(a, preset) {
   const perms = a ? a.perms || [] : (preset || PRESETS['مشرف تعليمي']);
-  openModal(`${dlgHead(a ? 'تعديل مشرف إداري' : 'مشرف إداري جديد')}<form data-form="admin" data-id="${a ? a.id : ''}">
+  openModal(`${dlgHead(a ? 'تعديل مشرف إداري' : inGirls() ? 'مشرفة جديدة · قسم البنات' : 'مشرف إداري جديد')}<form data-form="admin" data-id="${a ? a.id : ''}">${!a && inGirls() ? '<div class="note small">تتبع قسم البنات وما تشوف شي من البنين. صلاحية «الإعدادات» تعدّل إعدادات الموقع للقسمين، فالأفضل ما تعطيها.</div>' : ''}
     <label class="fld"><span>الاسم</span><input name="name" value="${esc(a ? a.name : '')}" required></label>
     <div class="fgrid"><label class="fld"><span>اسم المستخدم</span><input name="username" dir="ltr" autocapitalize="none" value="${esc(a ? a.username : '')}" required pattern="[A-Za-z0-9_.]{3,30}"></label>
     <label class="fld"><span>${a ? 'كلمة مرور جديدة (اتركها فاضية)' : 'كلمة المرور'}</span><input name="password" type="password" ${a ? '' : 'required minlength="6"'} autocomplete="new-password"></label></div>
@@ -1083,7 +1083,7 @@ function adminModal(a, preset) {
     <div class="fld"><span>الصلاحيات</span><div class="days">${Object.entries(PERM_LABEL).map(([k, l]) => `<label><input type="checkbox" name="perm" value="${k}" ${perms.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div><span class="small muted" style="font-weight:400">الحصص ولوحة المدير متاحة للكل. إضافة المدراء والنسخ الاحتياطي للمدير الكامل فقط.</span></div>
     ${(() => { const sc = perms.filter(p => /^(h|b):/.test(p)); const on = sc.length > 0; const hs = L('halaqat').sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ar'));
       return `<div class="fld"><span>يتابع</span><div class="row"><label class="check"><input type="radio" name="scope" value="all" data-change="scope-mode" ${on ? '' : 'checked'}> كل الحلقات</label><label class="check"><input type="radio" name="scope" value="some" data-change="scope-mode" ${on ? 'checked' : ''}> حلقات أو فروع محددة</label></div>
-      <div id="scope-box" class="scope-box" ${on ? '' : 'hidden'}>${branches().length ? `<div class="small muted">الفروع</div><div class="days">${branches().map(b => `<label><input type="checkbox" name="perm" value="b:${esc(b)}" ${sc.includes('b:' + b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')}</div>` : ''}<div class="small muted">الحلقات</div><div class="days">${hs.map(h => `<label><input type="checkbox" name="perm" value="h:${h.id}" ${sc.includes('h:' + h.id) ? 'checked' : ''}> ${h.gender === 'f' ? FLOWER + ' ' : ''}${esc(h.name)}</label>`).join('')}</div>${hs.some(h => h.gender === 'f') ? '<div class="small muted">حلقات البنات 🌸 ما يشوفها أي مشرف إلا إذا اخترتها له هنا بالاسم. لمشرفة البنات: اختر حلقات البنات بس.</div>' : ''}</div></div>`; })()}
+      <div id="scope-box" class="scope-box" ${on ? '' : 'hidden'}>${branches().length ? `<div class="small muted">الفروع</div><div class="days">${branches().map(b => `<label><input type="checkbox" name="perm" value="b:${esc(b)}" ${sc.includes('b:' + b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')}</div>` : ''}<div class="small muted">الحلقات</div><div class="days">${hs.map(h => `<label><input type="checkbox" name="perm" value="h:${h.id}" ${sc.includes('h:' + h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('')}</div></div></div>`; })()}
     ${a ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${a.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${a.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${a ? `<button type="button" class="btn danger" data-act="del-user" data-id="${a.id}">حذف</button>` : ''}</div></form>`);
 }
@@ -1495,15 +1495,13 @@ function teacherModal(t) {
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${t ? `<button type="button" class="btn danger" data-act="del-user" data-id="${t.id}">حذف المعلم</button>` : ''}</div>
   </form>`);
 }
-function halqaModal(h, g0) {
+function halqaModal(h) {
   const ts = L('users').filter(u => u.role === 'teacher' && u.status !== 'disabled'); const days = h && h.days && h.days.length ? h.days : SET().days;
-  const g = h ? (h.gender === 'f' ? 'f' : 'm') : (g0 === 'f' ? 'f' : 'm');
-  openModal(`${dlgHead(h ? 'تعديل الحلقة' : g === 'f' ? `${FLOWER} حلقة بنات جديدة` : 'حلقة بنين جديدة')}
+  const g = inGirls() ? 'f' : 'm';
+  openModal(`${dlgHead(h ? 'تعديل الحلقة' : g === 'f' ? 'حلقة جديدة · قسم البنات' : 'حلقة جديدة')}
   <form data-form="halqa" data-id="${h ? h.id : ''}">
-    <input type="hidden" name="gender" value="${g}">
-    ${isFullAdmin(me()) ? `<div class="fld"><span>الحلقة</span><div class="seg hm-g"><button type="button" class="${g === 'm' ? 'on' : ''}" data-act="hm-g" data-v="m">بنين</button><button type="button" class="${g === 'f' ? 'on' : ''}" data-act="hm-g" data-v="f">${FLOWER} بنات</button></div><span class="small muted">حلقة البنات: يشوفها المدير العام ومعلمتها بس، بتصميم خاص وصيغة مؤنث في الموقع والرسائل (ابنتكم، أحسنتِ، حاضرة).</span></div>` : ''}
     <label class="fld"><span>اسم الحلقة</span><input name="name" value="${esc(h ? h.name : '')}" required placeholder="${g === 'f' ? 'مثال: حلقة خديجة بنت خويلد' : 'مثال: حلقة أبي بن كعب'}"></label>
-    <label class="fld"><span>المعلم أو المعلمة</span><select name="teacherId"><option value="">بدون معلم</option>${ts.map(t => `<option value="${t.id}" ${h && h.teacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>المعلم</span><select name="teacherId"><option value="">بدون معلم</option>${ts.map(t => `<option value="${t.id}" ${h && h.teacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
     <div class="fld"><span>أيام الدوام</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
     <label class="fld"><span>الوقت المعتاد للحصة</span><input type="time" name="time" value="${esc(h ? h.time : '')}"></label>
     <div class="fgrid"><label class="fld"><span>نوع الحلقة</span><select name="mode">${Object.entries(MODE_L).map(([k, l]) => `<option value="${k}" ${(h ? h.mode || 'onsite' : 'onsite') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label class="fld"><span>مكانها في الجامع (اختياري)</span><input name="place" value="${esc(h ? h.place || '' : '')}" placeholder="مثال: القبو"></label></div>
@@ -1512,7 +1510,6 @@ function halqaModal(h, g0) {
     <label class="check"><input type="checkbox" name="auto" ${!h || h.auto ? 'checked' : ''}> جدول ثابت: تنشأ الحصص لحالها حسب أيام الدوام والوقت</label>
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${h ? `<button type="button" class="btn danger" data-act="del-halqa" data-id="${h.id}">حذف الحلقة</button>` : ''}</div>
   </form>`);
-  const dlg = $('#modal .dlg'); if (dlg && g === 'f') dlg.classList.add('dlg-f');
 }
 function planModal(st) {
   const p = planOf(st); const a = p.auto; const dir = a.dir === 'fwd' ? 'fwd' : 'bwd'; const O = ORD[dir];
@@ -1558,7 +1555,7 @@ function planModal(st) {
 function pwModal() {
   openModal(`${dlgHead('تغيير كلمة المرور')}<form data-form="mypw"><label class="fld"><span>كلمة المرور الحالية</span><input name="old" type="password" required autocomplete="current-password"></label><label class="fld"><span>كلمة المرور الجديدة</span><input name="pw" type="password" required minlength="4" autocomplete="new-password"></label><div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button></div></form>`);
 }
-const regLink = hid => location.origin + '/' + (hid ? '?join=' + hid : '#register');
+const regLink = hid => location.origin + '/' + (hid ? '?join=' + hid : inGirls() ? '#register-f' : '#register');
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast('تم النسخ'); }
   catch { openModal(`${dlgHead('انسخ النص')}<input id="cp-x" dir="ltr" value="${esc(text)}" readonly><div class="small muted">حدّد النص وانسخه.</div>`); setTimeout(() => { const i = $('#cp-x'); if (i) { i.focus(); i.select(); } }, 40); }
@@ -1702,11 +1699,8 @@ const ACT = {
   'del-user': el => confirmBox('تحذف هذا الحساب نهائيًا مع سجله؟', 'حذف', async () => { if (await act('user.delete', { id: el.dataset.id }, 'حُذف الحساب')) { if (ST.view === 'student') go('students'); } }),
   'add-teacher': () => teacherModal(null),
   'edit-teacher': el => teacherModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
-  'add-halqa': () => isFullAdmin(me()) ? openModal(`${dlgHead('حلقة جديدة')}<div class="g-pick"><button class="g-opt" data-act="add-halqa-g" data-v="m">${ICO.halaqat || ''}<b>حلقة بنين</b><span>تظهر للمشرفين حسب صلاحياتهم</span></button><button class="g-opt f" data-act="add-halqa-g" data-v="f">${FLOWER}<b>حلقة بنات</b><span>تصميم خاص وصيغة مؤنث، ويشوفها المدير العام ومعلمتها بس</span></button></div>`) : halqaModal(null),
-  'add-halqa-g': el => halqaModal(null, el.dataset.v),
-  'room-side': el => { ST.roomSide = el.dataset.v; render(); },
-  'hg-filter': el => { ST.hg = el.dataset.v; render(); },
-  'hm-g': el => { const f = el.closest('form'); f.querySelectorAll('.hm-g button').forEach(b => b.classList.toggle('on', b === el)); f.querySelector('[name=gender]').value = el.dataset.v; const dlg = el.closest('.dlg'); if (dlg) dlg.classList.toggle('dlg-f', el.dataset.v === 'f'); },
+  'add-halqa': () => halqaModal(null),
+  'sec': async el => { const v = el.dataset.v === 'f' ? 'f' : 'm'; if (v === S.side) return; SEC = v; try { localStorage.setItem('irtaq-sec', v); } catch {} Object.assign(ST, { sid: null, uid: null, halqa: '', branch: '', q: '', logs: null, fs: null }); if (!['dash', 'sessions', 'students', 'halaqat', 'teachers', 'reports', 'store', 'anns', 'room', 'req', 'inbox', 'wa', 'complexes', 'settings', 'logs', 'help'].includes(ST.view)) ST.view = 'dash'; document.body.classList.add('sec-switching'); await load(); document.body.classList.remove('sec-switching'); window.scrollTo(0, 0); toast(v === 'f' ? 'انتقلت لقسم البنات' : 'انتقلت لقسم البنين'); },
   'edit-halqa': el => halqaModal({ ...S.halaqat[el.dataset.id], id: el.dataset.id }),
   'del-halqa': el => confirmBox('تحذف الحلقة؟', 'حذف', () => act('halqa.delete', { id: el.dataset.id }, 'حُذفت الحلقة')),
   'edit-plan': el => planModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
@@ -1814,7 +1808,7 @@ const FORMS = {
   async register(f, d) {
     const info = collectInfo(d, ST.regInfo?.fields || []); if (info._err) return toast(info._err);
     try {
-      await api('/api/register', { name: d.get('name'), username: d.get('username'), password: d.get('password'), info, reqHalqa: f.dataset.hid || d.get('reqHalqa') || '' });
+      await api('/api/register', { name: d.get('name'), username: d.get('username'), password: d.get('password'), info, reqHalqa: f.dataset.hid || d.get('reqHalqa') || '', side: (ST.regInfo || {}).side || 'm' });
       ST.regCred = { name: d.get('name'), user: String(d.get('username')).trim().toLowerCase(), pw: d.get('password') };
       clean(); ST.regDone = true; render();
     } catch (e) { toast(e.message); }
@@ -1850,7 +1844,7 @@ const FORMS = {
   },
   async halqa(f, d) {
     const days = d.getAll('day').map(Number); if (!days.length) return toast('اختر يوم دوام واحد على الأقل');
-    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto'), mode: d.get('mode') || 'onsite', place: d.get('place') || '', gender: d.get('gender') === 'f' ? 'f' : 'm', branch: d.has('branch') ? d.get('branch') : ((S.halaqat[f.dataset.id] || {}).branch || '') } }, r => (f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة') + (r.fixed ? ` وتعدّل وقت ${r.fixed} حصة جاية` : ''));
+    const r = await act('halqa.save', { id: f.dataset.id, data: { name: d.get('name'), teacherId: d.get('teacherId'), days, time: d.get('time'), link: (d.get('link') || '').trim(), auto: !!d.get('auto'), mode: d.get('mode') || 'onsite', place: d.get('place') || '', branch: d.has('branch') ? d.get('branch') : ((S.halaqat[f.dataset.id] || {}).branch || '') } }, r => (f.dataset.id ? 'حُفظت الحلقة' : 'أُنشئت الحلقة') + (r.fixed ? ` وتعدّل وقت ${r.fixed} حصة جاية` : ''));
     if (r) closeModal();
   },
   async plan(f, d) {
@@ -1921,7 +1915,7 @@ const FORMS = {
     catch (e) { toast(e.message); }
   },
   async wa(f, d) { if (await act('wa.save', { data: waFormData(f) }, 'حُفظ ربط الواتساب')) { ST.wa = null; clean(); render(); } },
-  async msg(f, d) { if (await act('msg.send', { text: d.get('text'), side: ST.roomSide || 'm' })) { f.reset(); clean(); } },
+  async msg(f, d) { if (await act('msg.send', { text: d.get('text') })) { f.reset(); clean(); } },
   async mypw(f, d) { if (await act('me.password', { old: d.get('old'), pw: d.get('pw') }, 'تم تغيير كلمة المرور')) closeModal(); },
 };
 document.addEventListener('submit', e => {
@@ -2668,7 +2662,7 @@ function navSections(u) {
   const students = I('students', u.role === 'admin' ? 'الطلاب' : 'طلابي', 0, [S_('كل الطلاب', { inact: false, arch: false }), S_('المنقطعين', { inact: true, arch: false }), S_('المؤرشفون', { arch: true, inact: false }), ...(u.role === 'admin' && has('students') ? [S_('استيراد طلاب', null, { act: 'import' })] : [])]);
   const inbox = I('inbox', 'الرسائل', dmUnreadStaff());
   const anns = I('anns', 'الإعلانات والتصويت');
-  const room = I('room', S.side === 'f' ? 'غرفة المعلمات' : 'غرفة المعلمين', msgsUnread(u));
+  const room = I('room', inGirls() ? 'غرفة المعلمات' : 'غرفة المعلمين', msgsUnread(u));
   const reports = I('reports', 'التقارير');
   const pendOrd = L('orders').filter(o => o.status === 'pending' && S.users[o.uid]).length;
   const store = I('store', 'المتجر والنقاط', pendOrd, [S_('الطلبات', { stTab: 'orders' }), S_('الجوائز', { stTab: 'rewards' }), S_('النقاط', { stTab: 'points' }), ...(u.role === 'admin' ? [S_('الميزانية', { stTab: 'budget' })] : [])]);
@@ -2782,7 +2776,7 @@ function aiRender() {
 async function aiApi(body) {
   const c = new AbortController(); const tm = setTimeout(() => c.abort(), 58000);
   try {
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: c.signal });
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _side: SEC, ...body }), signal: c.signal });
     let j = {}; try { j = await r.json(); } catch {}
     if (!r.ok) throw new Error(j.error || (r.status >= 500 ? 'خدمة الذكاء الاصطناعي مزحومة الحين، جرّب بعد دقيقة' : 'تعذّر الاتصال، حاول مرة ثانية'));
     return j;
@@ -2998,7 +2992,7 @@ function onsiteV(u, s) {
   if (f === 'abs') list = list.filter(x => ['a', 'e', 'out'].includes(state(x)));
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="os-head"><div class="grow" style="min-width:0"><h1>${esc(h.name || '')}</h1><div class="muted small">${fmtDateH(s.date)} · ${fmtTime(s.time)}${h.place ? ' · ' + esc(h.place) : ''}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
-    <div class="row">${h.gender === 'f' && !femMe() ? `<span class="chip fem">${FLOWER} بنات</span>` : ''}<button class="chip mode-chip" data-act="os-mode" data-id="${s.id}" title="تحويل نوع هذي الحصة">${MODE_L[mode]} ▾</button>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}${u.role === 'admin' ? `<button class="btn ghost sm" data-act="edit-session" data-id="${s.id}">تعديل</button>` : ''}</div></div>`;
+    <div class="row"><button class="chip mode-chip" data-act="os-mode" data-id="${s.id}" title="تحويل نوع هذي الحصة">${MODE_L[mode]} ▾</button>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}${u.role === 'admin' ? `<button class="btn ghost sm" data-act="edit-session" data-id="${s.id}">تعديل</button>` : ''}</div></div>`;
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
   const stats = `<div class="os-stats"><div><b class="num">${cnt('p') + cnt('l')}<small>/${studs.length}</small></b><span>حاضر</span></div><div><b class="num">${cnt('l')}</b><span>متأخر</span></div><div><b class="num">${cnt('a')}</b><span>غائب</span></div><div><b class="num">${recBy.size}</b><span>سمّعوا</span></div></div>`;
   const tabs = `<div class="ptabs">${[['all', 'الكل'], ['left', 'باقي ما سمّعوا'], ['done', 'سمّعوا'], ['abs', 'غياب وانصراف']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-act="os-f" data-v="${k}">${l}</button>`).join('')}</div>`;
@@ -3208,7 +3202,7 @@ function todayBoardHtml(u) {
     ${rows.map(({ h, s }) => { const studs = studentsOf(h.id); const att = s.att || {}; const pres = studs.filter(x => att[x.id] === 'p' || att[x.id] === 'l').length; const late = studs.filter(x => att[x.id] === 'l').length; const rec = new Set(L('recs').filter(r => r.sid === s.id).map(r => r.uid)).size;
       const tid = s.subId || h.teacherId; const tin = (S.tins || {})[tid]; const start = lessonTs(s); const remote = lessonMode(s) === 'remote';
       const tTxt = remote ? '<span class="chip">عن بعد</span>' : tin ? `<span class="chip ${tin.at > start + 5 * 60000 ? 'warn' : 'ok'}">${clock(tin.at)}${tin.at > start + 5 * 60000 ? ' متأخر ' + Math.round((tin.at - start) / 60000) + ' د' : ''}</span>` : now > start ? '<span class="chip bad">ما وصل</span>' : '<span class="chip">ما بعد</span>';
-      return `<tr class="click" data-act="open-session" data-id="${s.id}"><td><b>${h.gender === 'f' ? `<span class="fem-ic">${FLOWER}</span> ` : ''}${esc(h.name)}</b>${h.place ? `<div class="small muted">${esc(h.place)}</div>` : ''}</td><td>${fmtTime(s.time)}</td><td>${esc((S.users[tid] || {}).name || '—')} ${tTxt}</td><td class="num">${pres}/${studs.length}</td><td class="num">${late || ''}</td><td class="num">${rec}</td><td>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}</td></tr>`; }).join('')}
+      return `<tr class="click" data-act="open-session" data-id="${s.id}"><td><b>${esc(h.name)}</b>${h.place ? `<div class="small muted">${esc(h.place)}</div>` : ''}</td><td>${fmtTime(s.time)}</td><td>${esc((S.users[tid] || {}).name || '—')} ${tTxt}</td><td class="num">${pres}/${studs.length}</td><td class="num">${late || ''}</td><td class="num">${rec}</td><td>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}</td></tr>`; }).join('')}
     </tbody></table></div></section>`;
 }
 

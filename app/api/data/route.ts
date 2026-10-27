@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { APP_V } from "@/lib/version";
 import { processQueue, waCfg } from "@/lib/wa";
 import { videoCfg, videoOn } from "@/lib/video";
-import { scopeHalqaIds, staffSide } from "@/lib/scope";
+import { scopeHalqaIds, viewSide, sideVal, isSuper, genderWhere } from "@/lib/scope";
 import { aiCfg, aiOn } from "@/lib/ai";
 import { checkLate } from "@/lib/late";
 import { syncAutoLessons } from "@/lib/lessons";
@@ -48,35 +48,35 @@ async function ensureLessons(halaqat: any[], s: Settings) {
   if (rows.length) await prisma.lesson.createMany({ data: rows, skipDuplicates: true });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ me: null, appV: APP_V });
   const settings = await getSettings();
   let users: any[], halaqat: any[], lessons: any[], recs: any[], joins: any[];
   let board: any = null;
-  let scAdm: string[] | null = null;
+  // القسم المعروض: البنين أو البنات (المدير العام يختار، والباقي قسمهم)
+  const view = await viewSide(me as any, new URL(req.url).searchParams.get("side"));
 
   // آخر دخول (يتحدث كل نص ساعة بالكثير)
   if (!me.lastSeenAt || Date.now() - +me.lastSeenAt > 30 * 60000) await prisma.user.update({ where: { id: me.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   if (me.role === "admin") {
-    const sc = await scopeHalqaIds(me); scAdm = sc;
-    halaqat = await prisma.halqa.findMany(sc ? { where: { id: { in: sc } } } : undefined);
+    const sc = await scopeHalqaIds(me); const sp = scopeSpec(me);
+    halaqat = await prisma.halqa.findMany({ where: sc ? { id: { in: sc } } : genderWhere(view) });
     await ensureLessons(halaqat, settings);
-    users = await prisma.user.findMany();
-    if (sc && scopeSpec(me)) {
-      const tIds = new Set(halaqat.map((h) => h.teacherId).filter(Boolean));
-      users = users.filter((x) => x.id === me.id || (x.role === "student" && (sc.includes(x.halqaId || "") || (x.status === "pending" && (!x.reqHalqaId || sc.includes(x.reqHalqaId))))) || (x.role === "teacher" && tIds.has(x.id)));
-    } else if (sc) {
-      // مشرف عام: يشوف كل شي إلا حلقات البنات وطالباتها ومعلماتها ومشرفاتها
-      const femH = await prisma.halqa.findMany({ where: { gender: "f" }, select: { id: true, teacherId: true } });
-      const femIds = new Set(femH.map((h) => h.id)); const visT = new Set(halaqat.map((h) => h.teacherId).filter(Boolean));
-      const femT = new Set(femH.map((h) => h.teacherId).filter((t): t is string => !!t && !visT.has(t)));
-      const femAdm = (x: any) => Array.isArray(x.perms) && (x.perms as string[]).some((p) => p.startsWith("h:")) && !(x.perms as string[]).some((p) => p.startsWith("b:")) && (x.perms as string[]).filter((p) => p.startsWith("h:")).every((p) => femIds.has(p.slice(2)));
-      users = users.filter((x) => x.id === me.id || !((x.role === "student" && (femIds.has(x.halqaId || "") || (x.status === "pending" && x.reqHalqaId && femIds.has(x.reqHalqaId)))) || (x.role === "teacher" && femT.has(x.id)) || (x.role === "admin" && femAdm(x))));
-    }
+    const hset = new Set(halaqat.map((h) => h.id));
+    const allH = await prisma.halqa.findMany({ select: { teacherId: true, gender: true } });
+    const tSide = (x: any) => { if (x.side === "f") return "f"; const g = allH.filter((h) => h.teacherId === x.id); return g.length && g.every((h) => h.gender === "f") ? "f" : "m"; };
+    const tIds = new Set(halaqat.map((h) => h.teacherId).filter(Boolean));
+    users = (await prisma.user.findMany()).filter((x) => {
+      if (x.id === me.id) return true;
+      if (x.role === "student") return x.halqaId ? hset.has(x.halqaId) : x.reqHalqaId ? hset.has(x.reqHalqaId) : sideVal(x.side) === view && (x.status === "pending" || !sp);
+      if (x.role === "teacher") return tIds.has(x.id) || (!sp && tSide(x) === view);
+      if (x.role === "admin") return !sp && (isSuper(x as any) || sideVal(x.side) === view);
+      return false;
+    });
     const sinceKey = localDate(-400);
     const hIds = halaqat.map((h) => h.id); const sIds = users.filter((x) => x.role === "student").map((x) => x.id);
-    [lessons, recs] = await Promise.all([prisma.lesson.findMany({ where: { date: { gte: sinceKey }, ...(sc ? { halqaId: { in: hIds } } : {}) } }), prisma.rec.findMany({ where: { date: { gte: sinceKey }, ...(sc ? { userId: { in: sIds } } : {}) } })]);
+    [lessons, recs] = await Promise.all([prisma.lesson.findMany({ where: { date: { gte: sinceKey }, halqaId: { in: hIds } } }), prisma.rec.findMany({ where: { date: { gte: sinceKey }, userId: { in: sIds } } })]);
     joins = await prisma.join.findMany({ where: { lessonId: { in: lessons.map((l) => l.id) } } });
   } else if (me.role === "teacher") {
     halaqat = await prisma.halqa.findMany({ where: { teacherId: me.id } });
@@ -129,7 +129,7 @@ export async function GET() {
 
   // الإعلانات وقراءتها
   const hidsAll = halaqat.map((h) => h.id);
-  const anns = await prisma.ann.findMany({ where: me.role === "admin" && !scAdm ? {} : { OR: [{ halqaId: null }, { halqaId: { in: hidsAll } }] }, orderBy: { at: "desc" }, take: 40 });
+  const anns = await prisma.ann.findMany({ where: { OR: [{ halqaId: null, side: view }, { halqaId: { in: hidsAll } }] }, orderBy: { at: "desc" }, take: 40 });
   const reads = me.role === "student"
     ? await prisma.annRead.findMany({ where: { userId: me.id, annId: { in: anns.map((a) => a.id) } } })
     : await prisma.annRead.findMany({ where: { annId: { in: anns.map((a) => a.id) } } });
@@ -145,11 +145,10 @@ export async function GET() {
   const [dms, behav, polls] = await Promise.all([
     prisma.dm.findMany({ where: { studentId: { in: stuIds }, at: { gte: since60 } }, orderBy: { at: "asc" }, take: 2000 }),
     prisma.behav.findMany({ where: { userId: { in: stuIds }, ...(me.role === "student" ? { visible: true } : {}) }, orderBy: { at: "desc" }, take: 1000 }),
-    prisma.poll.findMany({ where: me.role === "admin" ? (scAdm ? { OR: [{ halqaId: null }, { halqaId: { in: hidsAll } }] } : {}) : { OR: [{ halqaId: null }, { halqaId: { in: halaqat.map((h) => h.id) } }] }, orderBy: { at: "desc" }, take: 30 }),
+    prisma.poll.findMany({ where: { OR: [{ halqaId: null, side: view }, { halqaId: { in: hidsAll } }] }, orderBy: { at: "desc" }, take: 30 }),
   ]);
   const votes = polls.length ? await prisma.pollVote.findMany({ where: { pollId: { in: polls.map((p) => p.id) } } }) : [];
-  const side = staff ? await staffSide(me as any) : "m";
-  const msgs = staff ? await prisma.msg.findMany({ where: side === "all" ? {} : { side }, orderBy: { at: "desc" }, take: side === "all" ? 160 : 100 }) : [];
+  const msgs = staff ? await prisma.msg.findMany({ where: { side: view }, orderBy: { at: "desc" }, take: 100 }) : [];
   // ---------- الحضوري: وصول المعلمين اليوم ----------
   const today0 = localDate();
   const tinRows = me.role === "student" ? [] : await prisma.teacherIn.findMany({ where: { date: today0, ...(me.role === "teacher" ? { userId: me.id } : {}) } });
@@ -163,7 +162,7 @@ export async function GET() {
   if (hitB && Date.now() - hitB.t < 20000) balMap = hitB.v; else { balMap = await balances(studsVis.map((x) => ({ id: x.id, halqaId: x.halqaId })), settings, today0); cache.set(bkey, { t: Date.now(), v: balMap }); if (cache.size > 200) cache.clear(); }
   const brs = [...new Set(halaqat.map((h) => h.branch || ""))];
   const sp = me.role === "admin" ? scopeSpec(me) : null;
-  let rewards = await prisma.reward.findMany({ where: me.role === "admin" ? (sp && sp.b.length ? { branch: { in: [...sp.b, ""] } } : {}) : { branch: { in: [...brs, ""] }, ...(me.role === "student" ? { active: true } : {}) }, orderBy: { at: "desc" }, take: 200 });
+  let rewards = await prisma.reward.findMany({ where: { side: view, ...(me.role === "admin" ? (sp && sp.b.length ? { branch: { in: [...sp.b, ""] } } : {}) : { branch: { in: [...brs, ""] }, ...(me.role === "student" ? { active: true } : {}) }) }, orderBy: { at: "desc" }, take: 200 });
   for (const r of rewards) if (r.kind === "auction" && !r.closed && r.endsAt && +r.endsAt < Date.now()) { await closeAuction(r).catch(() => null); }
   if (rewards.some((r) => r.kind === "auction" && !r.closed && r.endsAt && +r.endsAt < Date.now())) rewards = await prisma.reward.findMany({ where: { id: { in: rewards.map((r) => r.id) } }, orderBy: { at: "desc" } });
   const aucIds = rewards.filter((r) => r.kind === "auction").map((r) => r.id);
@@ -196,8 +195,8 @@ export async function GET() {
     recs: map(recs, recOut),
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
     settings: { main: full ? settings : pubSettings },
-    msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at, side: (m as any).side || "m" })),
-    side,
+    msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at })),
+    side: view, isSuper: isSuper(me as any),
     backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     waOn: staff ? (await waCfg()).enabled : false,
