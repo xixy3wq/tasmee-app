@@ -13,6 +13,7 @@ import { balanceOf } from "@/lib/points";
 import { closeAuction } from "@/lib/store";
 import { syncAutoLessons } from "@/lib/lessons";
 import { dayEndMs } from "@/lib/prayer";
+import { backupState, offsiteList, runBackup } from "@/lib/backup";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
 const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
@@ -152,7 +153,7 @@ const A: Record<string, H> = {
     const cur = await getSettings();
     const tpls = Array.isArray(d.tpls) ? d.tpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "x" + i, name: str(t.name, 40) || "رسالة", text: str(t.text, 800) })).filter((t: any) => t.text) : cur.tpls;
     const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
-    const pp = d.points || {}; const cp: any = cur.points; const points = { present: AMT(pp.present ?? cp.present, 100), late: AMT(pp.late ?? cp.late, 100), ex: AMT(pp.ex ?? cp.ex, 100), vg: AMT(pp.vg ?? cp.vg, 100), gd: AMT(pp.gd ?? cp.gd, 100), page: AMT(pp.page ?? cp.page, 100), absent: AMT(pp.absent ?? cp.absent ?? 0, 100), bad: AMT(pp.bad ?? cp.bad ?? 0, 100) };
+    const pp = d.points || {}; const cp: any = cur.points; const points = { present: AMT(pp.present ?? cp.present, 100), late: AMT(pp.late ?? cp.late, 100), ex: AMT(pp.ex ?? cp.ex, 100), vg: AMT(pp.vg ?? cp.vg, 100), gd: AMT(pp.gd ?? cp.gd, 100), page: AMT(pp.page ?? cp.page, 100), absent: AMT(pp.absent ?? cp.absent ?? 0, 100), bad: AMT(pp.bad ?? cp.bad ?? 0, 100), streak10: AMT(pp.streak10 ?? cp.streak10 ?? 5, 500), streak30: AMT(pp.streak30 ?? cp.streak30 ?? 15, 500) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
     const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), teacherOut: (() => { const o = d.teacherOut || (cur as any).teacherOut || {}; return { mode: ["prayer", "time", "off"].includes(o.mode) ? o.mode : "prayer", prayer: ["fajr", "dhuhr", "asr", "maghrib", "isha"].includes(o.prayer) ? o.prayer : "asr", after: Math.min(600, Math.max(0, int(o.after, 90))), time: /^\d{2}:\d{2}$/.test(str(o.time)) ? str(o.time) : "17:00" }; })(), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
@@ -927,7 +928,21 @@ const A: Record<string, H> = {
       push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
       cron: { secret: !!process.env.CRON_SECRET, last: (cronRow?.value as any)?.at || null },
       backup: lastBackup ? +lastBackup.at : null,
+      backupExt: { ...backupState(), last: ((await prisma.setting.findUnique({ where: { key: "backupExt" } }))?.value as any) || null },
     };
+  },
+  // ---------- النسخ الاحتياطي الخارجي ----------
+  async "backup.ext"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const st = backupState(); const last = ((await prisma.setting.findUnique({ where: { key: "backupExt" } }))?.value as any) || null;
+    if (!st.on) return { ...st, last, list: [] };
+    try { return { ...st, last, list: await offsiteList() }; } catch (e: any) { return { ...st, last, list: [], err: String(e?.message || e).slice(0, 200) }; }
+  },
+  async "backup.now"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const r = await runBackup("manual");
+    await audit(u, "backup", null, "نسخة احتياطية يدوية" + (r.ext.ok ? " (داخلية وخارجية)" : " (داخلية)"));
+    return r;
   },
   // ---------- غرفة الحصة داخل الموقع ----------
   async "video.get"(u) {
@@ -1078,7 +1093,7 @@ const A: Record<string, H> = {
     if (u.role !== "student") fail("للطالب فقط", 403);
     const date = validDate(str(b.date)) ? str(b.date) : localDate();
     if (date > localDate() || date < localDate(-7)) fail("التاريخ غير متاح");
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).map((x: any) => ({ k: str(x.k, 120), done: !!x.done }));
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).map((x: any) => ({ k: str(x.k, 120), done: !!x.done, ...(int(x.n) > 0 ? { n: Math.min(9999, int(x.n)) } : {}) }));
     const data = { items, read: Math.min(604, Math.max(0, int(b.read))), note: str(b.note, 200) };
     await prisma.wird.upsert({ where: { userId_date: { userId: u.id, date } }, create: { userId: u.id, date, ...data }, update: data });
   },
@@ -1472,6 +1487,20 @@ const A: Record<string, H> = {
   },
 
   // ---------- كلمة مرور مؤقتة ----------
+  // كلمات مرور جديدة لمجموعة طلاب (لبطاقات الطلاب المطبوعة)
+  async "students.resetpw"(u, b) {
+    needAdmin(u, "students");
+    const ids = [...new Set<string>((Array.isArray(b.ids) ? b.ids : []).map(String))].slice(0, 300); if (!ids.length) fail("اختر الطلاب");
+    const out: { id: string; pw: string }[] = [];
+    for (const id of ids) {
+      const st = await studentFor(u, id);
+      const pw = String(crypto.randomInt(100000, 1000000));
+      await prisma.user.update({ where: { id: st.id }, data: { passwordHash: await bcrypt.hash(pw, 8) } });
+      out.push({ id: st.id, pw });
+    }
+    await audit(u, "user.resetpw", null, `كلمات مرور جديدة لـ ${out.length} طالب (بطاقات الطلاب)`);
+    return { list: out };
+  },
   async "user.resetpw"(u, b) {
     needAdmin(u);
     const t = await prisma.user.findUnique({ where: { id: str(b.id) } });

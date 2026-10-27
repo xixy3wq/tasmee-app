@@ -19,6 +19,24 @@ async function autoPoints(studs: { id: string; halqaId: string | null }[], from:
     if (!(uid in pts) || halqaOf[uid] !== l.halqaId) continue;
     if (v === "p") pts[uid] += +P.present || 0; else if (v === "l") pts[uid] += +P.late || 0; else if (v === "a") pts[uid] -= +P.absent || 0;
   }
+  // مكافأة سلسلة الحضور: كل 10 حصص متتالية، وكل 30 فوقها مكافأة أكبر (الغياب يقطع السلسلة، والمستأذن ما يقطعها)
+  const s10 = +P.streak10 || 0, s30 = +P.streak30 || 0;
+  if (s10 || s30) {
+    const all = await prisma.lesson.findMany({ where: { halqaId: { in: hids }, cancelled: false, date: { lte: to } }, select: { att: true, halqaId: true, date: true, time: true }, orderBy: [{ date: "asc" }, { time: "asc" }] });
+    for (const st of studs) {
+      let run = 0;
+      for (const l of all) {
+        if (l.halqaId !== st.halqaId) continue;
+        const v = ((l.att as any) || {})[st.id];
+        if (!v || v === "e") continue;
+        if (v === "a") { run = 0; continue; }
+        run++;
+        if (from && l.date < from) continue;
+        if (run % 10 === 0) pts[st.id] += s10;
+        if (run % 30 === 0) pts[st.id] += s30;
+      }
+    }
+  }
   for (const r of recs) {
     const g = r.grade === "ممتاز" ? +P.ex : r.grade === "جيد جدًا" ? +P.vg : r.grade === "جيد" ? +P.gd : 0;
     pts[r.userId] += g || 0;

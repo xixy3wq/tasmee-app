@@ -841,3 +841,25 @@ body.sec-switching main.wrap{opacity:.45;transition:opacity .15s;pointer-events:
 @media (max-width:480px){.wk-d span{font-size:.62rem}.wk-d b{font-size:.8rem}.wk-d i{display:none}}
 .ses-nav .seg.ses-seg button.on:not(.p):not(.l):not(.a):not(.e){background:var(--accent);color:var(--accent-ink);font-weight:700}
 .seg button.on:not(.p):not(.l):not(.a):not(.e){background:var(--accent-soft);color:var(--accent);font-weight:700}
+/* عدّاد التكرار */
+.rep{display:flex;align-items:center;gap:8px;margin:-2px 0 6px;padding-inline-start:30px}
+.rep-l{font-size:.8rem;color:var(--muted)}
+.rep button{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;border-radius:999px;cursor:pointer;min-width:36px;min-height:34px;padding:0 12px}
+.rep .rep-p{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.rep button:disabled{opacity:.4;cursor:default}
+.rep-n{min-width:2ch;text-align:center;font-size:1.05rem}
+.rep.pop .rep-n{animation:rep-pop .25s ease}
+@keyframes rep-pop{50%{transform:scale(1.35)}}
+/* سلسلة الحضور */
+.streak-stat{display:grid;gap:3px}
+.streak-bar{display:block;height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:2px}
+.streak-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--accent));border-radius:99px}
+/* التسميع المتتابع */
+.seq-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:14px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line))}
+.seq-bar .grow{display:grid;min-width:0;flex:1 1 180px}
+.seq-next{display:grid;gap:6px;justify-items:start}
+.seq-next b{font-size:1.4rem;font-family:var(--f-display)}
+/* النسخ الاحتياطي */
+.bk-box{display:grid;gap:6px;padding:12px;border-radius:12px;border:1px dashed var(--line);background:var(--sunk)}
+.bk-box.ok{border-style:solid;border-color:color-mix(in srgb,var(--ok) 40%,var(--line))}
+@media (prefers-reduced-motion: reduce){.rep.pop .rep-n{animation:none}}

@@ -48,7 +48,7 @@ export const DEF = {
     { id: "t3", name: "وجه حفظ و5 أوجه مراجعة", newAmt: 1, revAmt: 5, tathAmt: 3 },
   ] as { id: string; name: string; newAmt: number; revAmt: number; tathAmt: number }[],
   /// قواعد النقاط التلقائية (absent و bad خصم: الغياب بدون عذر، وملاحظة السلوك السلبية)
-  points: { present: 2, late: 1, ex: 3, vg: 2, gd: 1, page: 2, absent: 0, bad: 0 },
+  points: { present: 2, late: 1, ex: 3, vg: 2, gd: 1, page: 2, absent: 0, bad: 0, streak10: 5, streak30: 15 },
   /// يُحسب الطالب متأخر إذا وصل بعد بداية الحلقة بكم دقيقة
   lateMin: 10,
   /// مواقع الجوامع لتسجيل حضور المعلم: { "<المجمع>" أو "_" للأساسي: { lat, lng, radius } }

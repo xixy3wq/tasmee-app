@@ -299,9 +299,19 @@ const itemLabel = x => `${TYPE[x.type]} ${SN[x.surah - 1]} ${x.from === x.to ? x
 function ptsOf(st, from, to) {
   const P = SET().points || {}; let n = 0;
   L('sessions').forEach(s => { if (s.halqaId !== st.halqaId || s.cancelled || s.date < from || s.date > to) return; const v = (s.att || {})[st.id]; if (v === 'p') n += +P.present || 0; else if (v === 'l') n += +P.late || 0; });
+  n += streakBonus(st, from, to);
   L('recs').forEach(r => { if (r.uid !== st.id || r.date < from || r.date > to) return; n += r.grade === 'ممتاز' ? +P.ex || 0 : r.grade === 'جيد جدًا' ? +P.vg || 0 : r.grade === 'جيد' ? +P.gd || 0 : 0; if (r.type === 'new' && r.pass) n += recPages(r) * (+P.page || 0); });
   return Math.round(n);
 }
+/* مكافأة سلسلة الحضور خلال فترة: كل 10 حصص متتالية، وكل 30 مكافأة أكبر (نفس حساب الخادم) */
+function streakBonus(st, from, to) {
+  const P = SET().points || {}; const s10 = +(P.streak10 ?? 5) || 0, s30 = +(P.streak30 ?? 15) || 0; if (!s10 && !s30) return 0;
+  const ss = L('sessions').filter(s => s.halqaId === st.halqaId && !s.cancelled && s.date <= to).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  let run = 0, n = 0; for (const s of ss) { const v = (s.att || {})[st.id]; if (!v || v === 'e') continue; if (v === 'a') { run = 0; continue; } run++; if (from && s.date < from) continue; if (run % 10 === 0) n += s10; if (run % 30 === 0) n += s30; }
+  return n;
+}
+/** الهدف الجاي في السلسلة */
+function streakNext(n) { const P = SET().points || {}; const s10 = +(P.streak10 ?? 5) || 0, s30 = +(P.streak30 ?? 15) || 0; const nx = (Math.floor(n / 10) + 1) * 10; const pts = s10 + (nx % 30 === 0 ? s30 : 0); return pts ? { at: nx, left: nx - n, pts } : null; }
 /* سلسلة الحضور: حصص متتالية حضرها (المستأذن ما يكسرها) */
 function attendStreak(st) {
   const ss = L('sessions').filter(s => s.halqaId === st.halqaId && !s.cancelled && s.date <= today()).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
@@ -327,10 +337,28 @@ function goalProgress(st) {
 }
 const goalHtml = st => { const g = goalProgress(st); if (!g) return ''; return `<div class="goal"><div class="row" style="justify-content:space-between"><b>الهدف: ${fmtPages(g.pages)} وجه حفظ${g.by ? ' قبل ' + fmtDate(g.by) : ''}</b><span class="num">${fmtPages(g.done)} / ${fmtPages(g.pages)}</span></div><div class="bar-track"><div class="bar-fill" style="width:${g.pct}%"></div></div>${g.note ? `<div class="small muted">${esc(g.note)}</div>` : ''}</div>`; };
 const wirdOf = (uid, ds) => S.wirds && S.wirds[uid + '_' + ds];
+/* عدّاد التكرار: الطالب يعدّ كم مرة كرر المقطع في البيت، وينحفظ مع ورد اليوم */
+const repsOf = (w, k) => +(((w && w.items) || []).find(x => x.k === k) || {}).n || 0;
+let REP_T = 0;
+function repBump(k, d) {
+  const u = me(); if (!u) return; const t = today(); const key = u.id + '_' + t;
+  const w = S.wirds[key] = { uid: u.id, date: t, items: [], read: 0, note: '', ...(S.wirds[key] || {}) };
+  const groups = planGroups(u).map(g => groupKey(g));
+  const f = document.querySelector('form[data-form=wird]'); const fd = f ? new FormData(f) : null; const doneNow = fd ? new Set(fd.getAll('it')) : null;
+  const old = w.items || []; const items = groups.map(g => { const o = old.find(x => x.k === g) || {}; return { k: g, done: doneNow ? doneNow.has(g) : !!o.done, n: +o.n || 0 }; });
+  const it = items.find(x => x.k === k); if (!it) return; it.n = Math.max(0, Math.min(9999, it.n + d));
+  w.items = items; if (fd) { w.read = +fd.get('read') || w.read || 0; w.note = fd.get('note') ?? w.note; }
+  document.querySelectorAll('.rep').forEach(el => { if (el.dataset.k !== k) return; el.querySelector('.rep-n').textContent = it.n; el.querySelector('.rep-m').disabled = !it.n; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
+  if (d > 0) buzz(8);
+  clearTimeout(REP_T); REP_T = setTimeout(() => api('/api/act', { t: 'wird.save', date: t, items: w.items, read: w.read || 0, note: w.note || '' }).catch(() => toast('ما انحفظ العدّاد، تأكد من النت')), 1200);
+}
+/** مجموع التكرار في آخر ورد (اليوم أو أمس) للمعلم */
+function repsBrief(uid) { for (const [d, lbl] of [[today(), 'اليوم'], [addDays(today(), -1), 'أمس']]) { const w = wirdOf(uid, d); const n = ((w && w.items) || []).reduce((a, x) => a + (+x.n || 0), 0); if (n) return `🔁 كرر ${n} مرة ${lbl}`; } return ''; }
 function wirdBrief(uid) {
   const w = wirdOf(uid, today()); if (!w) return '';
   const done = (w.items || []).filter(x => x.done).length; const all = (w.items || []).length;
-  return `<span class="chip ok">في البيت: ${done}/${all}${w.read ? ' · تلاوة ' + w.read + ' وجه' : ''}</span>`;
+  const reps = (w.items || []).reduce((a, x) => a + (+x.n || 0), 0);
+  return `<span class="chip ok">في البيت: ${done}/${all}${w.read ? ' · تلاوة ' + w.read + ' وجه' : ''}${reps ? ' · 🔁 ' + reps : ''}</span>`;
 }
 const annTargets = a => L('users').filter(x => x.role === 'student' && x.status === 'active' && (!a.halqaId || x.halqaId === a.halqaId));
 const allTpls = () => { const st = SET(); return [{ id: 'absent', name: 'غياب', text: st.tpl.absent }, { id: 'excellent', name: 'تميّز', text: st.tpl.excellent }, ...(st.tpls || [])].filter(t => t.text); };
@@ -420,7 +448,7 @@ function loginV() {
   return `${banner()}<div class="center-box">
   <div class="hero-mark">${MARK}<div><h1>${esc(SET().center !== DEF.center ? SET().center : 'حلقات ارتق')}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
   <form class="card" data-form="login">
-    <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" autocapitalize="none" required></label>
+    <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" autocapitalize="none" required value="${esc((() => { try { return new URLSearchParams(location.search).get('u') || ''; } catch { return ''; } })())}"></label>
     ${pwField('lg-pw', 'password', 'كلمة المرور', 'current-password')}
     <button class="btn pri big" type="submit">دخول</button>
     <div class="row" style="justify-content:space-between"><span class="small muted">ولي الأمر يدخل بحساب ابنه.</span><button type="button" class="linkbtn" data-act="forgot">نسيت كلمة المرور؟</button></div>
@@ -623,7 +651,7 @@ function studentsV(u) {
   if (ST.halqa) list = list.filter(x => x.halqaId === ST.halqa);
   const q = (ST.q || '').trim(); if (q) list = list.filter(x => (x.name || '').includes(q) || (x.username || '').toLowerCase().includes(q.toLowerCase()));
   list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
-  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row">${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn" data-act="import">استيراد</button><button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
+  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row"><button class="btn" data-act="cards">🪪 بطاقات للطباعة</button>${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn" data-act="import">استيراد</button><button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
   ${nArch || nIn ? `<div class="row">${nArch ? `<button class="btn sm ${ST.arch ? '' : 'pri'}" data-act="arch" data-v="0">الحاليون</button><button class="btn sm ${ST.arch ? 'pri' : ''}" data-act="arch" data-v="1">المؤرشفون (${nArch})</button>` : ''}${nIn ? `<button class="btn sm ${ST.inact ? 'pri' : ''}" data-act="inact">منقطعين أسبوعين (${nIn})</button>` : ''}</div>` : ''}
   <div class="row"><input id="st-q" placeholder="ابحث بالاسم أو اسم المستخدم" value="${esc(ST.q)}" data-input="search" style="flex:1 1 220px">
   ${hs.length > 1 ? `<select id="st-h" data-change="filter-h" style="flex:0 1 200px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}</div>
@@ -719,7 +747,7 @@ function reportsV(u) {
   const rows = studs.map(st => { const a = attStats(st, ST.range); const rs = recsOf(st.id).filter(r => !from || r.date >= from); const rep = rs.filter(r => r.pass === false).length; const sc = rs.filter(r => !r.quick); const avg = sc.length ? (sc.reduce((x, r) => x + (+r.mistakes || 0), 0) / sc.length).toFixed(1) : '—'; return { st, a, n: rs.length, rep, avg, pg: pagesSum(rs) }; });
   const tot = rows.reduce((x, r) => ({ p: x.p + r.a.p + r.a.l, m: x.m + r.a.p + r.a.l + r.a.a + r.a.e, n: x.n + r.n, pn: x.pn + r.pg.new, pr: x.pr + r.pg.review + r.pg.tath }), { p: 0, m: 0, n: 0, pn: 0, pr: 0 });
   const wk = weekStartC(today()); const board = studs.map(st => ({ st, p: ptsOf(st, wk, today()) })).sort((a, b) => b.p - a.p).slice(0, 5);
-  return `<div class="sec-head"><h1>التقارير</h1><div class="row">${S.waOn ? `<button class="btn pri" data-act="wa-week-h" data-h="${hid}">أرسل التقرير الأسبوعي تلقائيًا</button>` : ''}<button class="btn wa" data-act="wa-week" data-h="${hid}">${S.waOn ? 'إرسال يدوي' : 'التقرير الأسبوعي لأولياء الأمور'}</button></div></div>
+  return `<div class="sec-head"><h1>التقارير</h1><div class="row"><button class="btn" data-act="xlsx">⬇ Excel كامل</button>${S.waOn ? `<button class="btn pri" data-act="wa-week-h" data-h="${hid}">أرسل التقرير الأسبوعي تلقائيًا</button>` : ''}<button class="btn wa" data-act="wa-week" data-h="${hid}">${S.waOn ? 'إرسال يدوي' : 'التقرير الأسبوعي لأولياء الأمور'}</button></div></div>
   <div class="row"><select id="rp-h" data-change="filter-h" style="flex:0 1 220px">${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>
   ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}${(SET().terms || []).map(tm => `<button class="btn sm ${ST.range === 'T' + tm.id ? 'pri' : ''}" data-act="range" data-d="T${tm.id}">${esc(tm.name)}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${nSess}</b><span>حصة</span></div><div class="stat"><b>${tot.m ? Math.round(tot.p / tot.m * 100) + '٪' : '—'}</b><span>نسبة حضور الحلقة</span></div><div class="stat"><b>${tot.n}</b><span>تسميع مسجّل</span></div><div class="stat"><b>${fmtPages(tot.pn)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(tot.pr)}</b><span>أوجه مراجعة</span></div></div>
@@ -755,7 +783,7 @@ function settingsV() {
     <div class="fld"><span>قوالب الخطط التلقائية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th class="num">حفظ</th><th class="num">مراجعة</th><th class="num">تثبيت</th><th></th></tr></thead><tbody>
       ${(st.planTpls || []).map((t, i) => `<tr><td><input id="pt-n-${i}" name="ptn-${i}" value="${esc(t.name)}" style="min-width:160px"></td><td><input id="pt-a-${i}" name="pta-${i}" type="number" min="0" step="0.125" value="${t.newAmt}" style="width:80px"></td><td><input id="pt-r-${i}" name="ptr-${i}" type="number" min="0" step="0.5" value="${t.revAmt}" style="width:80px"></td><td><input id="pt-t-${i}" name="ptt-${i}" type="number" min="0" step="0.5" value="${t.tathAmt}" style="width:80px"></td><td><button type="button" class="btn ghost sm" data-act="ptpl-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="hint">بالأوجه: 0.25 ربع، 0.5 نصف</span></div>
-    <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ'], ['absent', 'خصم: غياب بدون عذر'], ['bad', 'خصم: ملاحظة سلوك سلبية']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
+    <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ'], ['absent', 'خصم: غياب بدون عذر'], ['bad', 'خصم: ملاحظة سلوك سلبية'], ['streak10', 'مكافأة كل 10 حصص متتالية'], ['streak30', 'مكافأة إضافية كل 30 حصة']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
     <label class="fld" style="max-width:320px"><span>وقت التسميع لكل طالب (دقائق)</span><input id="sg-recmin" name="recMin" type="number" min="0" max="60" value="${st.recMin || 0}"><span class="hint">ينبّه المعلم إذا تجاوز الطالب وقته. 0 = بدون تنبيه.</span></label>
     <label class="fld" style="max-width:320px"><span>يُحسب متأخر إذا وصل بعد كم دقيقة</span><input id="sg-latemin" name="lateMin" type="number" min="0" max="120" value="${st.lateMin ?? 10}"><span class="hint">في الحلقات الحضورية: لما المعلم يضغط «حاضر» يتسجّل وقت الوصول.</span></label>
     <label class="fld" style="max-width:320px"><span>لوحة الشرف عند الطلاب</span><select id="sg-board" name="board"><option value="show" ${st.board === 'show' ? 'selected' : ''}>أفضل 5 مع ترتيب الطالب</option><option value="top3" ${st.board === 'top3' ? 'selected' : ''}>أفضل 3 فقط</option><option value="hide" ${st.board === 'hide' ? 'selected' : ''}>مخفية: كل طالب يشوف نقاطه بس</option></select></label>
@@ -809,9 +837,8 @@ function settingsV() {
   ${full && cur === 'video' ? videoSettingsHtml() : ''}
   ${full && cur === 'ai' ? aiSettingsHtml() : ''}
   ${full && cur === 'site' ? statusHtml() : ''}
-  ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>النسخ الاحتياطي</h2><div class="row"><a class="btn" href="/api/backup" download>تنزيل نسخة الآن</a></div>
-    ${(S.backups || []).length ? `<div class="small muted" style="font-weight:600">النسخ الأسبوعية التلقائية</div><div class="list">${S.backups.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div>` : '<div class="small muted">ما فيه نسخ تلقائية بعد (الشرح في الدليل).</div>'}</section>
-  <section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
+  ${full && cur === 'site' ? backupHtml() : ''}
+  ${full && cur === 'site' ? `<section class="card" style="display:grid;gap:10px"><h2>الربط مع Google Sheets</h2>${st.exportKey ? `<div class="small muted">الصق هذي في خلية بـ Google Sheets:</div>${['students', 'attendance', 'recs'].map(t => { const f = `=IMPORTDATA("https://${location.host}/api/export/${t}?key=${st.exportKey}")`; return `<div class="row"><span class="small" style="min-width:70px">${({ students: 'الطلاب', attendance: 'الحضور', recs: 'التسميع' })[t]}</span><code dir="ltr" class="code">${esc(f)}</code><button class="btn ghost sm" data-act="copy" data-text="${esc(f)}">نسخ</button></div>`; }).join('')}<div><button class="btn ghost sm" data-act="export-key">مفتاح جديد (يوقف الروابط القديمة)</button></div>` : '<div><button class="btn" data-act="export-key">توليد مفتاح التصدير</button></div>'}</section>` : ''}
   ${!full && (cur === 'site' || cur === 'video' || cur === 'ai') ? '<div class="note small">النسخ الاحتياطي وغرفة الحصة والمساعد للمدير الكامل فقط.</div>' : ''}`;
 }
 
@@ -901,7 +928,7 @@ function tasksHtml(u) {
   const doneSet = new Set((w.items || []).filter(x => x.done).map(x => x.k));
   if (isPaused(u)) return `<section class="card"><h2>مهام اليوم</h2><div class="note">خطتك موقوفة مؤقتًا${u.plan.paused.reason ? ': ' + esc(u.plan.paused.reason) : ''}.</div></section>`;
   return `<form class="card" data-form="wird" style="gap:10px"><div class="sec-head"><h2>مهام اليوم</h2>${w.items ? '<span class="chip ok">محفوظة</span>' : ''}</div>
-    ${items.length ? items.map((g, i) => { const k = groupKey(g); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${g.retry ? 'إعادة ' : ''}${g.type === 'new' ? 'احفظ' : 'راجع'} <b>${esc(partsText(g.parts))}</b>${g.parts.length > 1 && partsPages(g.parts) ? ` <span class="small muted">${partsPages(g.parts)}</span>` : ''}</span></label>`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
+    ${items.length ? items.map((g, i) => { const k = groupKey(g); return `<label class="task"><input type="checkbox" id="wd-${i}" name="it" value="${esc(k)}" ${doneSet.has(k) ? 'checked' : ''}><span>${g.retry ? 'إعادة ' : ''}${g.type === 'new' ? 'احفظ' : 'راجع'} <b>${esc(partsText(g.parts))}</b>${g.parts.length > 1 && partsPages(g.parts) ? ` <span class="small muted">${partsPages(g.parts)}</span>` : ''}</span></label>${(() => { const n = repsOf(w, k); return `<div class="rep" data-k="${esc(k)}"><span class="rep-l">🔁 كررته</span><button type="button" class="rep-m" data-act="rep" data-k="${esc(k)}" data-d="-1" aria-label="أنقص التكرار" ${n ? '' : 'disabled'}>−</button><b class="num rep-n">${n}</b><button type="button" class="rep-p" data-act="rep" data-k="${esc(k)}" data-d="1" aria-label="زِد التكرار">+1</button></div>`; })()}`; }).join('') : '<div class="small muted">ما فيه مطلوب محدد اليوم.</div>'}
     <div class="row"><label class="fld" style="flex:0 1 200px"><span>ورد التلاوة اليوم (أوجه)</span><input id="wd-read" name="read" type="number" min="0" max="604" inputmode="numeric" value="${w.read || ''}"></label>
     <label class="fld" style="flex:1 1 200px"><span>ملاحظة (اختياري)</span><input id="wd-note" name="note" maxlength="200" value="${esc(w.note || '')}"></label></div>
     <div><button class="btn pri" type="submit">حفظ</button></div></form>`;
@@ -909,7 +936,7 @@ function tasksHtml(u) {
 function motivHtml(u) {
   const B = S.board || {}; const streak = attendStreak(u); const bd = badgesOf(u);
   return `<section class="card" style="display:grid;gap:12px"><h2>نقاطك وإنجازاتك</h2>
-    <div class="stats"><div class="stat"><b>${B.pts ?? 0}</b><span>نقاط هالأسبوع</span></div>${B.rank ? `<div class="stat"><b>${B.rank}</b><span>ترتيبك من ${B.total}</span></div>` : ''}<div class="stat"><b>${streak}</b><span>حصص متتالية حضرتها</span></div></div>
+    <div class="stats"><div class="stat"><b>${B.pts ?? 0}</b><span>نقاط هالأسبوع</span></div>${B.rank ? `<div class="stat"><b>${B.rank}</b><span>ترتيبك من ${B.total}</span></div>` : ''}<div class="stat streak-stat"><b>🔥 ${streak}</b><span>حصص متتالية حضرتها</span>${(() => { const nx = streakNext(streak); return nx ? `<i class="streak-bar"><i style="width:${Math.round((10 - nx.left) * 10)}%"></i></i><span class="small">باقي ${nx.left} ${nx.left === 1 ? 'حصة' : 'حصص'} على +${nx.pts} نقطة</span>` : ''; })()}</div></div>
     ${(B.top || []).length ? `<div><div class="small muted" style="font-weight:600">لوحة الشرف هالأسبوع</div><ol class="board">${B.top.map(x => `<li class="${x.me ? 'me' : ''}"><span>${esc(x.n)}</span><b class="num">${x.pts}</b></li>`).join('')}</ol></div>` : ''}
     ${bd.length ? `<div class="badges">${bd.map(b => `<span class="badge" title="${esc(b.d)}"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></span>`).join('')}</div>` : '<div class="small muted">الأوسمة تظهر هنا مع التزامك وإتقانك.</div>'}
   </section>`;
@@ -1087,7 +1114,7 @@ function helpV(u) {
     ${sub('الخطة والبيت', ['«خطتك» فيها الحفظ والمراجعة والتثبيت، وتتحدث لحالها بعد ما يسجل المعلم تسميعك.', 'الصفحات حسب مصحف المدينة النبوية من مجمع الملك فهد.', '«إعادة» معناها تعيد المقطع في الحصة الجاية لين تنجح فيه.', 'في «مهام اليوم» علّم على اللي خلصته في البيت، واكتب كم وجه قرأت، واضغط حفظ. المعلم يشوفها قبل الحصة.', 'نقاطك تزيد مع الحضور والتسميع الممتاز والحفظ.'])}
     ${sub('المعلم والتقويم والتصويت', ['من «المعلم» تراسل معلم الحلقة، والرد يوصلك هنا مع إشعار.', '«ملاحظة سريعة لحصة اليوم» مثل: تعبان أو بيتأخر، وتطلع للمعلم جنب اسمك في التحضير.', '«التقويم» فيه أيام الحصص وحضورك، والإجازات، والاختبارات.', 'إذا فيه تصويت يطلع في أعلى صفحتك، اختر وتقدر تغيّر صوتك لين ينقفل.', 'المساعد الذكي (الزر الدائري تحت): اسأله عن المطلوب منك وحصصك وتسميعك، أو كيف تحفظ وتراجع. ويسوي عنك اللي تقدر تسويه في الموقع: يراسل المعلم، يرسل استئذان، يصوّت، يسجل مهام اليوم، ويدخلك طابور التسميع. يجهزها وأنت تضغط «تنفيذ».'])}
     ${sub('لولي الأمر', ['ادخل بحساب ولدك نفسه، ما يحتاج حساب ثاني.', '«ملخص سريع» فوق يوضح حضوره اليوم وآخر تقدير.', 'عندك أكثر من ولد؟ من «المزيد» اضغط «إضافة ابن» مرة وحدة، وبعدها «أولادي» يعرض ملخصهم كلهم في شاشة وحدة وتنتقل بينهم.', 'زر «English» يعرض الصفحة بالإنجليزي، و«تكبير الخط» يكبّر الكلام.'])}
-    ${sub('نقاطي والمتجر', ['نقاطك تزيد مع الحضور في الوقت، والتسميع الممتاز، وكل وجه حفظ جديد.', 'من «المتجر» تشوف رصيدك والجوائز، وتقدر تحط جائزة في «أمنيتي» وتشوف كم باقي لك عليها.', 'لما تطلب جائزة يطلع لك كود من 4 أرقام، تعطيه المعلم أو الإدارة وتستلمها.', 'في المزاد الشهري تزايد بنقاطك، والأعلى وقت الإغلاق يفوز.', 'في الحلقة الحضورية ما تحتاج جوالك: المعلم يحضّرك ويسجل تسميعك ويطلب الجائزة عنك.'])}
+    ${sub('نقاطي والمتجر', ['نقاطك تزيد مع الحضور في الوقت، والتسميع الممتاز، وكل وجه حفظ جديد.', '🔥 سلسلة الحضور: كل 10 حصص متتالية تحضرها تاخذ نقاط مكافأة، والغياب بدون عذر يرجّع العداد من الصفر.', '🔁 في «مهام اليوم» اضغط +1 كل ما كررت المقطع في البيت، ومعلمك يشوف كم كررت.', 'من «المتجر» تشوف رصيدك والجوائز، وتقدر تحط جائزة في «أمنيتي» وتشوف كم باقي لك عليها.', 'لما تطلب جائزة يطلع لك كود من 4 أرقام، تعطيه المعلم أو الإدارة وتستلمها.', 'في المزاد الشهري تزايد بنقاطك، والأعلى وقت الإغلاق يفوز.', 'في الحلقة الحضورية ما تحتاج جوالك: المعلم يحضّرك ويسجل تسميعك ويطلب الجائزة عنك.'])}
     ${cal}${install}${notif}
     <section class="card help"><h2>أسئلة شائعة</h2>${FAQ.map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`;
   const teacher = sub('للمعلم', ['الحصص تنشأ لحالها إذا الحلقة على «جدول ثابت». افتح حصة اليوم من «الحصص».', 'فوق صفحة الحصة ثلاث أدوات: «وضع التسميع» بأزرار كبيرة، و«التحضير بالسحب» (يمين حاضر، يسار غائب)، و«لوحة الحصة» تعرض مين داخل ومين جاهز ومين عنده مشكلة.', 'في الطابور: «التالي» ينقل للطالب اللي بعده، و«ما رد» يرجع الطالب لآخر الطابور.', 'إذا حدد المدير وقت لكل طالب، العداد يبدأ لحاله وينبهك لما يخلص الوقت.', '«ملخص الحصة» يعرض مين حضر وما سمّع، ومين ما دخل بعد 10 دقائق. ويوصلك إشعار بأسماء اللي ما دخلوا.', 'ملاحظات أولياء الأمور لليوم (مثل: تعبان) تطلع جنب اسم الطالب في التحضير.', '«الرسائل»: كل رسائل أولياء الأمور، والرد يوصلهم مع إشعار.', 'من صفحة الطالب: الخطة والهدف، و«السلوك» (ملاحظة إيجابية أو تنبيه، وتحدد إذا يشوفها ولي الأمر)، ورسائل الواتساب.', 'التصويت من «الإعلانات والتصويت»: سؤال وخيارات لحلقتك، وتشوف مين صوّت ومين لا.', 'إذا ربط الواتساب شغال، أزرار «إرسال» لولي الأمر ترسل من رقم الحلقة مباشرة.', '«رسائل الواتساب» في القائمة: اختر الطلاب (أو «غابوا اليوم») واكتب الرسالة أو اختر رسالة جاهزة، وتنرسل لأولياء أمورهم مرة وحدة. ومنها ترسل التقرير الأسبوعي لحلقتك.', 'المساعد الذكي (الزر الدائري تحت يسار، أو Ctrl+J): يسوي عنك أي شي تقدر عليه في الموقع إلا الحذف — تحضير، تسجيل تسميع، خطط وأهداف، رسائل وواتساب لأولياء الأمور، إعلانات وتصويت، حصص إضافية أو إلغاء — ويجاوبك عن طلابك. يجهز كل شي في بطاقة وأنت تضغط «تنفيذ».', 'في «واتساب ولي الأمر» بصفحة الطالب: «اكتبها لي بالذكاء» يكتب رسالة من حضوره وتسميعه بالنبرة اللي تختارها.']);
@@ -1095,8 +1122,9 @@ function helpV(u) {
     (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: رسائل الواتساب ← الربط والرسائل التلقائية ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.', 'المساعد الذكي: الإعدادات ← المساعد الذكي، تسوي مفتاح من aistudio.google.com خاص بهالموقع وتلصقه وتحفظ.']) +
       `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
       sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
-  const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «📍 وصلت الجامع» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'إذا طلعت اضغط «🚪 تسجيل خروج». وإذا نسيت ينسجّل خروجك لحاله عند وقت الانصراف اللي تحدده الإدارة (مثلًا ساعة ونص بعد أذان العصر). الخروج قبل الوقت يطلب تأكيد ويوصل للإدارة.', 'تسجيل تسميع بدون حصة: من «الحصص ← تسجيل تسميع» أو زر «سمّع» جنب الطالب في «طلابي». تقدر تختار يوم فات، ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله. وتعديل أي تسميع من صفحة الطالب ← سجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
+  const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «📍 وصلت الجامع» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'إذا طلعت اضغط «🚪 تسجيل خروج». وإذا نسيت ينسجّل خروجك لحاله عند وقت الانصراف اللي تحدده الإدارة (مثلًا ساعة ونص بعد أذان العصر). الخروج قبل الوقت يطلب تأكيد ويوصل للإدارة.', 'تسجيل تسميع بدون حصة: من «الحصص ← تسجيل تسميع» أو زر «سمّع» جنب الطالب في «طلابي». تقدر تختار يوم فات، ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله. وتعديل أي تسميع من صفحة الطالب ← سجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', '«التسميع المتتابع» فوق شاشة الحلقة: يجيب لك الحاضرين اللي ما سمّعوا بترتيب وصولهم، واحد ورا الثاني، وتقدر تتخطى أحد للآخر.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'بطاقات الطلاب للطباعة من «طلابي ← 🪪 بطاقات للطباعة»، وملف Excel كامل من «التقارير ← ⬇ Excel كامل».', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
     + sub('صفحة الحصص والتعديل المتعدد', ['فوق صفحة الحصص تختار: يوم أو أسبوع أو شهر أو القادمة، وتتنقل بالأسهم، وتضغط أي يوم من شريط الأسبوع تشوف حصصه.', '«☑ تعديل متعدد»: حدد الحصص (أو «تحديد اليوم» أو «تحديد الكل») وغيّر نوعها حضوري أو عن بعد أو هجين، أو وقتها، أو ألغها، مرة وحدة.', 'وتقدر تقول للمساعد مثلًا: «حوّل حصص بكرة عن بعد» أو «ألغِ حصص الخميس».'])
+    + (isFullAdmin(u) ? sub('النسخ الاحتياطي', ['كل يوم الساعة 4 الفجر تنحفظ نسخة كاملة تلقائيًا داخل الموقع، وفي قاعدة بيانات ثانية منفصلة إذا ربطتها.', 'الربط والنسخ من الإعدادات ← إعدادات الموقع ← النسخ الاحتياطي، وتقدر تنزّل أي نسخة.']) : '')
     + sub('الاجتماعات', ['من «التواصل ← الاجتماعات» تدخل اجتماع صوت وفيديو داخل الموقع.', 'اجتماع الإدارة: للمدير العام وكل المشرفين والمشرفات من الدارين. واجتماع المعلمين أو المعلمات: لكل قسم مع إدارته.', '«ادخل وأبلغهم» يرسل إشعار للمعنيين إن الاجتماع بدأ.'])
     + sub('النقاط والمتجر', ['النقاط تنحسب لحالها من الحضور والتسميع والحفظ، وتقدر تضيف أو تخصم يدويًا من ⭐ في بطاقة الطالب أو من «المتجر والنقاط ← النقاط» لأكثر من طالب.', 'الطالب ما يفتح جواله في الحلقة، فتقدر تطلب الجائزة عنه من ⭐ في بطاقته.', 'تسليم الجائزة: «المتجر والنقاط ← الطلبات»، أدخل الكود اللي عند الطالب واضغط تسليم.']);
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الحين»، أو الصق رابط قوقل ماب، واختر النطاق المسموح.', 'بعدها ما يقدر المعلم يسجل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مين وصل ومتى وكم طالب حاضر.', 'تتنقل بين المجمعات من الشريط اللي فوق الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، ويشوف مجمعه بس.'])
@@ -1703,7 +1731,7 @@ const ACT = {
   'rk-q': el => { ST.rec.segs[+el.dataset.i].q = el.dataset.v; refreshRec(); },
   'rk-save': () => saveRec(false),
   'rk-save-next': () => saveRec(true),
-  'rk-cancel': () => { const w = ST.rec && ST.rec.where; ST.rec = null; if (w === 'modal') closeModal(); else render(); },
+  'rk-cancel': () => { const w = ST.rec && ST.rec.where; ST.rec = null; if (ST.seq && ST.seq.on) { ST.seq.on = false; toast('وقّفنا التسميع المتتابع، تقدر تكمّل من «كمّل»'); } if (w === 'modal') closeModal(); else render(); },
   'edit-rec': el => recEditModal({ ...S.recs[el.dataset.id], id: el.dataset.id }),
   'leave': el => act('leave', { lessonId: el.dataset.id }, 'تم تسجيل خروجك من الحصة'),
   'ready': el => act('queue.ready', { lessonId: el.dataset.id, v: el.dataset.v === '1' }, el.dataset.v === '1' ? 'انضفت للطابور' : 'طلعت من الطابور'),
@@ -1823,7 +1851,7 @@ function settingsData(f) {
     ...(x.type === 'choice' ? { options: String(d.get('opt-' + x.k) ?? (x.options || []).join('،')).split(/[،,\n]/).map(o => o.trim()).filter(Boolean), multi: d.has('opt-' + x.k) ? !!d.get('multi-' + x.k) : !!x.multi } : {}) }));
   const tpls = (st.tpls || []).map((t, i) => ({ id: t.id, name: (d.get('tpn-' + i) ?? t.name), text: (d.get('tpt-' + i) ?? t.text) }));
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
-  const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page', 'absent', 'bad'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
+  const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page', 'absent', 'bad', 'streak10', 'streak30'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
   const to0 = st.teacherOut || {}; const teacherOut = { mode: d.get('to-mode') || to0.mode || 'prayer', prayer: d.get('to-prayer') || to0.prayer || 'asr', after: d.has('to-after') ? +d.get('to-after') || 0 : (to0.after ?? 90), time: d.get('to-time') || to0.time || '17:00' };
   return { teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
@@ -1921,7 +1949,7 @@ const FORMS = {
     if (await act('ann.save', { title: d.get('title'), body: d.get('body'), halqaId: d.get('halqaId') || '' }, 'نُشر الإعلان')) { f.reset(); clean(); }
   },
   async wird(f, d) {
-    const done = new Set(d.getAll('it')); const items = planGroups(me()).map(g => ({ k: groupKey(g), done: done.has(groupKey(g)) }));
+    const done = new Set(d.getAll('it')); const w0 = wirdOf(ST.meId, today()); const items = planGroups(me()).map(g => ({ k: groupKey(g), done: done.has(groupKey(g)), n: repsOf(w0, groupKey(g)) }));
     if (await act('wird.save', { date: today(), items, read: +d.get('read') || 0, note: d.get('note') || '' }, 'حُفظت مهام اليوم')) clean();
   },
   async 'tpl-apply'(f, d) {
@@ -2643,7 +2671,8 @@ function statusHtml() {
     ${row(s.video.on ? true : null, 'غرفة الحصة', s.video.on ? 'مفعّلة: ' + s.video.order.map(x => x === 'jaas' ? 'Jitsi' : 'Daily').join(' ثم ') : 'متوقفة، الحصص تفتح بالروابط الخارجية')}
     ${row(s.push ? true : null, 'الإشعارات', s.push ? 'مفعّلة' : 'غير مفعّلة')}
     ${row(s.cron.secret && s.cron.last && Date.now() - s.cron.last < 30 * 60000 ? true : s.cron.secret ? false : null, 'المهمة الدورية (التذكير والتنبيهات)', s.cron.secret ? 'آخر تشغيل ' + ago(s.cron.last) : 'CRON_SECRET غير مضاف')}
-    ${row(s.backup && Date.now() - s.backup < 8 * DAY ? true : null, 'النسخ الاحتياطي', 'آخر نسخة ' + ago(s.backup))}
+    ${row(s.backup && Date.now() - s.backup < 2 * DAY ? true : null, 'النسخ الاحتياطي', 'آخر نسخة ' + ago(s.backup))}
+    ${row(s.backupExt && s.backupExt.on ? (s.backupExt.last && s.backupExt.last.ok && Date.now() - s.backupExt.last.at < 2 * DAY ? true : null) : false, 'النسخ في قاعدة خارجية', s.backupExt && s.backupExt.on ? (s.backupExt.last ? (s.backupExt.last.ok ? 'آخر نسخة ' + ago(s.backupExt.last.at) : 'آخر محاولة ما نجحت') : 'ما انحفظ فيها شي بعد') : 'مو مربوطة')}
   </div>`}</section>`;
 }
 
@@ -3142,8 +3171,9 @@ function onsiteV(u, s) {
     const last = recsOf(st.id).find(r => r.sid !== s.id);
     const p = planOf(st); const noMem = !(+p.auto.newPos > +p.auto.memStart) && !Object.keys(p.manual || {}).length && !recsOf(st.id).length;
     const chip = lf ? `<span class="chip">انصرف ${clock(lf.at)}</span>` : v ? `<span class="chip ${ATTC[v]}">${ATT[v]}${ml ? ' ' + ml + ' د' : ''}</span>` : '';
+    const stk = attendStreak(st); const rb = repsBrief(st.id);
     return `<div class="os-card st-${state(st)}">
-      <div class="os-top"><div class="grow" style="min-width:0"><b>${esc(st.name)}</b><div class="small muted">${[arr ? 'وصل ' + clock(arr) : '', last ? 'آخر تسميع ' + fmtDate(last.date) + ' · ' + last.grade : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div></div>${chip}<button class="btn ghost sm" data-act="os-more" data-id="${st.id}" aria-label="خيارات ${esc(st.name)}">⋯</button></div>
+      <div class="os-top"><div class="grow" style="min-width:0"><b>${esc(st.name)}</b><div class="small muted">${[arr ? 'وصل ' + clock(arr) : '', last ? 'آخر تسميع ' + fmtDate(last.date) + ' · ' + last.grade : '', stk >= 3 ? '🔥 ' + stk : '', rb].filter(Boolean).join(' · ') || '&nbsp;'}</div></div>${chip}<button class="btn ghost sm" data-act="os-more" data-id="${st.id}" aria-label="خيارات ${esc(st.name)}">⋯</button></div>
       ${!v && !lf ? `<div class="os-att"><button class="btn pri" data-act="os-arr" data-id="${st.id}">✓ حاضر</button><button class="btn" data-act="os-att" data-id="${st.id}" data-v="a">غائب</button><button class="btn" data-act="os-att" data-id="${st.id}" data-v="e">مستأذن</button></div>` : ''}
       ${here ? `<div class="os-due">${planBrief(st)}</div>` : ''}
       ${rs.length ? `<div class="row">${recMerge(rs).map(r => `<span class="chip ${GRADE_K[r.grade] || ''}">${TYPE[r.type]}${r.items.length > 1 ? ' (' + r.items.length + ' سور)' : ''}: ${esc(r.grade)}</span>`).join('')}</div>` : ''}
@@ -3153,9 +3183,34 @@ function onsiteV(u, s) {
   };
   const isToday = s.date === today();
   const foot = `<div class="row os-foot">${studs.some(x => !att[x.id]) ? '<button class="btn" data-act="att-rest">الباقي غائب</button>' : ''}${s.closedAt ? `<button class="btn ghost" data-act="os-close" data-id="${s.id}" data-undo="1">تراجع عن الإنهاء</button>` : `<button class="btn pri" data-act="os-close" data-id="${s.id}">إنهاء الحلقة وإرسال الملخص</button>`}</div>`;
-  return head + checkinBar(u, s) + stats + hybrid + tabs + `<div class="os-grid">${list.map(card).join('') || '<div class="empty">ما فيه طلاب هنا.</div>'}</div>` + (isToday || s.date < today() ? foot : '') + `<section class="card"><h2>تسميع هذه الحصة</h2>${historyTable(recs, true, true)}</section>`;
+  const waiting = seqQueue(s).length;
+  const seqBar = s.date === today() && !s.closedAt && waiting ? `<div class="seq-bar"><div class="grow"><b>التسميع المتتابع</b><span class="small muted">${waiting} حاضر ما سمّع، بترتيب وصولهم${ST.seq && ST.seq.sid === s.id && ST.seq.on ? ' · شغّال' : ''}</span></div><button class="btn pri" data-act="seq-start">${ICO.mic} ${ST.seq && ST.seq.sid === s.id && ST.seq.on ? 'كمّل' : 'ابدأ'}</button></div>` : '';
+  return head + checkinBar(u, s) + stats + seqBar + hybrid + tabs + `<div class="os-grid">${list.map(card).join('') || '<div class="empty">ما فيه طلاب هنا.</div>'}</div>` + (isToday || s.date < today() ? foot : '') + `<section class="card"><h2>تسميع هذه الحصة</h2>${historyTable(recs, true, true)}</section>`;
 }
 
+/* ---- التسميع المتتابع: الحاضرين اللي ما سمّعوا بترتيب وصولهم، واحد ورا الثاني ---- */
+function seqQueue(s) {
+  const att = s.att || {}; const left = s.left || {}; const arr = s.arr || {};
+  const done = new Set(L('recs').filter(r => r.sid === s.id).map(r => r.uid)); const skip = (ST.seq && ST.seq.sid === s.id && ST.seq.skip) || [];
+  return studentsOf(s.halqaId).filter(x => (att[x.id] === 'p' || att[x.id] === 'l') && !left[x.id] && !done.has(x.id) && !skip.includes(x.id))
+    .sort((a, b) => (arr[a.id] || 9e15) - (arr[b.id] || 9e15) || (a.name || '').localeCompare(b.name || '', 'ar'));
+}
+function seqNext() {
+  const s = curSession(); if (!ST.seq || !ST.seq.on || ST.seq.sid !== s.id) return;
+  let q = seqQueue(s);
+  if (!q.length && (ST.seq.skip || []).length) { ST.seq.skip = []; q = seqQueue(s); }
+  if (!q.length) { ST.seq = null; closeModal(); render(); return toast('خلص التسميع: كل الحاضرين سمّعوا ✓'); }
+  const st = q[0]; const arr = (s.arr || {})[st.id]; const n = ST.seq.n = (ST.seq.n || 0) + 1;
+  openModal(`${dlgHead('التسميع المتتابع')}<div class="seq-next"><span class="small muted">التالي${arr ? ' · وصل ' + clock(arr) : ''}</span><b>${esc(st.name)}</b><div class="os-due">${planBrief(st)}</div>${q[1] ? `<span class="small muted">وبعده: ${esc(q[1].name)}${q.length > 2 ? ' و' + (q.length - 2) + ' غيره' : ''}</span>` : '<span class="small muted">آخر واحد في الدور</span>'}</div>
+    <div class="dlg-foot"><button class="btn pri" data-act="seq-go" data-id="${st.id}">${ICO.mic} سمّع</button><button class="btn" data-act="seq-skip" data-id="${st.id}">تخطَّه للآخر</button><button class="btn ghost" data-act="seq-stop">إيقاف</button></div>`);
+}
+Object.assign(ACT, {
+  'seq-start': () => { const s = curSession(); if (!ST.seq || ST.seq.sid !== s.id) ST.seq = { sid: s.id, skip: [], n: 0 }; ST.seq.on = true; seqNext(); },
+  'seq-go': el => { const uid = el.dataset.id; closeModal(); startRec(uid, ST.sid, 'modal'); ST.rec.after = () => newMemModal(uid); openModal(recPanelHtml()); },
+  'seq-skip': el => { const s = curSession(); if (!ST.seq) return; ST.seq.skip = [...(ST.seq.skip || []), el.dataset.id]; if (!seqQueue(s).length) ST.seq.skip = []; seqNext(); },
+  'seq-stop': () => { if (ST.seq) ST.seq.on = false; closeModal(); render(); },
+  'seq-after': () => { closeModal(); seqNext(); },
+});
 /* ---- الحفظ الجديد للحصة الجاية ---- */
 const AMTS = [[0, 'بدون'], [0.25, 'ربع'], [0.5, 'نصف'], [1, 'وجه'], [2, 'وجهين']];
 function nmStart(st) {
@@ -3192,7 +3247,7 @@ function newMemModal(uid) {
       ${mn ? `<button class="linkbtn" data-act="nm-clear" data-id="${uid}">بدون حفظ جديد</button>` : ''}`;
   }
   openModal(`${dlgHead('الحفظ الجديد · ' + esc(st.name))}${now}${body}
-    <div class="dlg-foot">${auto ? `<button class="btn ghost sm" data-act="nm-custom" data-id="${uid}">${custom ? 'رجوع للتلقائي' : 'حدد مقطع بنفسك'}</button>` : ''}<button class="btn" data-act="close">تم</button></div>`);
+    <div class="dlg-foot">${auto ? `<button class="btn ghost sm" data-act="nm-custom" data-id="${uid}">${custom ? 'رجوع للتلقائي' : 'حدد مقطع بنفسك'}</button>` : ''}${ST.seq && ST.seq.on && ST.seq.sid === ST.sid ? '<button class="btn pri" data-act="seq-after">التالي ←</button>' : '<button class="btn" data-act="close">تم</button>'}</div>`);
 }
 
 /* ---- النقاط من بطاقة الطالب ---- */
@@ -3282,6 +3337,7 @@ Object.assign(ACT, {
   },
   'tout-undo': () => act('teacher.checkout', { undo: true }, 'رجّعنا تسجيل الخروج'),
   'quick-rec': () => { ST.qrq = ''; quickRecModal(); },
+  'rep': el => repBump(el.dataset.k, +el.dataset.d),
   // صفحة الحصص: الفترة والتنقل والتعديل المتعدد
   'ses-r': el => { ST.sr = el.dataset.v; if (ST.sr === 'up') ST.sd = today(); render(); },
   'ses-step': el => { ST.sd = addDays(ST.sd || today(), +el.dataset.n); render(); },
@@ -3500,6 +3556,131 @@ FORMS.reward = async (f, d) => {
 FORMS.bid = async (f, d) => { if (await act('bid.place', { rewardId: f.dataset.id, amount: +d.get('amount') }, 'انحفظت مزايدتك ✓')) clean(); };
 FORMS['pts-bulk'] = async (f, d) => { const ids = d.getAll('ids'); if (!ids.length) return toast('اختر طالب'); if (await act('points.add', { ids, amount: +d.get('amount'), reason: d.get('reason') }, 'تم ✓')) closeModal(); };
 
+/* ---------------- النسخ الاحتياطي: داخل الموقع + قاعدة بيانات ثانية منفصلة ---------------- */
+function backupHtml() {
+  if (!ST.bkx && !ST.bkxLoading) { ST.bkxLoading = true; act('backup.ext', {}).then(r => { ST.bkxLoading = false; ST.bkx = r || { on: false, list: [] }; render(); }); }
+  const x = ST.bkx; const last = x && x.last;
+  const loc = (S.backups || []);
+  return `<section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>النسخ الاحتياطي</h2><div class="row"><button class="btn pri" data-act="backup-now">انسخ الحين</button><a class="btn" href="/api/backup" download>تنزيل نسخة الحين</a></div></div>
+    <div class="small muted">كل يوم الساعة 4 الفجر تنحفظ نسخة كاملة تلقائيًا: داخل قاعدة الموقع (آخر 7 أيام)، وفي قاعدة بيانات ثانية منفصلة (آخر 30 يوم) عشان لو صار شي لقاعدة الموقع تبقى النسخ سليمة.</div>
+    <div class="bk-box ${x && x.on ? 'ok' : ''}"><b>القاعدة الخارجية: ${!x ? '…' : x.on ? '<span class="c-ok">مربوطة ✓</span>' : '<span class="c-warn">مو مربوطة</span>'}</b>
+      ${x && x.err ? `<div class="small c-bad">${esc(x.err)}</div>` : ''}
+      ${last ? `<div class="small muted">آخر محاولة ${fmtDate(isoDate(new Date(last.at)))} ${clock(last.at)}: ${last.ok ? 'نجحت (' + Math.round((last.size || 0) / 1024) + ' ك.ب)' : 'ما نجحت' + (last.err ? ' — ' + esc(last.err) : '')}</div>` : ''}
+      ${x && !x.on ? `<ol class="steps small"><li>في Vercel افتح مشروع الموقع ← <b>Storage</b> ← <b>Create Database</b> ← <b>Neon</b>.</li><li>اختر منطقة غير فرانكفورت (مثل <b>Washington</b>) عشان تكون النسخ في مكان ثاني، وسمّها مثل irtaq-backup.</li><li>لما يسألك تربطها بالمشروع: اكتب في <b>Custom Prefix</b> كلمة <b dir="ltr">BACKUP</b> ووافق.</li><li>اضغط <b>Redeploy</b> للموقع، وبعدها ارجع هنا واضغط «انسخ الحين».</li></ol><div class="small muted">لا تربط قاعدة موقع ثاني، لازم قاعدة جديدة فاضية.</div>` : ''}
+      ${x && x.on && (x.list || []).length ? `<details><summary class="small">النسخ الخارجية (${x.list.length})</summary><div class="list">${x.list.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب${b.kind === 'manual' ? ' · يدوية' : ''}</span></div><a class="btn sm" href="/api/backup?ext=${b.id}" download>تنزيل</a></div>`).join('')}</div></details>` : ''}
+    </div>
+    ${loc.length ? `<details><summary class="small">النسخ داخل الموقع (${loc.length})</summary><div class="list">${loc.map(b => `<div class="item"><div class="grow">${fmtDate(isoDate(new Date(b.at)))} ${clock(b.at)} <span class="small muted">${Math.round(b.size / 1024)} ك.ب</span></div><a class="btn sm" href="/api/backup?id=${b.id}" download>تنزيل</a></div>`).join('')}</div></details>` : '<div class="small muted">ما فيه نسخ تلقائية بعد. تحتاج CRON_SECRET في Vercel.</div>'}
+  </section>`;
+}
+Object.assign(ACT, { 'backup-now': async el => { el.disabled = true; const old = el.textContent; el.textContent = 'ينسخ…'; const r = await act('backup.now', {}, x => x.ext && x.ext.ok ? 'انحفظت النسخة داخل الموقع وفي القاعدة الخارجية ✓' : 'انحفظت داخل الموقع' + (x.ext && x.ext.err ? '، والخارجية: ' + x.ext.err : '')); el.disabled = false; el.textContent = old; if (r) { ST.bkx = null; render(); } } });
+
+/* ---------------- مكتبات خارجية عند الحاجة ---------------- */
+const LIBS = {};
+function loadScript(src) {
+  if (!LIBS[src]) LIBS[src] = new Promise((ok, no) => { const el = document.createElement('script'); el.src = src; el.async = true; el.onload = () => ok(); el.onerror = () => { delete LIBS[src]; no(new Error('ما قدرنا نحمّل الأداة، تأكد من النت وجرّب مرة ثانية')); }; document.head.appendChild(el); });
+  return LIBS[src];
+}
+const QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+const XLSX_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+/* ---------------- بطاقات الطلاب للطباعة ---------------- */
+function cardsModal() {
+  const u = me(); const hs = myHalaqat(u); const adm = u.role === 'admin' && can(u, 'students');
+  openModal(`${dlgHead('بطاقات الطلاب')}<form data-form="cards" style="display:grid;gap:12px">
+    <div class="small muted">بطاقة لكل طالب بحجم بطاقة البنك، 10 بطاقات في الورقة. فيها اسمه وحلقته ومعلمه ووقت الحلقة واسم الدخول، ورمز يفتح الموقع واسمه مكتوب.</div>
+    <label class="fld"><span>الحلقة</span><select name="halqa">${hs.length > 1 ? '<option value="">كل الحلقات</option>' : ''}${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)} (${studentsOf(h.id).length})</option>`).join('')}</select></label>
+    <label class="check"><input type="checkbox" name="qr" checked> رمز QR للدخول</label>
+    <label class="check"><input type="checkbox" name="sched" checked> أيام الحلقة ووقتها</label>
+    ${adm ? `<label class="check"><input type="checkbox" name="pw"> كلمة مرور جديدة لكل طالب تنطبع في البطاقة</label><div class="small c-warn">انتبه: كلمة المرور القديمة تتوقف للطلاب المختارين، وأي جهاز داخل بحسابهم يحتاج يدخل من جديد.</div>` : '<div class="small muted">كلمة المرور تنكتب باليد، أو يطبعها المدير جديدة.</div>'}
+    <div class="dlg-foot"><button class="btn pri" type="submit">جهّز البطاقات</button></div></form>`);
+}
+FORMS.cards = async (f, d) => {
+  const hid = d.get('halqa') || ''; const hs = hid ? [hid] : myHalaqat(me()).map(h => h.id);
+  const studs = hs.flatMap(h => studentsOf(h)); if (!studs.length) return toast('ما فيه طلاب في هالحلقة');
+  const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'لحظة…';
+  let pws = {};
+  try {
+    if (d.get('pw')) { const r = await act('students.resetpw', { ids: studs.map(x => x.id) }); if (!r) return; (r.list || []).forEach(x => pws[x.id] = x.pw); }
+    let qr = null; if (d.get('qr')) { try { await loadScript(QR_LIB); qr = window.qrcode; } catch { toast('ما انحمّل الرمز، بتنطبع البطاقات بدونه'); } }
+    const html = cardsHtml(studs, { qr, sched: !!d.get('sched'), pws });
+    const w = window.open('', '_blank');
+    if (!w) return toast('المتصفح منع فتح نافذة الطباعة، اسمح بالنوافذ المنبثقة للموقع وجرّب');
+    w.document.open(); w.document.write(html); w.document.close(); closeModal();
+  } finally { btn.disabled = false; btn.textContent = 'جهّز البطاقات'; }
+};
+function cardsHtml(studs, o) {
+  const center = SET().center || 'حلقات ارتق'; const host = location.host; const fem = inGirls();
+  const card = st => {
+    const h = S.halaqat[st.halqaId] || {}; const t = h.teacherId && S.users[h.teacherId];
+    const link = location.origin + '/?u=' + encodeURIComponent(st.username || '');
+    let svg = ''; if (o.qr) { try { const q = o.qr(0, 'M'); q.addData(link); q.make(); svg = q.createSvgTag(2, 0); } catch {} }
+    const days = halqaDays(st.halqaId).map(d => DAYN[d]).join('، ');
+    return `<div class="c"><div class="top"><span class="mk">${MARK}</span><b>${esc(center)}</b></div>
+      <div class="body"><div class="info"><div class="nm">${esc(st.name)}</div>
+        <div class="ln">${esc(h.name || '')}${t ? ' · ' + (fem ? 'المعلمة ' : 'المعلم ') + esc(t.name) : ''}</div>
+        ${o.sched && (days || h.time) ? `<div class="ln">${esc(days)}${h.time ? ' · ' + fmtTime(h.time) : ''}${h.place ? ' · ' + esc(h.place) : ''}</div>` : ''}
+        <div class="cred"><span>اسم الدخول</span><b dir="ltr">${esc(st.username || '')}</b></div>
+        <div class="cred"><span>كلمة المرور</span>${o.pws[st.id] ? `<b dir="ltr">${o.pws[st.id]}</b>` : '<i></i>'}</div></div>
+        ${svg ? `<div class="qr">${svg}<span>امسح للدخول</span></div>` : ''}</div>
+      <div class="ft" dir="ltr">${esc(host)}</div></div>`;
+  };
+  const acc = fem ? '#a23c6b' : '#1c6a5a';
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>بطاقات الطلاب</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Reem+Kufi:wght@600&display=swap">
+<style>@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;color:#15302a;--accent:${acc};--accent-ink:#fff}
+.bar{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;background:#f2f6f4;border-bottom:1px solid #d5e1db;font-size:14px}.bar button{font:inherit;font-weight:700;background:${acc};color:#fff;border:0;border-radius:10px;padding:10px 18px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(2,85.6mm);gap:6mm 8mm;justify-content:center;padding:8mm 0}
+.c{width:85.6mm;height:54mm;border:1px solid #c9d6cf;border-radius:3.5mm;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto;break-inside:avoid;page-break-inside:avoid;background:#fff}
+.top{display:flex;align-items:center;gap:2mm;padding:1.8mm 3mm;background:${acc};color:#fff;font-family:"Reem Kufi","IBM Plex Sans Arabic",sans-serif;font-size:9.5pt}.mk svg{width:4.5mm;height:4.5mm;display:block}.mk rect{fill:#fff}.mk path{stroke:${acc}}
+.body{display:flex;gap:2.5mm;padding:2mm 3mm;min-height:0}.info{flex:1;min-width:0;display:grid;align-content:start;gap:.6mm}
+.nm{font-weight:700;font-size:11.5pt;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ln{font-size:7.5pt;color:#4b5f58;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cred{display:flex;align-items:baseline;gap:2mm;font-size:7.5pt;margin-top:.6mm}.cred span{color:#5a6f68;min-width:15mm}.cred b{font-size:9.5pt;letter-spacing:.3px}.cred i{flex:1;border-bottom:1px dotted #8aa298;height:3.5mm}
+.qr{width:21mm;display:grid;justify-items:center;align-content:start;gap:.5mm}.qr svg{width:21mm;height:21mm}.qr span{font-size:6pt;color:#5a6f68}
+.ft{font-size:6.5pt;color:#7a8e87;padding:0 3mm 1.5mm;text-align:left}
+@media print{.bar{display:none}.grid{padding:0}}</style></head><body>
+<div class="bar"><span>${studs.length} بطاقة · اطبعها على ورق مقوّى وقصّها</span><button onclick="print()">اطبع</button></div>
+<div class="grid">${studs.map(card).join('')}</div>
+<script>document.fonts && document.fonts.ready.then(function(){setTimeout(function(){try{print()}catch(e){}},300)})<\/script></body></html>`;
+}
+
+/* ---------------- تصدير Excel كامل ---------------- */
+async function exportExcel(el) {
+  const old = el ? el.textContent : ''; if (el) { el.disabled = true; el.textContent = 'يجهّز الملف…'; }
+  try {
+    await loadScript(XLSX_LIB); const X = window.XLSX;
+    const u = me(); const hs = myHalaqat(u); const hids = new Set(hs.map(h => h.id)); const hn = id => (S.halaqat[id] || {}).name || '';
+    const studs = L('users').filter(x => x.role === 'student' && (hids.has(x.halqaId) || (u.role === 'admin' && !x.halqaId))).sort((a, b) => (hn(a.halqaId) + a.name).localeCompare(hn(b.halqaId) + b.name, 'ar'));
+    const nm = id => (S.users[id] || {}).name || '';
+    const ST_L = { active: 'نشط', pending: 'بانتظار الاعتماد', disabled: 'موقوف', archived: 'مؤرشف' };
+    const sheets = [];
+    sheets.push(['الطلاب', studs.map(x => { const a = attStats(x, 0); const h = S.halaqat[x.halqaId] || {}; return {
+      'الاسم': x.name, 'اسم الدخول': x.username, 'الحلقة': hn(x.halqaId), 'المعلم': nm(h.teacherId), 'المجمع': h.branch || '', 'الحالة': ST_L[x.status] || x.status,
+      'جوال الطالب': x.phone || '', 'ولي الأمر': x.parentName || '', 'جوال ولي الأمر': x.parentPhone || '', 'المحفوظ (أوجه)': isAuto(x) ? autoInfo(x).memPages : '', 'الخطة': isAuto(x) ? 'تلقائية' : 'يدوية',
+      'نسبة الحضور %': a.rate == null ? '' : a.rate, 'حضور': a.p, 'تأخر': a.l, 'غياب': a.a, 'استئذان': a.e, 'سلسلة الحضور': attendStreak(x), 'رصيد النقاط': x.status === 'pending' ? '' : balOf(x.id),
+      'تاريخ الاعتماد': x.approvedAt ? isoDate(new Date(x.approvedAt)) : '', 'آخر دخول': x.lastSeen ? isoDate(new Date(x.lastSeen)) : '' }; })]);
+    const sids = new Set(studs.map(x => x.id));
+    const recs = L('recs').filter(r => sids.has(r.uid)).sort((a, b) => (b.date + (b.at || 0)).localeCompare(a.date + (a.at || 0)));
+    sheets.push(['التسميع', recs.map(r => ({ 'التاريخ': r.date, 'الطالب': nm(r.uid), 'الحلقة': hn(r.halqaId || (S.users[r.uid] || {}).halqaId), 'النوع': TYPE[r.type] || r.type, 'السورة': SN[r.surah - 1] || '', 'من آية': r.from, 'إلى آية': r.to, 'الأوجه': Math.round(recPages(r) * 100) / 100, 'الأخطاء': r.quick ? '' : r.mistakes, 'التنبيهات': r.quick ? '' : r.alerts, 'التقدير': r.grade, 'ناجح': r.pass ? 'نعم' : 'إعادة', 'داخل حصة': r.sid ? 'نعم' : 'لا', 'سجّله': nm(r.by), 'ملاحظة': r.note || '' }))]);
+    const ses = L('sessions').filter(x => hids.has(x.halqaId) && x.date <= today()).sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
+    const att = []; ses.filter(x => !x.cancelled).forEach(x => studentsOf(x.halqaId).concat(Object.keys(x.att || {}).map(id => ({ ...S.users[id], id })).filter(y => y.name && y.halqaId !== x.halqaId)).forEach(st => { const v = (x.att || {})[st.id]; const arr = (x.arr || {})[st.id]; const lf = (x.left || {})[st.id];
+      att.push({ 'التاريخ': x.date, 'اليوم': DAYN[new Date(x.date + 'T00:00').getDay()], 'الحلقة': hn(x.halqaId), 'الطالب': st.name, 'الحالة': v ? ATT[v] : 'ما تحضّر', 'وقت الوصول': arr ? clock(arr) : '', 'تأخر (دقيقة)': v === 'l' ? minsLate(x, st.id) || '' : '', 'انصرف': lf ? clock(lf.at) + (lf.reason ? ' — ' + lf.reason : '') : '' }); }));
+    sheets.push(['الحضور', att]);
+    sheets.push(['الحصص', ses.map(x => { const st = studentsOf(x.halqaId); const a = x.att || {}; return { 'التاريخ': x.date, 'الحلقة': hn(x.halqaId), 'الوقت': fmtTime(x.time), 'النوع': MODE_L[lessonMode(x)] || '', 'الحالة': x.cancelled ? 'ملغاة' : x.closedAt ? 'انتهت' : '', 'المعلم': nm(x.subId || (S.halaqat[x.halqaId] || {}).teacherId), 'وصول المعلم': x.teacherAt ? clock(x.teacherAt) : '', 'حاضر': st.filter(y => a[y.id] === 'p' || a[y.id] === 'l').length, 'غائب': st.filter(y => a[y.id] === 'a').length, 'سمّعوا': new Set(L('recs').filter(r => r.sid === x.id).map(r => r.uid)).size, 'ملاحظة': x.note || '' }; })]);
+    const ptx = L('ptx').filter(x => sids.has(x.uid)).sort((a, b) => (b.at || 0) - (a.at || 0));
+    sheets.push(['حركات النقاط', ptx.map(x => ({ 'التاريخ': x.at ? isoDate(new Date(x.at)) : '', 'الطالب': nm(x.uid), 'النقاط': x.amount, 'النوع': ({ manual: 'يدوي', spend: 'شراء من المتجر', refund: 'استرجاع', auction: 'مزاد' })[x.kind] || x.kind, 'السبب': x.reason || '', 'بواسطة': x.byName || '' }))]);
+    const ords = L('orders').filter(o => sids.has(o.uid));
+    if (ords.length) sheets.push(['طلبات المتجر', ords.map(o => ({ 'التاريخ': o.at ? isoDate(new Date(o.at)) : '', 'الطالب': nm(o.uid), 'الجائزة': (S.rewards[o.rid] || {}).name || '', 'السعر': o.price, 'الحالة': ({ pending: 'بانتظار التسليم', delivered: 'تسلّمها', rejected: 'مرفوض', cancelled: 'ملغي' })[o.status] || o.status }))]);
+    sheets.push(['الحلقات', hs.map(h => ({ 'الحلقة': h.name, 'المعلم': nm(h.teacherId), 'الأيام': halqaDays(h.id).map(d => DAYN[d]).join('، '), 'الوقت': fmtTime(h.time), 'النوع': MODE_L[h.mode || 'onsite'], 'المجمع': h.branch || '', 'المكان': h.place || '', 'الطلاب': studentsOf(h.id).length }))]);
+    if (u.role === 'admin') sheets.push(['المعلمون', L('users').filter(x => x.role === 'teacher').map(t => ({ 'الاسم': t.name, 'اسم الدخول': t.username, 'الحالة': ST_L[t.status] || t.status, 'الجوال': t.phone || '', 'الحلقات': hs.filter(h => h.teacherId === t.id).map(h => h.name).join('، '), 'وصل اليوم': ((S.tins || {})[t.id] || {}).at ? clock(S.tins[t.id].at) : '', 'انصرف اليوم': ((S.tins || {})[t.id] || {}).out ? clock(S.tins[t.id].out) : '' }))]);
+    const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] };
+    for (const [name, rows] of sheets) { const ws = X.utils.json_to_sheet(rows.length ? rows : [{ 'ما فيه بيانات': '' }]); const keys = Object.keys(rows[0] || { x: 1 }); ws['!cols'] = keys.map(k => ({ wch: Math.min(40, Math.max(k.length + 2, ...rows.slice(0, 200).map(r => String(r[k] ?? '').length + 1))) })); X.utils.book_append_sheet(wb, ws, name); }
+    X.writeFile(wb, `${(SET().center || 'ارتق').replace(/[\\/:*?"<>|]/g, '')}${inGirls() && S.isSuper ? ' - البنات' : ''} ${today()}.xlsx`);
+    toast('نزل الملف ✓');
+  } catch (e) { toast(e.message || 'ما قدرنا نجهّز الملف'); }
+  finally { if (el) { el.disabled = false; el.textContent = old; } }
+}
+Object.assign(ACT, { 'cards': () => cardsModal(), 'xlsx': el => exportExcel(el) });
+
 /* ---------------- theme ---------------- */
 let THEME = ''; try { THEME = localStorage.getItem('irtaq-theme') || ''; } catch {}
 function isDarkNow() { if (THEME) return THEME === 'dark'; try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; } }
@@ -3531,8 +3712,12 @@ function liveNow() {
   if (u.role === 'student') return L('sessions').some(s => s.halqaId === u.halqaId && s.date === t && !s.cancelled && Math.abs(lessonTs(s) - Date.now()) < 3 * 3600000);
   return false;
 }
+// توفير تشغيل قاعدة البيانات: إذا الجهاز ما انلمس 10 دقايق وما فيه حصة شغالة، يوقف التحديث التلقائي لين يرجع أحد يستخدمه
+let LAST_ACT = Date.now(), LAST_LOAD = Date.now(); const IDLE_MS = 10 * 60000;
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { const was = Date.now() - LAST_ACT > IDLE_MS; LAST_ACT = Date.now(); if (was && ST.meId && Date.now() - LAST_LOAD > 30000) load(); }, { passive: true, capture: true }));
+const idleNow = () => Date.now() - LAST_ACT > IDLE_MS && !window.__inRoom && !ST.fs && !liveNow();
 async function pollLoop() {
-  if (document.visibilityState === 'visible' && ST.meId && !DRAG.on && ($('#modal').hidden || (ST.rec && ST.rec.where === 'modal'))) { if (!(ST.rec && ST.rec.where === 'modal')) await load(); }
+  if (document.visibilityState === 'visible' && ST.meId && !DRAG.on && !idleNow() && ($('#modal').hidden || (ST.rec && ST.rec.where === 'modal'))) { if (!(ST.rec && ST.rec.where === 'modal')) { await load(); LAST_LOAD = Date.now(); } }
   setTimeout(pollLoop, window.__inRoom && ROOM.mode === 'full' ? 12000 : liveNow() ? 8000 : 30000);
 }
 setTimeout(pollLoop, 8000);
