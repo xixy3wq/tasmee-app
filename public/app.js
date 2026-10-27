@@ -87,7 +87,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm'; S.isSuper = !!d.isSuper;
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm'; S.isSuper = !!d.isSuper; S.dayEnd = d.dayEnd || {}; S.pray = d.pray || null;
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -531,7 +531,7 @@ function sessionsV(u) {
   const row = s => { const n = studentsOf(s.halqaId).length; const att = s.att || {}; const pres = Object.values(att).filter(v => v === 'p' || v === 'l').length; const recs = L('recs').filter(r => r.sid === s.id).length; const iss = Object.keys(s.issues || {}).length;
     return `<div class="item click ${s.cancelled ? 'dim' : ''}" data-act="open-session" data-id="${s.id}"><div class="grow"><div class="name">${fmtDateH(s.date)} <span class="muted small">${fmtTime(s.time)}</span></div><div class="small muted">${esc(halqaName(s.halqaId))}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
       ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.subId ? `<span class="chip info">احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${lessonMode(s) !== 'onsite' ? `<span class="chip info">${MODE_L[lessonMode(s)]}</span>` : ''}${lessonMode(s) === 'onsite' || effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
-  return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
+  return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn" data-act="quick-rec">${ICO.reports || ''} تسجيل تسميع</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
   ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
   ${absentAlertsHtml(ids)}
   ${ST.cal ? calendarHtml(ids) : `<section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
@@ -610,7 +610,7 @@ function studentsV(u) {
   <div class="row"><input id="st-q" placeholder="ابحث بالاسم أو اسم المستخدم" value="${esc(ST.q)}" data-input="search" style="flex:1 1 220px">
   ${hs.length > 1 ? `<select id="st-h" data-change="filter-h" style="flex:0 1 200px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}</div>
   <section class="card">${list.length ? `<div class="list">${list.map(x => { const a = attStats(x, 30); const n = absentStreak(x); return `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><div class="name">${esc(x.name)}</div><div class="small muted">${esc(halqaName(x.halqaId))} · <span dir="ltr">${esc(x.username)}</span>${inact.has(x.id) ? ' · ' + lastSeenText(x) : ''}</div></div>
-    ${dmUnreadOf(x.id) ? `<span class="chip bad">${dmUnreadOf(x.id)} رسالة</span>` : ''}${x.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}${n >= lim ? `<span class="chip bad">غاب ${n} متتالية</span>` : ''}<span class="chip ${isAuto(x) ? 'acc' : ''}">${isAuto(x) ? 'خطة تلقائية' : 'خطة يدوية'}</span><span class="chip num">حضور ${a.rate == null ? '—' : a.rate + '٪'}</span></div>`; }).join('')}</div>` : `<div class="empty">${q ? 'ما فيه نتائج.' : 'ما فيه طلاب معتمدون بعد.'}</div>`}</section>`;
+    ${dmUnreadOf(x.id) ? `<span class="chip bad">${dmUnreadOf(x.id)} رسالة</span>` : ''}${x.status === 'disabled' ? '<span class="chip bad">موقوف</span>' : ''}${n >= lim ? `<span class="chip bad">غاب ${n} متتالية</span>` : ''}<span class="chip ${isAuto(x) ? 'acc' : ''}">${isAuto(x) ? 'خطة تلقائية' : 'خطة يدوية'}</span><span class="chip num">حضور ${a.rate == null ? '—' : a.rate + '٪'}</span>${x.status === 'active' ? `<button class="btn sm" data-act="rec-out" data-id="${x.id}" title="تسجيل تسميع بدون حصة">سمّع</button>` : ''}</div>`; }).join('')}</div>` : `<div class="empty">${q ? 'ما فيه نتائج.' : 'ما فيه طلاب معتمدون بعد.'}</div>`}</section>`;
 }
 function planHtml(st) {
   const ps = planSegs(st); const rows = ['new', 'review', 'tath'].filter(k => ps[k]);
@@ -745,6 +745,15 @@ function settingsV() {
     <div class="set-pane" ${P('days')}>${H('الدوام والحضور', 'الأيام الافتراضية للحلقات وفترات الدراسة')}
     <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
     <label class="fld" style="max-width:320px"><span>تنبيه الغياب المتكرر بعد كم غياب متتالي</span><input id="sg-abs" name="absentAlert" type="number" min="2" max="20" value="${st.absentAlert || 3}"></label>
+    ${(() => { const o = { mode: 'prayer', prayer: 'asr', after: 90, time: '17:00', ...(st.teacherOut || {}) }; const PR = { fajr: 'الفجر', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' }; const end = (S.dayEnd || {})._; const pr = S.pray || {};
+      return `<div class="fld tout-set"><span>وقت انصراف المعلمين</span>
+      <div class="small muted">المعلم يسجّل خروجه بنفسه، وإذا ما سجّل ينسجّل خروجه تلقائيًا عند هذا الوقت. ولو سجّل خروجه قبله يطلب منه تأكيد ويوصلك تنبيه.</div>
+      <div class="fgrid"><label class="fld"><span>الطريقة</span><select id="sg-to-mode" name="to-mode"><option value="prayer" ${o.mode === 'prayer' ? 'selected' : ''}>بعد أذان صلاة بمدة (يتغير يوميًا)</option><option value="time" ${o.mode === 'time' ? 'selected' : ''}>وقت ثابت</option><option value="off" ${o.mode === 'off' ? 'selected' : ''}>بدون وقت انصراف</option></select></label>
+      <label class="fld"><span>بعد أذان</span><select id="sg-to-prayer" name="to-prayer">${Object.entries(PR).map(([k, l]) => `<option value="${k}" ${o.prayer === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="fld"><span>بكم دقيقة</span><input id="sg-to-after" name="to-after" type="number" min="0" max="600" step="5" value="${o.after}" list="to-after-l"><datalist id="to-after-l"><option value="60"><option value="90"><option value="120"><option value="150"></datalist></label>
+      <label class="fld"><span>الوقت الثابت</span><input id="sg-to-time" name="to-time" type="time" value="${esc(o.time)}"></label></div>
+      ${o.mode !== 'off' && end ? `<div class="note small">اليوم: ${o.mode === 'prayer' && pr[o.prayer] ? `أذان ${PR[o.prayer]} ${fmtTime(pr[o.prayer])} ← ` : ''}الانصراف <b>${clock(end)}</b>. الأذان محسوب على موقع الجامع من «المجمعات»${Object.keys(st.places || {}).length ? '' : ' (ما تحدد للحين، فمحسوب على الرياض)'}.</div>` : ''}
+      </div>`; })()}
     <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
       ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div></div>
@@ -1068,7 +1077,7 @@ function helpV(u) {
     (isFullAdmin(u) ? sub('الواتساب وغرفة الحصة', ['الواتساب: رسائل الواتساب ← الربط والرسائل التلقائية ← الربط السريع، تدخل بحسابك في الواتس الذكي وتضغط «اربط» ثم حفظ. تأكد قبلها إن جوالك مربوط هناك.', 'الرسائل التلقائية تنرسل بعد مهلة من التحضير، وإذا عدّل المعلم التحضير خلالها تنلغي الرسالة.', 'التقرير الأسبوعي يطلع في اليوم والساعة اللي تحددها، أو بزر «أرسل الآن».', 'غرفة الحصة: الإعدادات ← غرفة الحصة. Jitsi هي الأساسية، وDaily احتياط تلقائي إذا حطيت مفتاحها. المعلم يقدر ينقل الحصة للاحتياط بزر.', '«حالة الخدمات» في إعدادات الموقع تفحص الواتساب والغرفة والإشعارات والنسخ الاحتياطي.', 'المساعد الذكي: الإعدادات ← المساعد الذكي، تسوي مفتاح من aistudio.google.com خاص بهالموقع وتلصقه وتحفظ.']) +
       `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
       sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
-  const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «سجّل حضوري» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
+  const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «📍 وصلت الجامع» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'إذا طلعت اضغط «🚪 تسجيل خروج». وإذا نسيت ينسجّل خروجك لحاله عند وقت الانصراف اللي تحدده الإدارة (مثلًا ساعة ونص بعد أذان العصر). الخروج قبل الوقت يطلب تأكيد ويوصل للإدارة.', 'تسجيل تسميع بدون حصة: من «الحصص ← تسجيل تسميع» أو زر «سمّع» جنب الطالب في «طلابي». تقدر تختار يوم فات، ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله. وتعديل أي تسميع من صفحة الطالب ← سجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
     + sub('النقاط والمتجر', ['النقاط تنحسب لحالها من الحضور والتسميع والحفظ، وتقدر تضيف أو تخصم يدويًا من ⭐ في بطاقة الطالب أو من «المتجر والنقاط ← النقاط» لأكثر من طالب.', 'الطالب ما يفتح جواله في الحلقة، فتقدر تطلب الجائزة عنه من ⭐ في بطاقته.', 'تسليم الجائزة: «المتجر والنقاط ← الطلبات»، أدخل الكود اللي عند الطالب واضغط تسليم.']);
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الحين»، أو الصق رابط قوقل ماب، واختر النطاق المسموح.', 'بعدها ما يقدر المعلم يسجل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مين وصل ومتى وكم طالب حاضر.', 'تتنقل بين المجمعات من الشريط اللي فوق الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، ويشوف مجمعه بس.'])
     + (S.isSuper ? sub('قسم البنات', ['فوق الصفحة زر «البنين | البنات» تتنقل فيه بين القسمين، وكل قسم منفصل تمامًا: حلقاته وطلابه ومعلميه وطلبات التسجيل والحصص والتقارير والمتجر والإعلانات وغرفة المعلمين.', 'لما تكون في قسم البنات: أي حلقة أو معلمة أو مشرفة أو جائزة أو إعلان تضيفه يصير للبنات.', 'إدارة قسم البنات: أضف مشرفة من «المعلمون» وأنت في قسم البنات، وتشوف قسم البنات بس. ومشرفين البنين ما يشوفون شي من البنات، والعكس.', 'رابط التسجيل العام وأنت في قسم البنات يكون خاص بالبنات، وطلباتهم توصل لقسمهم.', 'الطالبات والمعلمات يشوفون الموقع بتصميم وردي هادئ وكلام بصيغة المؤنث، ورسائل أولياء الأمور تصير «ابنتكم» و«بارك الله فيها».']) : '')
@@ -1413,7 +1422,7 @@ function recPanelHtml() {
   const R = ST.rec; if (!R) return '';
   const st = S.users[R.uid] || {}; const ses = S.sessions[R.sid] || {};
   return `<div class="recp">
-   <div class="sec-head"><div><div class="small muted">تسجيل تسميع${R.sid ? '' : ' خارج الحصة'}</div><h3>${esc(st.name)}</h3></div>
+   <div class="sec-head"><div><div class="small muted">تسجيل تسميع${R.sid ? '' : ' بدون حصة'}</div><h3>${esc(st.name)}</h3></div>
      <div class="row"><span class="timer num timer-w ${(+SET().recMin) && recSecs() >= SET().recMin * 60 ? 'over' : ''}" data-timer>${fmtDur(recSecs())}</span><button class="btn sm" data-act="rk-timer">${R.run ? 'إيقاف' : (R.secs ? 'متابعة' : 'ابدأ التوقيت')}</button>${R.secs || R.run ? '<button class="btn ghost sm" data-act="rk-treset">تصفير</button>' : ''}</div></div>
    ${!R.sid ? `<label class="fld" style="max-width:220px"><span>التاريخ</span><input type="date" id="rk-date" data-rn="date" value="${esc(R.date)}"></label>` : ''}
    <div class="row"><label class="check"><input type="checkbox" id="rk-quick" data-rn="quick" ${R.quick ? 'checked' : ''}> تقييم سريع بدون عدّ</label><button class="btn ghost sm" data-act="rk-plan">سمّع المطلوب من الخطة</button></div>
@@ -1796,7 +1805,8 @@ function settingsData(f) {
   const planTpls = (st.planTpls || []).map((t, i) => ({ id: t.id, name: d.get('ptn-' + i) ?? t.name, newAmt: +(d.get('pta-' + i) ?? t.newAmt), revAmt: +(d.get('ptr-' + i) ?? t.revAmt), tathAmt: +(d.get('ptt-' + i) ?? t.tathAmt) }));
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page', 'absent', 'bad'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
-  return { supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
+  const to0 = st.teacherOut || {}; const teacherOut = { mode: d.get('to-mode') || to0.mode || 'prayer', prayer: d.get('to-prayer') || to0.prayer || 'asr', after: d.has('to-after') ? +d.get('to-after') || 0 : (to0.after ?? 90), time: d.get('to-time') || to0.time || '17:00' };
+  return { teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {
@@ -2968,15 +2978,30 @@ const placeKeyOf = hid => ((S.halaqat[hid] || {}).branch) || '_';
 const placeOf = hid => (SET().places || {})[placeKeyOf(hid)] || null;
 const mapUrl = p => p ? `https://www.google.com/maps?q=${p.lat},${p.lng}` : '';
 const myTin = () => (S.tins || {})[ST.meId];
+/** وقت انصراف المعلمين اليوم لمجمع الحلقة (ms) */
+const dayEndOf = hid => { const b = (S.halaqat[hid] || {}).branch || '_'; const m = S.dayEnd || {}; return m[b] || m._ || null; };
 const balOf = uid => (S.bal || {})[uid] || 0;
 const minsLate = (s, uid) => { const a = (s.arr || {})[uid]; return a ? Math.max(0, Math.round((a - lessonTs(s)) / 60000)) : 0; };
 const MGR_PERMS = ['req', 'students', 'teachers', 'halaqat', 'anns', 'reports', 'store', 'logs'];
 
+/* تسجيل تسميع بدون ما ينشئ حصة: يختار الطالب ويسجّل، وإذا فيه حصة لحلقته بنفس اليوم ينربط فيها تلقائيًا */
+function qrItems() {
+  const hs = myHalaqat(me()).map(h => h.id); const q = (ST.qrq || '').trim();
+  const list = L('users').filter(x => x.role === 'student' && x.status === 'active' && hs.includes(x.halqaId) && (!q || (x.name || '').includes(q))).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar')).slice(0, 80);
+  const recToday = new Set(L('recs').filter(r => r.date === today()).map(r => r.uid));
+  return list.length ? list.map(x => `<button class="item click qr-it" data-act="rec-out" data-id="${x.id}"><div class="grow"><div class="name">${esc(x.name)}</div><div class="small muted">${esc(halqaName(x.halqaId))}</div></div>${recToday.has(x.id) ? '<span class="chip ok">سمّع اليوم</span>' : ''}<span class="chip acc">سمّع</span></button>`).join('') : '<div class="empty small">ما فيه نتائج.</div>';
+}
+function quickRecModal() {
+  openModal(`${dlgHead('تسجيل تسميع')}<div class="small muted">بدون ما تنشئ حصة. اختر الطالب، وتقدر تغيّر التاريخ لو تسجّل تسميع يوم فات. ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله.</div>
+  <input id="qr-q" data-input="qr-q" placeholder="ابحث بالاسم" value="${esc(ST.qrq || '')}" autocomplete="off"><div class="list qr-list" id="qr-list">${qrItems()}</div>`);
+}
+INP['qr-q'] = el => { ST.qrq = el.value; const box = document.getElementById('qr-list'); if (box) { box.innerHTML = qrItems(); femify(box); } };
 function checkinBar(u, s) {
   if (u.role !== 'teacher' || s.date !== today() || !isOnsiteL(s)) return '';
-  const t = myTin(); const need = !!placeOf(s.halqaId);
-  if (t) return `<div class="tin ok">${ICO.check}<span>سجّلت وصولك ${clock(t.at)}${t.dist != null ? ` · على بعد ${t.dist} م من الجامع` : ''}</span></div>`;
-  return `<div class="tin ${need ? 'need' : ''}"><div class="grow"><b>سجّل وصولك للجامع</b><span class="small">${need ? 'لازم تكون داخل الجامع، وما تقدر تحضّر أو تسجّل تسميع قبلها' : 'ينحفظ وقت وصولك للحلقة'}</span></div><button class="btn pri" data-act="tin">📍 وصلت الجامع</button></div>`;
+  const t = myTin(); const need = !!placeOf(s.halqaId); const end = dayEndOf(s.halqaId);
+  if (t && t.out) return `<div class="tin ok out">${ICO.check}<span>وصلت ${clock(t.at)} · انصرفت ${clock(t.out)}${t.outAuto ? ' (تلقائي مع وقت الانصراف)' : ''}${t.outEarly ? ` · <b class="c-warn">قبل الوقت بـ ${t.outEarly} د</b>` : ''}</span>${!t.outAuto && Date.now() - t.out < 30 * 60000 ? '<button class="linkbtn" data-act="tout-undo">تراجع</button>' : ''}</div>`;
+  if (t) return `<div class="tin in"><div class="grow"><b>${ICO.check} سجّلت وصولك ${clock(t.at)}${t.dist != null ? ` <span class="small muted">· على بعد ${t.dist} م</span>` : ''}</b><span class="small">${end ? `وقت الانصراف ${clock(end)}، وإذا ما سجّلت خروجك ينسجّل لحاله` : 'سجّل خروجك إذا طلعت من الجامع'}</span></div><button class="btn" data-act="tout">🚪 تسجيل خروج</button></div>`;
+  return `<div class="tin ${need ? 'need' : ''}"><div class="grow"><b>سجّل وصولك للجامع</b><span class="small">${need ? 'لازم تكون داخل الجامع، وما تقدر تحضّر أو تسجّل تسميع قبلها' : 'ينحفظ وقت وصولك للحلقة'}${end ? ` · الانصراف اليوم ${clock(end)}` : ''}</span></div><button class="btn pri" data-act="tin">📍 وصلت الجامع</button></div>`;
 }
 /** بطاقة تسجيل الوصول أعلى الصفحة الأساسية للمعلم: تطلع في أي يوم عنده فيه حلقة حضورية، حتى لو الحصة ما انفتحت بعد */
 function checkinCard(u) {
@@ -3186,6 +3211,16 @@ Object.assign(ACT, {
     const inModal = !!el.closest('#modal'); if (inModal) closeModal();
     await checkinFlow(inModal ? null : el);
   },
+  'tout': async el => {
+    el.disabled = true; const old = el.textContent; el.textContent = 'لحظة…';
+    const pos = await Promise.race([getPos(), new Promise(r => setTimeout(() => r(null), 6000))]);
+    const body = pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy } : {};
+    const r = await act('teacher.checkout', body, x => x.needConfirm ? '' : x.already ? 'مسجّل خروجك من قبل' : 'سجّلت خروجك ✓');
+    el.disabled = false; el.textContent = old;
+    if (r && r.needConfirm) confirmBox(`وقت الانصراف ${clock(r.end)}، باقي ${r.left} دقيقة. تسجّل خروجك الحين؟ ينرسل تنبيه للإدارة.`, 'سجّل خروجي', () => act('teacher.checkout', { ...body, early: true }, 'سجّلت خروجك'));
+  },
+  'tout-undo': () => act('teacher.checkout', { undo: true }, 'رجّعنا تسجيل الخروج'),
+  'quick-rec': () => { ST.qrq = ''; quickRecModal(); },
   'os-f': el => { ST.osf = el.dataset.v; render(); },
   'os-arr': async el => { const s = curSession(); el.disabled = true; const r = await act('lesson.arrive', { id: s.id, uid: el.dataset.id }); if (r && r.v === 'l') toast(`متأخر ${r.min} دقيقة`); buzz(12); },
   'os-att': el => { const s = curSession(); act('lesson.att', { id: s.id, uid: el.dataset.id, v: el.dataset.v }); },
@@ -3250,7 +3285,7 @@ function todayBoardHtml(u) {
     <div class="tbl-wrap"><table><thead><tr><th>الحلقة</th><th>الوقت</th><th>المعلم</th><th class="num">حاضر</th><th class="num">متأخر</th><th class="num">سمّع</th><th></th></tr></thead><tbody>
     ${rows.map(({ h, s }) => { const studs = studentsOf(h.id); const att = s.att || {}; const pres = studs.filter(x => att[x.id] === 'p' || att[x.id] === 'l').length; const late = studs.filter(x => att[x.id] === 'l').length; const rec = new Set(L('recs').filter(r => r.sid === s.id).map(r => r.uid)).size;
       const tid = s.subId || h.teacherId; const tin = (S.tins || {})[tid]; const start = lessonTs(s); const remote = lessonMode(s) === 'remote';
-      const tTxt = remote ? '<span class="chip">عن بعد</span>' : tin ? `<span class="chip ${tin.at > start + 5 * 60000 ? 'warn' : 'ok'}">${clock(tin.at)}${tin.at > start + 5 * 60000 ? ' متأخر ' + Math.round((tin.at - start) / 60000) + ' د' : ''}</span>` : now > start ? '<span class="chip bad">ما وصل</span>' : '<span class="chip">ما بعد</span>';
+      const tTxt = remote ? '<span class="chip">عن بعد</span>' : tin ? `<span class="chip ${tin.at > start + 5 * 60000 ? 'warn' : 'ok'}">${clock(tin.at)}${tin.at > start + 5 * 60000 ? ' متأخر ' + Math.round((tin.at - start) / 60000) + ' د' : ''}</span>${tin.out ? ` <span class="chip ${tin.outEarly ? 'warn' : ''}">انصرف ${clock(tin.out)}${tin.outEarly ? ' مبكر ' + tin.outEarly + ' د' : tin.outAuto ? ' تلقائي' : ''}</span>` : ''}` : now > start ? '<span class="chip bad">ما وصل</span>' : '<span class="chip">ما بعد</span>';
       return `<tr class="click" data-act="open-session" data-id="${s.id}"><td><b>${esc(h.name)}</b>${h.place ? `<div class="small muted">${esc(h.place)}</div>` : ''}</td><td>${fmtTime(s.time)}</td><td>${esc((S.users[tid] || {}).name || '—')} ${tTxt}</td><td class="num">${pres}/${studs.length}</td><td class="num">${late || ''}</td><td class="num">${rec}</td><td>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}</td></tr>`; }).join('')}
     </tbody></table></div></section>`;
 }

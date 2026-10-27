@@ -313,6 +313,12 @@ model TeacherIn {
   branch String   @default("")
   /// ما فيه موقع محدد للجامع وقت التسجيل
   noLoc  Boolean  @default(false)
+  /// تسجيل الخروج: يدوي من المعلم، أو تلقائي عند وقت الانصراف
+  outAt    DateTime?
+  outDist  Int?
+  outAuto  Boolean  @default(false)
+  /// خرج قبل وقت الانصراف بكم دقيقة
+  outEarly Int?
 
   @@unique([userId, date])
 }

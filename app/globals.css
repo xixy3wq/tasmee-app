@@ -806,3 +806,10 @@ html[data-fem] .stat{border-radius:12px}
 body.sec-switching main.wrap{opacity:.45;transition:opacity .15s;pointer-events:none}
 @media (max-width:640px){.top-in.has-sec{height:auto;padding-block:8px}.brand-row.has-sec{flex-wrap:wrap;row-gap:8px}.brand-row.has-sec .brand{flex:1 1 0;min-width:0}.sec-sw{order:3;width:100%;justify-content:stretch}.sec-sw button{flex:1;justify-content:center}}
 @media (max-width:640px){:root:has(.top-in.has-sec){--hdr:104px}}
+/* تسجيل خروج المعلم + تسجيل تسميع بدون حصة */
+.tin.in b{display:flex;align-items:center;gap:6px;color:var(--ok)}
+.tin.in b svg{width:18px;height:18px}
+.tin.out{flex-wrap:wrap}
+.qr-list{max-height:min(55vh,460px);overflow-y:auto;margin-top:4px}
+.qr-it{width:100%;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;color:inherit;text-align:start;cursor:pointer}
+.qr-it:hover{background:var(--sunk)}

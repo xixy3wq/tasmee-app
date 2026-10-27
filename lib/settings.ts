@@ -53,6 +53,8 @@ export const DEF = {
   lateMin: 10,
   /// مواقع الجوامع لتسجيل حضور المعلم: { "<المجمع>" أو "_" للأساسي: { lat, lng, radius } }
   places: {} as Record<string, { lat: number; lng: number; radius: number }>,
+  /// وقت انصراف المعلمين: بعد أذان صلاة بمدة (prayer)، أو وقت ثابت (time)، أو بدون (off). وبعده ينسجّل خروج المعلم لحاله
+  teacherOut: { mode: "prayer", prayer: "asr", after: 90, time: "17:00" } as { mode: string; prayer: string; after: number; time: string },
   /// لوحة الشرف للطلاب: show | top3 | hide
   board: "show",
   /// وقت التسميع المقترح لكل طالب بالدقائق (0 = بدون تنبيه)

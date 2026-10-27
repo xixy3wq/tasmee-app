@@ -11,6 +11,8 @@ import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
 import { halqaPoints, balances, groupProgress } from "@/lib/points";
 import { closeAuction } from "@/lib/store";
+import { autoCheckout } from "@/lib/tout";
+import { dayEndMs, prayerToday } from "@/lib/prayer";
 import { scopeSpec } from "@/lib/scope";
 export const dynamic = "force-dynamic";
 
@@ -151,8 +153,13 @@ export async function GET(req: Request) {
   const msgs = staff ? await prisma.msg.findMany({ where: { side: view }, orderBy: { at: "desc" }, take: 100 }) : [];
   // ---------- الحضوري: وصول المعلمين اليوم ----------
   const today0 = localDate();
+  if (staff) await autoCheckout(settings).catch(() => 0);
   const tinRows = me.role === "student" ? [] : await prisma.teacherIn.findMany({ where: { date: today0, ...(me.role === "teacher" ? { userId: me.id } : {}) } });
-  const tins = Object.fromEntries(tinRows.filter((t) => me.role === "teacher" || users.some((x) => x.id === t.userId)).map((t) => [t.userId, { at: +t.at, dist: t.dist, noLoc: t.noLoc, branch: t.branch }]));
+  const tins = Object.fromEntries(tinRows.filter((t) => me.role === "teacher" || users.some((x) => x.id === t.userId)).map((t) => [t.userId, { at: +t.at, dist: t.dist, noLoc: t.noLoc, branch: t.branch, out: t.outAt ? +t.outAt : null, outAuto: t.outAuto, outEarly: t.outEarly, outDist: t.outDist }]));
+  // وقت انصراف المعلمين اليوم لكل مجمع، وأوقات الصلاة
+  const pKeys = [...new Set(["_", ...halaqat.map((h) => h.branch || "_"), ...Object.keys((settings as any).places || {})])];
+  const dayEnd = staff ? Object.fromEntries(pKeys.map((k) => [k, dayEndMs(settings, today0, k)])) : {};
+  const pray = staff ? prayerToday(settings, today0, "_") : null;
   // ---------- النقاط والمتجر ----------
   const studsVis = users.filter((x) => x.role === "student" && x.status !== "pending");
   const cache = ((globalThis as any).__balCache ??= new Map<string, { t: number; v: any }>());
@@ -196,7 +203,7 @@ export async function GET(req: Request) {
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
     settings: { main: full ? settings : pubSettings },
     msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at })),
-    side: view, isSuper: isSuper(me as any),
+    side: view, isSuper: isSuper(me as any), dayEnd, pray,
     backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     waOn: staff ? (await waCfg()).enabled : false,

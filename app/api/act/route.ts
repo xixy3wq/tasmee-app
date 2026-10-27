@@ -12,6 +12,7 @@ import { scopeHalqaIds, scopeSpec, sideOf, sideVal, isSuper, genderWhere, type S
 import { balanceOf } from "@/lib/points";
 import { closeAuction } from "@/lib/store";
 import { syncAutoLessons } from "@/lib/lessons";
+import { dayEndMs } from "@/lib/prayer";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
 const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
@@ -154,7 +155,7 @@ const A: Record<string, H> = {
     const pp = d.points || {}; const cp: any = cur.points; const points = { present: AMT(pp.present ?? cp.present, 100), late: AMT(pp.late ?? cp.late, 100), ex: AMT(pp.ex ?? cp.ex, 100), vg: AMT(pp.vg ?? cp.vg, 100), gd: AMT(pp.gd ?? cp.gd, 100), page: AMT(pp.page ?? cp.page, 100), absent: AMT(pp.absent ?? cp.absent ?? 0, 100), bad: AMT(pp.bad ?? cp.bad ?? 0, 100) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), teacherOut: (() => { const o = d.teacherOut || (cur as any).teacherOut || {}; return { mode: ["prayer", "time", "off"].includes(o.mode) ? o.mode : "prayer", prayer: ["fajr", "dhuhr", "asr", "maghrib", "isha"].includes(o.prayer) ? o.prayer : "asr", after: Math.min(600, Math.max(0, int(o.after, 90))), time: /^\d{2}:\d{2}$/.test(str(o.time)) ? str(o.time) : "17:00" }; })(), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
     await audit(u, "settings", null, "تعديل الإعدادات");
   },
@@ -524,6 +525,12 @@ const A: Record<string, H> = {
     if (b.lessonId) { lesson = await lessonFor(u, str(b.lessonId)); await needCheckin(u, lesson); }
     const st = await studentFor(u, str(b.uid), lesson);
     if (lesson && lesson.halqaId !== st.halqaId) fail("الطالب ليس في حلقة هذه الحصة");
+    // تسميع بدون حصة: لو فيه حصة لحلقته بنفس اليوم ينربط فيها تلقائيًا
+    if (!lesson && st.halqaId) {
+      const d0 = validDate(str(b.date)) ? str(b.date) : localDate();
+      const l0 = await prisma.lesson.findFirst({ where: { halqaId: st.halqaId, date: d0, cancelled: false }, orderBy: { time: "asc" } });
+      if (l0) { lesson = l0; await needCheckin(u, l0); }
+    }
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 10);
     if (!items.length) fail("أضف مقطع واحد على الأقل");
     const settings = await getSettings();
@@ -1097,6 +1104,33 @@ const A: Record<string, H> = {
   },
 
   // ---------- الحضوري ----------
+  // تسجيل خروج المعلم: قبل وقت الانصراف يطلب تأكيد، ويوصل المدير تنبيه
+  async "teacher.checkout"(u, b) {
+    if (u.role !== "teacher") fail("تسجيل الخروج للمعلمين");
+    const today = localDate();
+    const t = await prisma.teacherIn.findUnique({ where: { userId_date: { userId: u.id, date: today } } });
+    if (!t) fail("ما سجّلت وصولك اليوم");
+    if (b.undo) {
+      if (t!.outAt && !t!.outAuto && Date.now() - +t!.outAt < 30 * 60000) await prisma.teacherIn.update({ where: { id: t!.id }, data: { outAt: null, outDist: null, outEarly: null } });
+      return { ok: true };
+    }
+    if (t!.outAt) return { already: true, out: +t!.outAt };
+    const s: any = await getSettings(); const key = placeKey(t!.branch);
+    const end = dayEndMs(s, today, key); const now = Date.now();
+    const early = end && now < end - 60000 ? Math.round((end - now) / 60000) : 0;
+    if (early && !b.early) return { needConfirm: true, end, left: early };
+    const p = (s.places || {})[key]; const lat = Number(b.lat), lng = Number(b.lng);
+    const outDist = p && Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0) ? distM(lat, lng, p.lat, p.lng) : null;
+    await prisma.teacherIn.update({ where: { id: t!.id }, data: { outAt: new Date(now), outDist, outAuto: false, outEarly: early || null } });
+    await audit(u, "teacher.out", u.id, `انصرف من الجامع${early ? ` قبل وقت الانصراف بـ ${early} دقيقة` : ""}`);
+    if (early >= 5) {
+      const own = (await prisma.halqa.findMany({ where: { teacherId: u.id }, select: { id: true } })).map((h) => h.id);
+      const ids: string[] = [];
+      for (const a of await prisma.user.findMany({ where: { role: "admin", status: "active" } })) { const sc = await scopeHalqaIds(a as any); if (!sc || own.some((x) => sc.includes(x))) ids.push(a.id); }
+      await notify(ids, { title: "انصراف مبكر", body: `${u.name} سجّل خروجه قبل وقت الانصراف بـ ${early} دقيقة`, url: "/", tag: "tout-" + u.id });
+    }
+    return { out: now, early };
+  },
   async "teacher.checkin"(u, b) {
     if (u.role !== "teacher") fail("تسجيل الوصول للمعلمين");
     const today = localDate();
