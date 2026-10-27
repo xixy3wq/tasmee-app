@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/db";
 import { handle } from "@/lib/auth";
-import { requireAdmin, seedMasaedFor } from "@/lib/majalis";
+import { requireAdmin, seedMajalisFor } from "@/lib/majalis";
 export const dynamic = "force-dynamic";
 
 // قائمة المجالس مع عدد الأسئلة وعدد اللي انسألت
 export async function GET() {
   return handle(async () => {
     const me = await requireAdmin();
-    await seedMasaedFor(me.id).catch((e) => console.error("majalis seed", e));
+    await seedMajalisFor(me.id).catch((e) => console.error("majalis seed", e));
     const list = await prisma.majlis.findMany({
       where: { userId: me.id },
       select: { id: true, sheikh: true, topic: true, date: true, place: true, createdAt: true, _count: { select: { questions: true } } },
