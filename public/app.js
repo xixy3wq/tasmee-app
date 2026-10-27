@@ -87,7 +87,7 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {};
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm';
       READY = true; checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
@@ -556,7 +556,7 @@ function sessionV(u) {
   const dd = new Date(s.date + 'T00:00');
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="session-hero"><div class="datebox"><b>${dd.getDate()}</b><span>${DAYN[dd.getDay()]}</span></div>
-    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${isFemH(s.halqaId) ? `<span class="chip fem">${FLOWER} نسائية</span>` : ''}${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
+    <div style="flex:1 1 220px;min-width:0"><h1>${esc(hname)}</h1><div class="muted">${fmtDateH(s.date)} · ${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}${s.auto ? ' · من الجدول الثابت' : ''}</div><div class="row" style="margin-top:4px">${isFemH(s.halqaId) && !femMe() ? `<span class="chip fem">${FLOWER} بنات</span>` : ''}${s.subId ? `<span class="chip info">معلم احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.teacherAt ? `<span class="chip ok">المعلم فتح الحصة ${clock(s.teacherAt)}</span>` : ''}</div></div>
     <div class="row">${link && !s.cancelled ? `<a class="btn pri" href="${esc(link)}" target="_blank" rel="noopener" data-act="join" data-id="${s.id}">${S.videoOn ? ICO.live + ' ادخل الغرفة' : 'افتح الحصة'}</a>${S.videoOn ? '' : `<button class="btn" data-act="copy" data-text="${esc(link)}">نسخ الرابط</button>`}` : (s.cancelled ? '' : `<span class="chip warn">ما فيه رابط</span>`)}<button class="btn" data-act="edit-session" data-id="${s.id}">تعديل</button></div></div>`;
   if (u.role === 'teacher' && s.date === today() && !s.teacherAt && !(ST.opened || {})[s.id]) { ST.opened = { ...(ST.opened || {}), [s.id]: 1 }; act('lesson.open', { id: s.id }); }
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}. ما تنحسب في الحضور ولا تظهر للطلاب كحصة قادمة.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
@@ -677,10 +677,10 @@ function halaqatV() {
   const all = myHalaqat(me()).sort((a, b) => ((a.branch || '') + a.name).localeCompare((b.branch || '') + b.name, 'ar'));
   const nF = all.filter(h => h.gender === 'f').length; const hg = nF && nF < all.length ? ST.hg || '' : '';
   const hs = all.filter(h => !hg || (hg === 'f' ? h.gender === 'f' : h.gender !== 'f'));
-  return `<div class="sec-head"><h1>الحلقات</h1><div class="row">${can(me(), 'students') ? '<button class="btn" data-act="assign">توزيع الطلاب</button>' : ''}<button class="btn fem-btn" data-act="add-halqa-f">${FLOWER} حلقة نسائية</button><button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div></div>
-  ${nF && nF < all.length ? `<div><div class="seg">${[['', 'الكل ' + all.length], ['m', 'رجالية ' + (all.length - nF)], ['f', 'نسائية ' + nF]].map(([k, l]) => `<button class="${hg === k ? 'on' : ''}" data-act="hg-filter" data-v="${k}">${l}</button>`).join('')}</div></div>` : ''}
+  return `<div class="sec-head"><h1>الحلقات</h1><div class="row">${can(me(), 'students') ? '<button class="btn" data-act="assign">توزيع الطلاب</button>' : ''}<button class="btn pri" data-act="add-halqa">حلقة جديدة</button></div></div>
+  ${nF && nF < all.length ? `<div><div class="seg">${[['', 'الكل ' + all.length], ['m', 'بنين ' + (all.length - nF)], ['f', 'بنات ' + nF]].map(([k, l]) => `<button class="${hg === k ? 'on' : ''}" data-act="hg-filter" data-v="${k}">${l}</button>`).join('')}</div></div>` : ''}
   ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; const f = h.gender === 'f'; return `<section class="card ${f ? 'halqa-f' : ''}" style="display:grid;gap:10px">
-    <div class="sec-head"><div><h2>${esc(h.name)}</h2>${f ? `<span class="chip fem">${FLOWER} نسائية</span> ` : ''}${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
+    <div class="sec-head"><div><h2>${esc(h.name)}</h2>${f ? `<span class="chip fem">${FLOWER} بنات</span> ` : ''}${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
     <dl class="kv"><dt>${f ? 'المعلمة' : 'المعلم'}</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
     <dt>الجدول</dt><dd>${h.auto ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
     <div class="row"><button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل</button><button class="btn sm" data-act="handover" data-h="${h.id}">ملخص التسليم</button><button class="btn ghost sm" data-act="copy" data-text="https://${location.host}/api/ics/${h.id}.ics">رابط التقويم</button></div></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
@@ -992,9 +992,11 @@ function teachersReport(days) {
 
 /* ---- غرفة المعلمين ---- */
 function roomV(u) {
-  const ms = L('msgs').sort((a, b) => a.at - b.at);
+  const two = S.side === 'all' && L('halaqat').some(h => h.gender === 'f'); const rs = two ? (ST.roomSide || 'm') : S.side === 'f' ? 'f' : 'm';
+  const ms = L('msgs').filter(m => !two || (m.side || 'm') === rs).sort((a, b) => a.at - b.at);
   try { localStorage.setItem('irtaq-room-' + u.id, String(Date.now())); } catch {}
-  return `<h1>غرفة المعلمين</h1><div class="small muted">للمعلمين والإدارة فقط، الطلاب ما يشوفونها.</div>
+  return `<h1>${rs === 'f' ? 'غرفة المعلمات' : 'غرفة المعلمين'}</h1><div class="small muted">${rs === 'f' ? 'للمعلمات والمدير العام فقط، ما يشوفها غيرهم.' : 'للمعلمين والإدارة فقط، الطلاب ما يشوفونها.'}</div>
+  ${two ? `<div><div class="seg">${[['m', 'المعلمين'], ['f', 'المعلمات']].map(([k, l]) => `<button class="${rs === k ? 'on' : ''}" data-act="room-side" data-v="${k}">${k === 'f' ? FLOWER + ' ' : ''}${l}</button>`).join('')}</div></div>` : ''}
   <section class="card room">${ms.length ? ms.map(m => `<div class="msg ${m.by === u.id ? 'mine' : ''}"><div class="small muted">${esc(m.byName)} · ${fmtDate(isoDate(new Date(m.at)))} ${clock(m.at)}${m.by === u.id || u.role === 'admin' ? ` <button class="linkbtn" data-act="msg-del" data-id="${m.id}">حذف</button>` : ''}</div><div class="ann-body">${esc(m.text)}</div></div>`).join('') : '<div class="empty small">ما فيه رسائل بعد.</div>'}</section>
   <form class="card" data-form="msg" style="gap:8px"><textarea id="rm-text" name="text" rows="2" maxlength="1000" placeholder="اكتب رسالة…" required></textarea><div><button class="btn pri" type="submit">إرسال</button></div></form>`;
 }
@@ -1065,7 +1067,7 @@ function helpV(u) {
   const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «سجّل حضوري» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
     + sub('النقاط والمتجر', ['النقاط تنحسب لحالها من الحضور والتسميع والحفظ، وتقدر تضيف أو تخصم يدويًا من ⭐ في بطاقة الطالب أو من «المتجر والنقاط ← النقاط» لأكثر من طالب.', 'الطالب ما يفتح جواله في الحلقة، فتقدر تطلب الجائزة عنه من ⭐ في بطاقته.', 'تسليم الجائزة: «المتجر والنقاط ← الطلبات»، أدخل الكود اللي عند الطالب واضغط تسليم.']);
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الحين»، أو الصق رابط قوقل ماب، واختر النطاق المسموح.', 'بعدها ما يقدر المعلم يسجل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مين وصل ومتى وكم طالب حاضر.', 'تتنقل بين المجمعات من الشريط اللي فوق الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، ويشوف مجمعه بس.'])
-    + sub('الحلقات النسائية', ['من «الحلقات» اضغط «حلقة نسائية»، أو عدّل حلقة واختر «نسائية».', 'الطالبات والمعلمة يشوفون الموقع بتصميم وردي هادئ، والكلام بصيغة المؤنث (أحسنتِ، حاضرة، المعلمة).', 'رسائل أولياء الأمور التلقائية والجاهزة تصير «ابنتكم» و«بارك الله فيها»، والمساعد الذكي يخاطب الطالبة بصيغة المؤنث.'])
+    + sub('حلقات البنات', ['من «الحلقات» اضغط «حلقة جديدة» واختر «حلقة بنات» (للمدير العام بس).', 'حلقة البنات يشوفها المدير العام ومعلمتها بس. المشرفين ما يشوفونها ولا طالباتها إلا إذا اخترتها لمشرف بالاسم من صلاحياته، ومعلمة الحلقة ما تشوف إلا حلقتها.', 'المعلمات لهم «غرفة المعلمات» منفصلة عن غرفة المعلمين، والمدير العام يتنقل بينهم.', 'الطالبات والمعلمة يشوفون الموقع بتصميم وردي هادئ، والكلام بصيغة المؤنث (أحسنتِ، حاضرة، المعلمة).', 'رسائل أولياء الأمور التلقائية والجاهزة تصير «ابنتكم» و«بارك الله فيها»، والمساعد الذكي يخاطب الطالبة بصيغة المؤنث.'])
     + sub('المتجر والجوائز والميزانية', ['«المتجر والنقاط ← الجوائز»: أضف وعدّل واحذف براحتك. الأنواع: جائزة عادية، عرض لفترة محدودة، جائزة جماعية للحلقة كاملة توصلها بمجموع نقاطهم، ومزاد شهري.', 'حط التكلفة الفعلية لكل جائزة، و«الميزانية» تعرض المصروف هالشهر.', 'قواعد النقاط والخصم: الإعدادات ← التسميع والتقدير ← النقاط التلقائية.', 'التقرير الشهري لولي الأمر: رسائل الواتساب ← التقرير الشهري، ترسله الحين أو يطلع لحاله أول كل شهر.']) : '';
   return `<h1>الدليل</h1>${adminOn}${admin}${onsite}${teacher}${cal}${install}${notif}`;
 }
@@ -1081,7 +1083,7 @@ function adminModal(a, preset) {
     <div class="fld"><span>الصلاحيات</span><div class="days">${Object.entries(PERM_LABEL).map(([k, l]) => `<label><input type="checkbox" name="perm" value="${k}" ${perms.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div><span class="small muted" style="font-weight:400">الحصص ولوحة المدير متاحة للكل. إضافة المدراء والنسخ الاحتياطي للمدير الكامل فقط.</span></div>
     ${(() => { const sc = perms.filter(p => /^(h|b):/.test(p)); const on = sc.length > 0; const hs = L('halaqat').sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ar'));
       return `<div class="fld"><span>يتابع</span><div class="row"><label class="check"><input type="radio" name="scope" value="all" data-change="scope-mode" ${on ? '' : 'checked'}> كل الحلقات</label><label class="check"><input type="radio" name="scope" value="some" data-change="scope-mode" ${on ? 'checked' : ''}> حلقات أو فروع محددة</label></div>
-      <div id="scope-box" class="scope-box" ${on ? '' : 'hidden'}>${branches().length ? `<div class="small muted">الفروع</div><div class="days">${branches().map(b => `<label><input type="checkbox" name="perm" value="b:${esc(b)}" ${sc.includes('b:' + b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')}</div>` : ''}<div class="small muted">الحلقات</div><div class="days">${hs.map(h => `<label><input type="checkbox" name="perm" value="h:${h.id}" ${sc.includes('h:' + h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('')}</div></div></div>`; })()}
+      <div id="scope-box" class="scope-box" ${on ? '' : 'hidden'}>${branches().length ? `<div class="small muted">الفروع</div><div class="days">${branches().map(b => `<label><input type="checkbox" name="perm" value="b:${esc(b)}" ${sc.includes('b:' + b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')}</div>` : ''}<div class="small muted">الحلقات</div><div class="days">${hs.map(h => `<label><input type="checkbox" name="perm" value="h:${h.id}" ${sc.includes('h:' + h.id) ? 'checked' : ''}> ${h.gender === 'f' ? FLOWER + ' ' : ''}${esc(h.name)}</label>`).join('')}</div>${hs.some(h => h.gender === 'f') ? '<div class="small muted">حلقات البنات 🌸 ما يشوفها أي مشرف إلا إذا اخترتها له هنا بالاسم. لمشرفة البنات: اختر حلقات البنات بس.</div>' : ''}</div></div>`; })()}
     ${a ? `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${a.status !== 'disabled' ? 'selected' : ''}>نشط</option><option value="disabled" ${a.status === 'disabled' ? 'selected' : ''}>موقوف</option></select></label>` : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${a ? `<button type="button" class="btn danger" data-act="del-user" data-id="${a.id}">حذف</button>` : ''}</div></form>`);
 }
@@ -1496,10 +1498,10 @@ function teacherModal(t) {
 function halqaModal(h, g0) {
   const ts = L('users').filter(u => u.role === 'teacher' && u.status !== 'disabled'); const days = h && h.days && h.days.length ? h.days : SET().days;
   const g = h ? (h.gender === 'f' ? 'f' : 'm') : (g0 === 'f' ? 'f' : 'm');
-  openModal(`${dlgHead(h ? 'تعديل الحلقة' : g === 'f' ? `${FLOWER} حلقة نسائية جديدة` : 'حلقة جديدة')}
+  openModal(`${dlgHead(h ? 'تعديل الحلقة' : g === 'f' ? `${FLOWER} حلقة بنات جديدة` : 'حلقة بنين جديدة')}
   <form data-form="halqa" data-id="${h ? h.id : ''}">
     <input type="hidden" name="gender" value="${g}">
-    <div class="fld"><span>نوع الحلقة</span><div class="seg hm-g"><button type="button" class="${g === 'm' ? 'on' : ''}" data-act="hm-g" data-v="m">رجالية</button><button type="button" class="${g === 'f' ? 'on' : ''}" data-act="hm-g" data-v="f">${FLOWER} نسائية</button></div><span class="small muted">النسائية: تصميم وردي للطالبات والمعلمة، والكلام والرسائل بصيغة المؤنث (ابنتكم، أحسنتِ، حاضرة).</span></div>
+    ${isFullAdmin(me()) ? `<div class="fld"><span>الحلقة</span><div class="seg hm-g"><button type="button" class="${g === 'm' ? 'on' : ''}" data-act="hm-g" data-v="m">بنين</button><button type="button" class="${g === 'f' ? 'on' : ''}" data-act="hm-g" data-v="f">${FLOWER} بنات</button></div><span class="small muted">حلقة البنات: يشوفها المدير العام ومعلمتها بس، بتصميم خاص وصيغة مؤنث في الموقع والرسائل (ابنتكم، أحسنتِ، حاضرة).</span></div>` : ''}
     <label class="fld"><span>اسم الحلقة</span><input name="name" value="${esc(h ? h.name : '')}" required placeholder="${g === 'f' ? 'مثال: حلقة خديجة بنت خويلد' : 'مثال: حلقة أبي بن كعب'}"></label>
     <label class="fld"><span>المعلم أو المعلمة</span><select name="teacherId"><option value="">بدون معلم</option>${ts.map(t => `<option value="${t.id}" ${h && h.teacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
     <div class="fld"><span>أيام الدوام</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
@@ -1700,8 +1702,9 @@ const ACT = {
   'del-user': el => confirmBox('تحذف هذا الحساب نهائيًا مع سجله؟', 'حذف', async () => { if (await act('user.delete', { id: el.dataset.id }, 'حُذف الحساب')) { if (ST.view === 'student') go('students'); } }),
   'add-teacher': () => teacherModal(null),
   'edit-teacher': el => teacherModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
-  'add-halqa': () => halqaModal(null),
-  'add-halqa-f': () => halqaModal(null, 'f'),
+  'add-halqa': () => isFullAdmin(me()) ? openModal(`${dlgHead('حلقة جديدة')}<div class="g-pick"><button class="g-opt" data-act="add-halqa-g" data-v="m">${ICO.halaqat || ''}<b>حلقة بنين</b><span>تظهر للمشرفين حسب صلاحياتهم</span></button><button class="g-opt f" data-act="add-halqa-g" data-v="f">${FLOWER}<b>حلقة بنات</b><span>تصميم خاص وصيغة مؤنث، ويشوفها المدير العام ومعلمتها بس</span></button></div>`) : halqaModal(null),
+  'add-halqa-g': el => halqaModal(null, el.dataset.v),
+  'room-side': el => { ST.roomSide = el.dataset.v; render(); },
   'hg-filter': el => { ST.hg = el.dataset.v; render(); },
   'hm-g': el => { const f = el.closest('form'); f.querySelectorAll('.hm-g button').forEach(b => b.classList.toggle('on', b === el)); f.querySelector('[name=gender]').value = el.dataset.v; const dlg = el.closest('.dlg'); if (dlg) dlg.classList.toggle('dlg-f', el.dataset.v === 'f'); },
   'edit-halqa': el => halqaModal({ ...S.halaqat[el.dataset.id], id: el.dataset.id }),
@@ -1918,7 +1921,7 @@ const FORMS = {
     catch (e) { toast(e.message); }
   },
   async wa(f, d) { if (await act('wa.save', { data: waFormData(f) }, 'حُفظ ربط الواتساب')) { ST.wa = null; clean(); render(); } },
-  async msg(f, d) { if (await act('msg.send', { text: d.get('text') })) { f.reset(); clean(); } },
+  async msg(f, d) { if (await act('msg.send', { text: d.get('text'), side: ST.roomSide || 'm' })) { f.reset(); clean(); } },
   async mypw(f, d) { if (await act('me.password', { old: d.get('old'), pw: d.get('pw') }, 'تم تغيير كلمة المرور')) closeModal(); },
 };
 document.addEventListener('submit', e => {
@@ -2665,7 +2668,7 @@ function navSections(u) {
   const students = I('students', u.role === 'admin' ? 'الطلاب' : 'طلابي', 0, [S_('كل الطلاب', { inact: false, arch: false }), S_('المنقطعين', { inact: true, arch: false }), S_('المؤرشفون', { arch: true, inact: false }), ...(u.role === 'admin' && has('students') ? [S_('استيراد طلاب', null, { act: 'import' })] : [])]);
   const inbox = I('inbox', 'الرسائل', dmUnreadStaff());
   const anns = I('anns', 'الإعلانات والتصويت');
-  const room = I('room', 'غرفة المعلمين', msgsUnread(u));
+  const room = I('room', S.side === 'f' ? 'غرفة المعلمات' : 'غرفة المعلمين', msgsUnread(u));
   const reports = I('reports', 'التقارير');
   const pendOrd = L('orders').filter(o => o.status === 'pending' && S.users[o.uid]).length;
   const store = I('store', 'المتجر والنقاط', pendOrd, [S_('الطلبات', { stTab: 'orders' }), S_('الجوائز', { stTab: 'rewards' }), S_('النقاط', { stTab: 'points' }), ...(u.role === 'admin' ? [S_('الميزانية', { stTab: 'budget' })] : [])]);
@@ -2995,7 +2998,7 @@ function onsiteV(u, s) {
   if (f === 'abs') list = list.filter(x => ['a', 'e', 'out'].includes(state(x)));
   const head = `<button class="back" data-act="tab" data-v="sessions">→ الحصص</button>
   <div class="os-head"><div class="grow" style="min-width:0"><h1>${esc(h.name || '')}</h1><div class="muted small">${fmtDateH(s.date)} · ${fmtTime(s.time)}${h.place ? ' · ' + esc(h.place) : ''}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
-    <div class="row">${h.gender === 'f' ? `<span class="chip fem">${FLOWER} نسائية</span>` : ''}<button class="chip mode-chip" data-act="os-mode" data-id="${s.id}" title="تحويل نوع هذي الحصة">${MODE_L[mode]} ▾</button>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}${u.role === 'admin' ? `<button class="btn ghost sm" data-act="edit-session" data-id="${s.id}">تعديل</button>` : ''}</div></div>`;
+    <div class="row">${h.gender === 'f' && !femMe() ? `<span class="chip fem">${FLOWER} بنات</span>` : ''}<button class="chip mode-chip" data-act="os-mode" data-id="${s.id}" title="تحويل نوع هذي الحصة">${MODE_L[mode]} ▾</button>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}${u.role === 'admin' ? `<button class="btn ghost sm" data-act="edit-session" data-id="${s.id}">تعديل</button>` : ''}</div></div>`;
   if (s.cancelled) return head + `<div class="note">هذه الحصة ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div><div><button class="btn" data-act="lesson-restore" data-id="${s.id}">استرجاع الحصة</button></div>`;
   const stats = `<div class="os-stats"><div><b class="num">${cnt('p') + cnt('l')}<small>/${studs.length}</small></b><span>حاضر</span></div><div><b class="num">${cnt('l')}</b><span>متأخر</span></div><div><b class="num">${cnt('a')}</b><span>غائب</span></div><div><b class="num">${recBy.size}</b><span>سمّعوا</span></div></div>`;
   const tabs = `<div class="ptabs">${[['all', 'الكل'], ['left', 'باقي ما سمّعوا'], ['done', 'سمّعوا'], ['abs', 'غياب وانصراف']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-act="os-f" data-v="${k}">${l}</button>`).join('')}</div>`;

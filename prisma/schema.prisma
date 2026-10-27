@@ -198,6 +198,8 @@ model Msg {
   byId   String
   byName String
   text   String
+  /// m غرفة المعلمين، f غرفة المعلمات
+  side   String   @default("m")
   at     DateTime @default(now())
 
   @@index([at])

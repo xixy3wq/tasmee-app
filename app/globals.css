@@ -775,3 +775,17 @@ html[data-fem] .os-card.st-here{box-shadow:inset 3px 0 0 var(--accent)}
 html[data-fem] .chip.acc{background:var(--accent-soft);color:var(--accent)}
 html[data-fem] .stat{border-radius:12px}
 .fem-ic{color:#c45a88}
+.g-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g-opt{display:grid;gap:4px;justify-items:center;text-align:center;padding:20px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.g-opt b{font-size:1.1rem;font-family:var(--f-display)}
+.g-opt span{font-size:.8rem;color:var(--muted)}
+.g-opt:hover{border-color:var(--accent)}
+.g-opt.f{border-color:#ecc6d6;background:linear-gradient(180deg,#fdf6f9,var(--surface))}
+.g-opt.f b,.g-opt.f .flower{color:#a23c6b}
+.g-opt .flower{width:28px;height:28px}
+.g-opt.f:hover{border-color:#a23c6b}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .g-opt.f{border-color:#4a2a3a;background:linear-gradient(180deg,#24161d,var(--surface))}:root:not([data-theme="light"]) .g-opt.f b,:root:not([data-theme="light"]) .g-opt.f .flower{color:#eba3c3}}
+:root[data-theme="dark"] .g-opt.f{border-color:#4a2a3a;background:linear-gradient(180deg,#24161d,var(--surface))}
+:root[data-theme="dark"] .g-opt.f b,:root[data-theme="dark"] .g-opt.f .flower{color:#eba3c3}
+@media (max-width:480px){.g-pick{grid-template-columns:1fr}}
+.g-opt svg{width:28px;height:28px;color:var(--accent)}

@@ -8,7 +8,7 @@ import { notify } from "@/lib/push";
 import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video";
 import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly, queueMonthly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
-import { scopeHalqaIds, scopeSpec } from "@/lib/scope";
+import { scopeHalqaIds, scopeSpec, staffSide } from "@/lib/scope";
 import { balanceOf } from "@/lib/points";
 import { closeAuction } from "@/lib/store";
 import { syncAutoLessons } from "@/lib/lessons";
@@ -315,7 +315,9 @@ const A: Record<string, H> = {
     if (teacherId) { const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t || t.role !== "teacher") teacherId = null; }
     const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
     const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "", branch: str(d.branch, 60), mode: ["onsite", "remote", "hybrid"].includes(d.mode) ? d.mode : "onsite", place: str(d.place, 60), gender: d.gender === "f" ? "f" : "m" };
-    if (id) await needScope(u, id); else if (await scopeHalqaIds(u)) fail("إنشاء الحلقات للمدير بدون نطاق محدد", 403);
+    if (id) await needScope(u, id); else if (scopeSpec(u)) fail("إنشاء الحلقات للمدير بدون نطاق محدد", 403);
+    // حلقات البنات يضيفها ويغيّرها المدير العام بس
+    if (!isFull(u)) { if (id) delete (data as any).gender; else (data as any).gender = "m"; }
     let h: any;
     if (id) {
       const old = await prisma.halqa.findUnique({ where: { id } });
@@ -786,7 +788,7 @@ const A: Record<string, H> = {
   async "poll.save"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
     const halqaId = str(b.halqaId) || null;
-    if (halqaId) await halqaFor(u, halqaId); else if (!isAdmin(u) || (await scopeHalqaIds(u))) fail("اختر الحلقة");
+    if (halqaId) await halqaFor(u, halqaId); else if (!isAdmin(u) || scopeSpec(u)) fail("اختر الحلقة");
     const question = str(b.question, 200).trim(); if (!question) fail("اكتب السؤال");
     const options = (Array.isArray(b.options) ? b.options : []).map((o: any) => str(o, 80).trim()).filter(Boolean).slice(0, 8);
     if (options.length < 2) fail("اكتب خيارين على الأقل");
@@ -991,7 +993,8 @@ const A: Record<string, H> = {
   async "msg.send"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
     const text = str(b.text, 1000); if (!text) fail("اكتب الرسالة");
-    await prisma.msg.create({ data: { byId: u.id, byName: u.name, text } });
+    const sd = await staffSide(u as any); const side = sd === "all" ? (b.side === "f" ? "f" : "m") : sd;
+    await prisma.msg.create({ data: { byId: u.id, byName: u.name, text, side } });
     const old = await prisma.msg.findMany({ orderBy: { at: "desc" }, skip: 500, select: { id: true } });
     if (old.length) await prisma.msg.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
   },
