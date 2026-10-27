@@ -1115,7 +1115,7 @@ const A: Record<string, H> = {
       let best: { k: string; d: number; r: number } | null = null;
       for (const k of keys) { const p = places[k]; const d = distM(lat, lng, p.lat, p.lng); if (!best || d - p.radius < best.d - best.r) best = { k, d, r: p.radius }; }
       dist = best!.d; branch = best!.k;
-      if (best!.d > best!.r + Math.min(acc, 80)) fail(`أنت بعيد عن الجامع بحوالي ${best!.d} م. سجّل وصولك وأنت داخل الجامع`);
+      if (best!.d > best!.r + Math.min(acc, 80)) fail(acc > 150 ? `موقع الجوال الحين تقريبي (±${acc} م) فطلع بعيد عن الجامع ${best!.d} م. شغّل الواي فاي أو اطلع قرب الباب وجرّب مرة ثانية` : `أنت بعيد عن الجامع بحوالي ${best!.d} م. سجّل وصولك وأنت داخل الجامع`);
     }
     const tin = await prisma.teacherIn.create({ data: { userId: u.id, date: today, lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, dist, acc, branch: branch === "_" ? "" : branch, noLoc: !keys.length } });
     await prisma.lesson.updateMany({ where: { date: today, teacherAt: null, OR: [{ halqaId: { in: own.map((h) => h.id) } }, { subId: u.id }] }, data: { teacherAt: tin.at, teacherBy: u.id } });

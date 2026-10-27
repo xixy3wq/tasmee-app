@@ -94,7 +94,7 @@ async function load() {
   })();
   return loading;
 }
-async function act(t, payload, okMsg) {
+async function act(t, payload, okMsg, again) {
   try {
     const r = await api('/api/act', { t, _side: SEC, ...(payload || {}) });
     if (okMsg) { const m = typeof okMsg === 'function' ? okMsg(r || {}) : okMsg; if (m) toast(m); }
@@ -102,6 +102,11 @@ async function act(t, payload, okMsg) {
     return r || {};
   } catch (e) {
     if (!e.status && OUTBOX_T.includes(t)) { queueOffline(t, payload); return { offline: true }; }
+    // المعلم حضّر قبل ما يسجّل وصوله: نسجّله تلقائيًا ونكمّل نفس الإجراء بدل رسالة الخطأ
+    if (e.status === 403 && !again && t !== 'teacher.checkin' && /وصلت الجامع/.test(e.message || '') && (me() || {}).role === 'teacher') {
+      toast('نسجّل وصولك للجامع أول…');
+      return (await checkinFlow()) ? act(t, payload, okMsg, true) : null;
+    }
     toast(e.message);
     if (e.status === 401) { await load(); }
     return null;
@@ -526,9 +531,8 @@ function sessionsV(u) {
   const row = s => { const n = studentsOf(s.halqaId).length; const att = s.att || {}; const pres = Object.values(att).filter(v => v === 'p' || v === 'l').length; const recs = L('recs').filter(r => r.sid === s.id).length; const iss = Object.keys(s.issues || {}).length;
     return `<div class="item click ${s.cancelled ? 'dim' : ''}" data-act="open-session" data-id="${s.id}"><div class="grow"><div class="name">${fmtDateH(s.date)} <span class="muted small">${fmtTime(s.time)}</span></div><div class="small muted">${esc(halqaName(s.halqaId))}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
       ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.subId ? `<span class="chip info">احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${lessonMode(s) !== 'onsite' ? `<span class="chip info">${MODE_L[lessonMode(s)]}</span>` : ''}${lessonMode(s) === 'onsite' || effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
-  return `<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
+  return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
   ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
-  ${(() => { const s0 = up.find(x => x.date === t && !x.cancelled && isOnsiteL(x)); return s0 ? checkinBar(u, s0) : ''; })()}
   ${absentAlertsHtml(ids)}
   ${ST.cal ? calendarHtml(ids) : `<section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
   ${up.length ? `<div class="list">${up.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
@@ -2974,8 +2978,56 @@ function checkinBar(u, s) {
   if (t) return `<div class="tin ok">${ICO.check}<span>سجّلت وصولك ${clock(t.at)}${t.dist != null ? ` · على بعد ${t.dist} م من الجامع` : ''}</span></div>`;
   return `<div class="tin ${need ? 'need' : ''}"><div class="grow"><b>سجّل وصولك للجامع</b><span class="small">${need ? 'لازم تكون داخل الجامع، وما تقدر تحضّر أو تسجّل تسميع قبلها' : 'ينحفظ وقت وصولك للحلقة'}</span></div><button class="btn pri" data-act="tin">📍 وصلت الجامع</button></div>`;
 }
+/** بطاقة تسجيل الوصول أعلى الصفحة الأساسية للمعلم: تطلع في أي يوم عنده فيه حلقة حضورية، حتى لو الحصة ما انفتحت بعد */
+function checkinCard(u) {
+  if (u.role !== 'teacher') return '';
+  const t = today(); const wd = new Date().getDay(); const hs = myHalaqat(u);
+  const allT = L('sessions').filter(s => s.date === t && (hs.some(h => h.id === s.halqaId) || s.subId === ST.meId));
+  const onsiteToday = allT.some(s => !s.cancelled && isOnsiteL(s)) || (!isHolidayC(t) && hs.some(h => (h.mode || 'onsite') !== 'remote' && halqaDays(h.id).includes(wd) && !allT.some(s => s.halqaId === h.id)));
+  const tn = myTin();
+  if (tn) return `<div class="tin ok">${ICO.check}<span>سجّلت وصولك اليوم ${clock(tn.at)}${tn.dist != null ? ` · على بعد ${tn.dist} م من الجامع` : ''}</span></div>`;
+  if (!onsiteToday) return '';
+  return `<section class="tin-card"><div class="tin-ico" aria-hidden="true">📍</div><div class="grow"><b>سجّل حضورك اليوم</b><span class="small">${needLoc() ? 'ضغطة وحدة داخل الجامع، والتحضير والتسميع يفتح بعدها' : 'ضغطة وحدة وينحفظ وقت وصولك'}</span></div><button class="btn pri tin-go" data-act="tin">وصلت الجامع</button></section>`;
+}
+/** هل لازم موقع للتسجيل؟ (إذا موقع الجامع محدد لأي حلقة من حلقات المعلم) */
+const needLoc = () => { const u = me(); return !!u && myHalaqat(u).some(h => placeOf(h.id)); };
+/** الموقع: يحاول بالـGPS الدقيق، وإذا تأخر (مثل داخل الجامع) يرجع لموقع الواي فاي والشبكة. يرجع { pos } أو { err } */
 function getPos() {
-  return new Promise(res => { if (!navigator.geolocation) return res(null); navigator.geolocation.getCurrentPosition(p => res(p), () => res(null), { enableHighAccuracy: true, timeout: 15000, maximumAge: 20000 }); });
+  if (!navigator.geolocation) return Promise.resolve({ err: 'nosupport' });
+  const once = (hi, timeout) => new Promise(res => navigator.geolocation.getCurrentPosition(p => res({ pos: p }), e => res({ err: e && e.code === 1 ? 'denied' : 'unavail' }), { enableHighAccuracy: hi, timeout, maximumAge: hi ? 20000 : 120000 }));
+  return once(true, 12000).then(r => (r.pos || r.err === 'denied') ? r : once(false, 10000).then(r2 => r2.pos ? r2 : r));
+}
+const IOS_DEV = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const STANDALONE = (() => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } })();
+/** نافذة تشرح ليش ما وصلنا الموقع وكيف يتصلح، حسب السبب ونوع الجوال */
+function locHelp(err, retryAct) {
+  const steps = err === 'denied'
+    ? (IOS_DEV
+      ? (STANDALONE
+        ? ['الإعدادات ← الخصوصية والأمن ← خدمات الموقع: تكون شغّالة.', 'في نفس الصفحة: مواقع سفاري ← «أثناء استخدام التطبيق»، مع «الموقع الدقيق».', 'بعدها «جرّب مرة ثانية»، ولما يسأل الجوال: «سماح».']
+        : ['زر «aA» (أو ⋯) بجنب الرابط ← إعدادات موقع الويب ← الموقع ← «سماح».', 'وإذا ما ضبط: الإعدادات ← الخصوصية والأمن ← خدمات الموقع ← مواقع سفاري ← «أثناء استخدام التطبيق».', 'بعدها «جرّب مرة ثانية».'])
+      : ['أيقونة القفل يسار الرابط ← الأذونات ← الموقع ← «سماح».', 'والموقع يكون شغّال في الجوال (من الشريط اللي ينزل من فوق).', 'بعدها «جرّب مرة ثانية».'])
+    : err === 'nosupport'
+      ? ['الموقع يشتغل من سفاري أو كروم، مو من المتصفح اللي داخل واتساب أو التطبيقات.']
+      : ['خدمات الموقع تكون شغّالة في الجوال.', 'تشغيل الواي فاي يساعد الجوال يحدد مكانه داخل المباني، حتى بدون ما يتصل بشبكة.', 'القرب من الباب أو الشباك يسرّع تحديد المكان.'];
+  const title = err === 'denied' ? 'الجوال رافض يعطي الموقع' : err === 'nosupport' ? 'المتصفح ما يدعم الموقع' : 'ما تحدد المكان';
+  openModal(`${dlgHead(title)}<ol class="loc-steps">${steps.map(s => `<li>${s}</li>`).join('')}</ol><div class="dlg-foot">${retryAct ? `<button class="btn pri" data-act="${retryAct}">جرّب مرة ثانية</button>` : ''}<button class="btn" data-act="close">إغلاق</button></div>`);
+}
+/** تسجيل وصول المعلم بضغطة: يجيب الموقع بس إذا موقع الجامع محدد. يرجع true إذا تسجّل */
+async function checkinFlow(el) {
+  if (myTin()) return true;
+  const old = el ? el.textContent : '';
+  if (el) { el.disabled = true; el.textContent = 'يحدد موقعك…'; }
+  const done = ok => { if (el && el.isConnected) { el.disabled = false; el.textContent = old; } return ok; };
+  let body = {};
+  if (needLoc()) {
+    const r = await getPos();
+    if (!r.pos) { done(false); locHelp(r.err, 'tin'); return false; }
+    body = { lat: r.pos.coords.latitude, lng: r.pos.coords.longitude, acc: r.pos.coords.accuracy };
+  }
+  const res = await act('teacher.checkin', body, x => x.already ? 'مسجّل من قبل' : 'سجّلت وصولك ✓');
+  if (res) buzz(20);
+  return done(!!res);
 }
 
 function onsiteV(u, s) {
@@ -3131,11 +3183,8 @@ function osSummaryModal(sum, s) {
 
 Object.assign(ACT, {
   'tin': async el => {
-    el.disabled = true; const old = el.textContent; el.textContent = 'يحدد موقعك…';
-    const pos = await getPos();
-    if (!pos && SET().places && Object.keys(SET().places).length) toast('ما قدرنا نوصل لموقعك. اسمح للموقع من إعدادات الجوال');
-    const r = await act('teacher.checkin', pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy } : {}, x => x.already ? 'مسجّل من قبل' : 'سجّلت وصولك ✓');
-    if (!r) { el.disabled = false; el.textContent = old; } else buzz(20);
+    const inModal = !!el.closest('#modal'); if (inModal) closeModal();
+    await checkinFlow(inModal ? null : el);
   },
   'os-f': el => { ST.osf = el.dataset.v; render(); },
   'os-arr': async el => { const s = curSession(); el.disabled = true; const r = await act('lesson.arrive', { id: s.id, uid: el.dataset.id }); if (r && r.v === 'l') toast(`متأخر ${r.min} دقيقة`); buzz(12); },
@@ -3232,8 +3281,8 @@ function complexesV(u) {
 Object.assign(ACT, {
   'cx-here': async el => {
     el.disabled = true; const old = el.textContent; el.textContent = 'يحدد موقعك…';
-    const pos = await getPos(); if (!pos) { el.disabled = false; el.textContent = old; return toast('ما قدرنا نوصل لموقعك. اسمح للموقع وجرّب، أو الصق رابط الخريطة'); }
-    const k = el.dataset.k; const sel = el.closest('.cx').querySelector('select[name=radius]');
+    const g = await getPos(); if (!g.pos) { el.disabled = false; el.textContent = old; return locHelp(g.err); }
+    const pos = g.pos; const k = el.dataset.k; const sel = el.closest('.cx').querySelector('select[name=radius]');
     await act('place.save', { branch: k === '_' ? '' : k, lat: pos.coords.latitude, lng: pos.coords.longitude, radius: sel ? +sel.value : 150 }, 'انحفظ موقع الجامع ✓');
   },
   'cx-rename': el => { const k = el.dataset.k; openModal(`${dlgHead('تغيير اسم المجمع')}<form data-form="cx-rename" data-k="${esc(k)}"><label class="fld"><span>الاسم الجديد</span><input name="to" value="${esc(k)}" required></label><div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button></div></form>`); },
