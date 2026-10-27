@@ -53,6 +53,12 @@ export async function roomUrl(c: VideoCfg, lessonId: string, user: { id: string;
     }
     info = await r.json().catch(() => ({}));
     if (!r.ok || !info.url) throw new Error("تعذّر تجهيز الغرفة: " + (info.error || info.info || r.status));
+    // الغرفة انفتحت قبل (تجربة أو دخول بدري) وانتهت صلاحيتها: نمددها، وإلا تعلّق على شاشة التحميل
+    const rexp = Number(info.config?.exp || 0);
+    if (rexp && rexp < Math.floor(Date.now() / 1000) + 3600) {
+      const up = await fetch("https://api.daily.co/v1/rooms/" + room, { method: "POST", headers: H, signal: AbortSignal.timeout(12000), body: JSON.stringify({ properties: { exp: exp + 3600, eject_at_room_exp: true } }) });
+      if (!up.ok) { const ej: any = await up.json().catch(() => ({})); throw new Error("تعذّر تجديد الغرفة: " + (ej.error || ej.info || up.status)); }
+    }
     // الطالب يدخل والكاميرا مقفلة (الأهم الصوت) عشان ما تثقل الحصة على الجوالات
     const t = await fetch("https://api.daily.co/v1/meeting-tokens", { method: "POST", headers: H, signal: AbortSignal.timeout(12000), body: JSON.stringify({ properties: { room_name: room, user_name: user.name, user_id: user.id.slice(0, 36), is_owner: moderator, exp, ...(moderator ? {} : { start_video_off: true }) } }) });
     const tj: any = await t.json().catch(() => ({}));

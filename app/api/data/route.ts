@@ -160,6 +160,11 @@ export async function GET(req: Request) {
   const pKeys = [...new Set(["_", ...halaqat.map((h) => h.branch || "_"), ...Object.keys((settings as any).places || {})])];
   const dayEnd = staff ? Object.fromEntries(pKeys.map((k) => [k, dayEndMs(settings, today0, k)])) : {};
   const pray = staff ? prayerToday(settings, today0, "_") : null;
+  // الاجتماعات الشغالة الحين
+  const meetKeys = !staff ? [] : me.role === "admin" ? ["admins", "t-" + view] : ["t-" + view];
+  const meetRows = meetKeys.length ? await prisma.setting.findMany({ where: { key: { in: meetKeys.map((k) => "meet:" + k) } } }) : [];
+  const dayK = today0.replace(/-/g, "");
+  const meets = Object.fromEntries(meetKeys.map((k) => { const v: any = meetRows.find((r) => r.key === "meet:" + k)?.value || {}; const ppl = v.day === dayK ? Object.entries(v.ppl || {}).filter(([, p]: any) => Date.now() - p.at < 3 * 3600000).map(([id, p]: any) => ({ id, n: p.n, at: p.at })) : []; return [k, { ppl, by: ppl.length ? v.by : "", at: ppl.length ? v.at : 0 }]; }));
   // ---------- النقاط والمتجر ----------
   const studsVis = users.filter((x) => x.role === "student" && x.status !== "pending");
   const cache = ((globalThis as any).__balCache ??= new Map<string, { t: number; v: any }>());
@@ -203,7 +208,7 @@ export async function GET(req: Request) {
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
     settings: { main: full ? settings : pubSettings },
     msgs: map(msgs, (m) => ({ by: m.byId, byName: m.byName, text: m.text, at: +m.at })),
-    side: view, isSuper: isSuper(me as any), dayEnd, pray,
+    side: view, isSuper: isSuper(me as any), dayEnd, pray, meets,
     backups: backups.map((b) => ({ id: b.id, at: +b.at, size: b.size })),
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
     waOn: staff ? (await waCfg()).enabled : false,

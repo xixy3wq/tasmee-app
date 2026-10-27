@@ -978,6 +978,37 @@ const A: Record<string, H> = {
     try { return { ...(await roomUrlAny(c, l!.id, { id: u.id, name: u.name }, mod, !!altMap[l!.id])), alt: !!altMap[l!.id] }; }
     catch (e: any) { fail(String(e?.message || e)); }
   },
+  // ---------- الاجتماعات بالصوت والفيديو ----------
+  // admins: المدير العام وكل المشرفين من الدارين. t-m / t-f: معلمي البنين أو معلمات البنات مع إدارة القسم
+  async "meet.join"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const c = await videoCfg(); if (!videoOn(c)) fail("غرفة الفيديو غير مفعّلة. فعّلها من الإعدادات ← غرفة الحصة");
+    const room = str(b.room); const my = await sideOf(u as any);
+    const ok = room === "admins" ? u.role === "admin" : room === "t-m" || room === "t-f" ? my === null || my === room.slice(2) : false;
+    if (!ok) fail("هذا الاجتماع مو لك", 403);
+    const day = localDate().replace(/-/g, ""); const key = "meet:" + room;
+    const row = await prisma.setting.findUnique({ where: { key } });
+    let st: any = { ...((row?.value as any) || {}) }; if (st.day !== day) st = { day, ppl: {} };
+    st.ppl = { ...(st.ppl || {}) }; const now = Date.now();
+    for (const k of Object.keys(st.ppl)) if (now - st.ppl[k].at > 3 * 3600000) delete st.ppl[k];
+    if (b.alt !== undefined) st.alt = !!b.alt;
+    const fresh = !Object.keys(st.ppl).length;
+    st.ppl[u.id] = { n: u.name, at: now };
+    if (fresh) { st.by = u.name; st.at = now; }
+    await prisma.setting.upsert({ where: { key }, create: { key, value: st }, update: { value: st } });
+    if (b.notify) {
+      const staff = await prisma.user.findMany({ where: { role: { in: room === "admins" ? ["admin"] : ["admin", "teacher"] }, status: "active", NOT: { id: u.id } } });
+      const ids: string[] = []; for (const x of staff) { const sd = await sideOf(x as any); if (room === "admins" || sd === null || sd === room.slice(2)) ids.push(x.id); }
+      const nm = room === "admins" ? "اجتماع الإدارة" : room === "t-f" ? "اجتماع المعلمات" : "اجتماع المعلمين";
+      await notify(ids, { title: nm + " بدأ", body: `${u.name} يدعوك تدخل الاجتماع الحين`, url: "/#meet", tag: key });
+    }
+    try { return { ...(await roomUrlAny(c, `meet-${room}-${day}`, { id: u.id, name: u.name }, u.role === "admin", !!st.alt)), alt: !!st.alt }; }
+    catch (e: any) { fail(String(e?.message || e)); }
+  },
+  async "meet.leave"(u, b) {
+    const key = "meet:" + str(b.room); const row = await prisma.setting.findUnique({ where: { key } }); if (!row) return;
+    const st: any = { ...((row.value as any) || {}) }; if (st.ppl && st.ppl[u.id]) { delete st.ppl[u.id]; await prisma.setting.update({ where: { key }, data: { value: st } }); }
+  },
   // رسالة يدوية لولي الأمر تطلع من رقم الحلقة المربوط (بدل واتساب المعلم)
   async "wa.sendText"(u, b) {
     if (u.role === "student") fail("غير مسموح", 403);
@@ -1254,10 +1285,31 @@ const A: Record<string, H> = {
     await audit(u, "plan", st.id, `${st.name}: تسجيل المحفوظ${b.test ? " واختبار تحديد المستوى (" + str(b.test.result, 40) + ")" : ""}`);
   },
   async "halqa.mode"(u, b) {
-    needAdmin(u, "halaqat"); const id = str(b.id); await needScope(u, id);
+    needAdmin(u, "halaqat");
+    const ids = (Array.isArray(b.ids) ? b.ids.map(String) : [str(b.id)]).filter(Boolean).slice(0, 100); if (!ids.length) fail("اختر الحلقة");
     const mode = ["onsite", "remote", "hybrid"].includes(b.mode) ? b.mode : "onsite";
-    await prisma.halqa.update({ where: { id }, data: { mode } });
-    await audit(u, "halqa.save", id, `نوع الحلقة: ${({ onsite: "حضوري", remote: "عن بعد", hybrid: "هجين" } as any)[mode]}`);
+    for (const id of ids) { await needScope(u, id); await prisma.halqa.update({ where: { id }, data: { mode } }); }
+    await audit(u, "halqa.save", ids.length === 1 ? ids[0] : null, `نوع ${ids.length > 1 ? ids.length + " حلقات" : "الحلقة"}: ${({ onsite: "حضوري", remote: "عن بعد", hybrid: "هجين" } as any)[mode]}`);
+    return { n: ids.length };
+  },
+  // تعديل متعدد للحصص: النوع، الوقت، الإلغاء أو الاسترجاع
+  async "lessons.bulk"(u, b) {
+    const ids = [...new Set<string>((Array.isArray(b.ids) ? b.ids : []).map(String))].slice(0, 300); if (!ids.length) fail("اختر الحصص");
+    const mode = b.mode === undefined || b.mode === null ? undefined : ["onsite", "remote", "hybrid", ""].includes(b.mode) ? String(b.mode) : fail("نوع الحصة غير صحيح");
+    const time = b.time ? (/^\d{2}:\d{2}$/.test(str(b.time)) ? str(b.time) : fail("الوقت غير صحيح")) : undefined;
+    const cancel = b.cancel === undefined || b.cancel === null ? undefined : !!b.cancel;
+    if (mode === undefined && !time && cancel === undefined) fail("وش التعديل؟");
+    let n = 0;
+    for (const id of ids) {
+      const l = await lessonFor(u, id); const data: any = {};
+      if (mode !== undefined && (l.mode || "") !== mode) data.mode = mode;
+      if (time && l.time !== time) Object.assign(data, { time, reminded: false, lateAlerted: false, ...(l.autoKey ? { custom: true } : {}) });
+      if (cancel !== undefined && l.cancelled !== cancel) { data.cancelled = cancel; if (cancel && b.note) data.note = str(b.note, 200); }
+      if (Object.keys(data).length) { await prisma.lesson.update({ where: { id: l.id }, data }); n++; }
+    }
+    const what = [mode !== undefined ? "النوع: " + (({ onsite: "حضوري", remote: "عن بعد", hybrid: "هجين", "": "حسب الحلقة" } as any)[mode as string]) : "", time ? "الوقت: " + time : "", cancel !== undefined ? (cancel ? "إلغاء" : "استرجاع") : ""].filter(Boolean).join("، ");
+    await audit(u, "lessons.bulk", null, `تعديل ${n} حصة (${what})`);
+    return { n };
   },
 
   // ---------- المجمعات ومواقعها ----------

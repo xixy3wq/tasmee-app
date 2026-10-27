@@ -87,8 +87,8 @@ async function load() {
       OFFLINE = r0.headers.get('x-irtaq-cache') === '1';
       ST.meId = d.me || null;
       if (d.me) COLS.forEach(c => S[c] = d[c] || {}); else COLS.forEach(c => S[c] = {});
-      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm'; S.isSuper = !!d.isSuper; S.dayEnd = d.dayEnd || {}; S.pray = d.pray || null;
-      READY = true; checkTurn(); scheduleRender();
+      S.board = d.board || null; S.backups = d.backups || []; S.push = !!d.push; S.waOn = !!d.waOn; S.waFailed = d.waFailed || 0; S.videoOn = !!d.videoOn; S.aiOn = !!d.aiOn; S.videoAlt = d.videoAlt || {}; S.tins = d.tins || {}; S.bal = d.bal || {}; S.side = d.side || 'm'; S.isSuper = !!d.isSuper; S.dayEnd = d.dayEnd || {}; S.pray = d.pray || null; S.meets = d.meets || {};
+      READY = true; if (location.hash === '#meet' && d.me) { ST.view = 'meet'; try { history.replaceState(null, '', location.pathname + location.search); } catch {} } checkTurn(); scheduleRender();
     } catch (e) { OFFLINE = true; if (!READY) { READY = true; } scheduleRender(); }
     finally { loading = null; }
   })();
@@ -476,7 +476,7 @@ function shellV(u) {
   const keys = tabs.map(t => t[0]);
   if (!ST.view || (!keys.includes(ST.view) && !PARENT_TAB[ST.view]) || (u.role === 'student' && !['home', 'help', 'msgs', 'cal', 'store'].includes(ST.view))) ST.view = keys[0];
   const activeTab = PARENT_TAB[ST.view] || ST.view;
-  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV, msgs: msgsV, cal: calV, inbox: inboxV, thread: threadV, wa: waV, store: storeV, complexes: complexesV })[ST.view](u);
+  const body = ({ req: reqV, sessions: sessionsV, session: sessionV, students: studentsV, student: profileV, teachers: teachersV, halaqat: halaqatV, reports: reportsV, settings: settingsV, home: LANG === 'en' ? homeEn : homeV, anns: annsV, dash: dashV, room: roomV, logs: logsV, help: helpV, msgs: msgsV, cal: calV, inbox: inboxV, thread: threadV, wa: waV, store: storeV, complexes: complexesV, meet: meetV })[ST.view](u);
   document.getElementById('root').style.direction = u.role === 'student' && LANG === 'en' ? 'ltr' : 'rtl';
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
@@ -526,17 +526,35 @@ function sessionsV(u) {
   const ids = ST.halqa ? [ST.halqa] : hs.map(h => h.id);
   const all = L('sessions').filter(s => ids.includes(s.halqaId));
   const t = today();
-  const up = all.filter(s => s.date >= t).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  const past = all.filter(s => s.date < t).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 25);
+  // الفترة المعروضة: يوم، أسبوع، شهر، أو القادمة
+  const sr = ST.sr || 'week'; const sd = ST.sd || t;
+  const ws = weekStartC(sd); const ms = sd.slice(0, 8) + '01'; const me0 = (() => { const d = new Date(ms + 'T00:00'); d.setMonth(d.getMonth() + 1); d.setDate(0); return isoDate(d); })();
+  const [from, to] = sr === 'day' ? [sd, sd] : sr === 'week' ? [ws, addDays(ws, 6)] : sr === 'month' ? [ms, me0] : [t, '9999-12-31'];
+  const inR = all.filter(s => s.date >= from && s.date <= to).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const past = sr === 'up' ? all.filter(s => s.date < t).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 25) : [];
+  const grouped = sr !== 'up';
   const row = s => { const n = studentsOf(s.halqaId).length; const att = s.att || {}; const pres = Object.values(att).filter(v => v === 'p' || v === 'l').length; const recs = L('recs').filter(r => r.sid === s.id).length; const iss = Object.keys(s.issues || {}).length;
-    return `<div class="item click ${s.cancelled ? 'dim' : ''}" data-act="open-session" data-id="${s.id}"><div class="grow"><div class="name">${fmtDateH(s.date)} <span class="muted small">${fmtTime(s.time)}</span></div><div class="small muted">${esc(halqaName(s.halqaId))}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
-      ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.subId ? `<span class="chip info">احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${lessonMode(s) !== 'onsite' ? `<span class="chip info">${MODE_L[lessonMode(s)]}</span>` : ''}${lessonMode(s) === 'onsite' || effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
-  return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button><button class="btn" data-act="quick-rec">${ICO.reports || ''} تسجيل تسميع</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
+    const sel = ST.selOn; const on = sel && ST.sel.has(s.id);
+    return `<div class="item click ${s.cancelled ? 'dim' : ''} ${on ? 'sel' : ''}" data-act="${sel ? 'ses-sel' : 'open-session'}" data-id="${s.id}">${sel ? `<span class="ses-ck ${on ? 'on' : ''}" aria-hidden="true">${on ? '✓' : ''}</span>` : ''}<div class="grow"><div class="name">${grouped ? `${fmtTime(s.time) || 'بدون وقت'} <span class="muted small">· ${esc(halqaName(s.halqaId))}</span>` : `${fmtDateH(s.date)} <span class="muted small">${fmtTime(s.time)}</span>`}</div><div class="small muted">${grouped ? '' : esc(halqaName(s.halqaId))}${s.note ? (grouped ? '' : ' · ') + esc(s.note) : ''}</div></div>
+      ${s.cancelled ? '<span class="chip">ملغاة</span>' : `${s.subId ? `<span class="chip info">احتياط: ${esc(subName(s.subId) || 'أنت')}</span>` : ''}${!grouped && s.date === t ? '<span class="chip gold">اليوم</span>' : ''}${iss ? `<span class="chip bad">مشكلة دخول ${iss}</span>` : ''}${lessonMode(s) !== 'onsite' ? `<span class="chip info">${MODE_L[lessonMode(s)]}</span>` : ''}${lessonMode(s) === 'onsite' || effLink(s) ? '' : '<span class="chip warn">بدون رابط</span>'}${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}<span class="chip num">حضور ${pres}/${n}</span><span class="chip num">تسميع ${recs}</span>`}</div>`; };
+  const byDay = {}; inR.forEach(s => (byDay[s.date] = byDay[s.date] || []).push(s));
+  const rangeLbl = sr === 'day' ? fmtDateH(sd) + (sd === t ? ' · اليوم' : sd === addDays(t, 1) ? ' · بكرة' : '') : sr === 'week' ? `${fmtDate(from)} – ${fmtDate(to)}${hijri(from) ? ` <span class="muted small">(${hijri(from)} – ${hijri(to)})</span>` : ''}` : sr === 'month' ? `${new Date(ms + 'T12:00').toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric' })}` : 'اليوم والقادمة';
+  const step = sr === 'day' ? 1 : sr === 'week' ? 7 : 0;
+  const strip = sr === 'day' || sr === 'week' ? `<div class="wk-strip">${[0, 1, 2, 3, 4, 5, 6].map(i => { const d = addDays(ws, i); const n = all.filter(x => x.date === d && !x.cancelled).length; const dd = new Date(d + 'T00:00'); return `<button class="wk-d ${sr === 'day' && d === sd ? 'on' : ''} ${d === t ? 'today' : ''}" data-act="ses-day" data-d="${d}"><span>${DAYN[dd.getDay()]}</span><b>${dd.getDate()}/${dd.getMonth() + 1}</b><i>${n ? n + ' حصة' : '—'}</i></button>`; }).join('')}</div>` : '';
+  const selBar = ST.selOn ? (() => { const n = ST.sel.size; return `<div class="sel-bar"><b>${n ? 'محدد ' + n + ' حصة' : 'اختر الحصص'}</b><div class="row">
+      <button class="btn sm" data-act="ses-sel-all">${inR.length && inR.every(x => ST.sel.has(x.id)) ? 'إلغاء تحديد الكل' : 'تحديد الكل (' + inR.length + ')'}</button>
+      ${n ? `<select id="bulk-mode" data-change="bulk-mode" aria-label="نوع الحصص"><option value="">نوع الحصة…</option><option value="onsite">حضوري</option><option value="remote">عن بعد</option><option value="hybrid">هجين</option><option value="default">حسب الحلقة</option></select><button class="btn sm" data-act="bulk-time">🕒 الوقت</button><button class="btn sm danger" data-act="bulk-cancel" data-v="1">إلغاء الحصص</button><button class="btn sm" data-act="bulk-cancel" data-v="0">استرجاع</button>` : ''}
+      <button class="btn sm ghost" data-act="ses-sel-off">✕ إنهاء التحديد</button></div></div>`; })() : '';
+  return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button>${ST.cal ? '' : `<button class="btn ${ST.selOn ? 'pri' : ''}" data-act="ses-sel-on">☑ تعديل متعدد</button>`}<button class="btn" data-act="quick-rec">${ICO.reports || ''} تسجيل تسميع</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
   ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
   ${absentAlertsHtml(ids)}
-  ${ST.cal ? calendarHtml(ids) : `<section class="card"><div class="sec-head"><h2>اليوم والقادمة</h2></div>
-  ${up.length ? `<div class="list">${up.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
-  ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`}`;
+  ${ST.cal ? calendarHtml(ids) : `<div class="ses-nav card"><div class="ses-nav-top">${step ? `<button class="btn sm ghost" data-act="ses-step" data-n="-${step}" aria-label="السابق">→</button>` : ''}<div class="ses-range">${rangeLbl}</div>${step ? `<button class="btn sm ghost" data-act="ses-step" data-n="${step}" aria-label="التالي">←</button>` : ''}${sr !== 'up' && !(from <= t && t <= to) ? '<button class="btn sm" data-act="ses-today">اليوم</button>' : ''}</div>
+    <div class="seg ses-seg">${[['day', 'يوم'], ['week', 'أسبوع'], ['month', 'شهر'], ['up', 'القادمة']].map(([k, l]) => `<button class="${sr === k ? 'on' : ''}" data-act="ses-r" data-v="${k}">${l}</button>`).join('')}</div>${strip}</div>
+  ${selBar}
+  ${sr === 'up' ? `<section class="card">${inR.length ? `<div class="list">${inR.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
+    ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`
+  : Object.keys(byDay).length ? Object.entries(byDay).map(([d, ls]) => `<section class="card ses-day ${d === t ? 'is-today' : ''}"><div class="sec-head"><h2>${fmtDateH(d)}${d === t ? ' <span class="chip gold">اليوم</span>' : d === addDays(t, 1) ? ' <span class="chip">بكرة</span>' : ''}</h2>${ST.selOn ? `<button class="linkbtn" data-act="ses-sel-day" data-d="${d}">تحديد اليوم</button>` : ''}</div><div class="list">${ls.map(row).join('')}</div></section>`).join('')
+  : `<div class="empty"><span>ما فيه حصص ${sr === 'day' ? 'هاليوم' : sr === 'week' ? 'هالأسبوع' : 'هالشهر'}.</span></div>`}`}`;
 }
 function joinText(j, s) {
   if (!j) return 'لم يضغط دخول';
@@ -1078,6 +1096,8 @@ function helpV(u) {
       `<details class="card help"><summary><h2>Google Sheets</h2></summary><p>من الإعدادات ولّد مفتاح التصدير، وبعدها في Google Sheets اكتب في خلية:</p><pre dir="ltr">=IMPORTDATA("https://${host}/api/export/students?key=المفتاح")</pre><p class="small muted">استبدل students بـ attendance للحضور أو recs للتسميع.</p></details>` +
       sub('التذكير والنسخ الاحتياطي', ['في Vercel أضف متغير CRON_SECRET بأي نص طويل، وأعد الرفع. النسخ الاحتياطي الأسبوعي يشتغل لحاله كل خميس.', 'للتذكير قبل الحصة وتنبيه «ما دخلوا»: سجّل في cron-job.org مجانًا وأضف مهمة كل 5 دقائق على: <span dir="ltr" class="small">https://' + host + '/api/cron/remind?key=CRON_SECRET</span>', 'للإشعارات أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY.']) : '') : '';
   const onsite = sub('الحلقة الحضورية', ['أول ما توصل الجامع اضغط «📍 وصلت الجامع» فوق صفحة الحصص. لازم تكون داخل الجامع (الموقع يتأكد من الخريطة)، وقبلها ما تقدر تحضّر الطلاب ولا تسجل التسميع.', 'إذا طلعت اضغط «🚪 تسجيل خروج». وإذا نسيت ينسجّل خروجك لحاله عند وقت الانصراف اللي تحدده الإدارة (مثلًا ساعة ونص بعد أذان العصر). الخروج قبل الوقت يطلب تأكيد ويوصل للإدارة.', 'تسجيل تسميع بدون حصة: من «الحصص ← تسجيل تسميع» أو زر «سمّع» جنب الطالب في «طلابي». تقدر تختار يوم فات، ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله. وتعديل أي تسميع من صفحة الطالب ← سجل التسميع.', 'افتح حصة اليوم: كل طالب له بطاقة. «حاضر» يسجل وقت وصوله، ولو وصل بعد البداية بالمدة المحددة ينحسب متأخر لحاله.', 'في البطاقة تشوف المطلوب منه اليوم، و«سمّع» يفتح تسجيل التسميع، و«الحفظ الجديد» تختار منه الكمية بضغطة أو المقطع بالضبط.', '⋯ في البطاقة: تغيير الحالة، انصراف مبكر (يوصل ولي الأمر واتساب)، محفوظه واختبار المستوى، ورسالة لولي الأمر.', 'طالب جديد؟ «سجّل محفوظه» تحدد الأجزاء اللي يحفظها وتختبره بمقاطع عشوائية، والنتيجة تصير حفظه السابق في الخطة.', 'آخر الحلقة: «الباقي غائب» ثم «إنهاء الحلقة»، ويطلع لك ملخص مين ما سمّع ومين يعيد.', 'مطر أو إجازة؟ من زر نوع الحصة فوق حوّلها «عن بعد» لهذي الحصة بس، أو «هجين» لو بعض الطلاب من البيت.'])
+    + sub('صفحة الحصص والتعديل المتعدد', ['فوق صفحة الحصص تختار: يوم أو أسبوع أو شهر أو القادمة، وتتنقل بالأسهم، وتضغط أي يوم من شريط الأسبوع تشوف حصصه.', '«☑ تعديل متعدد»: حدد الحصص (أو «تحديد اليوم» أو «تحديد الكل») وغيّر نوعها حضوري أو عن بعد أو هجين، أو وقتها، أو ألغها، مرة وحدة.', 'وتقدر تقول للمساعد مثلًا: «حوّل حصص بكرة عن بعد» أو «ألغِ حصص الخميس».'])
+    + sub('الاجتماعات', ['من «التواصل ← الاجتماعات» تدخل اجتماع صوت وفيديو داخل الموقع.', 'اجتماع الإدارة: للمدير العام وكل المشرفين والمشرفات من الدارين. واجتماع المعلمين أو المعلمات: لكل قسم مع إدارته.', '«ادخل وأبلغهم» يرسل إشعار للمعنيين إن الاجتماع بدأ.'])
     + sub('النقاط والمتجر', ['النقاط تنحسب لحالها من الحضور والتسميع والحفظ، وتقدر تضيف أو تخصم يدويًا من ⭐ في بطاقة الطالب أو من «المتجر والنقاط ← النقاط» لأكثر من طالب.', 'الطالب ما يفتح جواله في الحلقة، فتقدر تطلب الجائزة عنه من ⭐ في بطاقته.', 'تسليم الجائزة: «المتجر والنقاط ← الطلبات»، أدخل الكود اللي عند الطالب واضغط تسليم.']);
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الحين»، أو الصق رابط قوقل ماب، واختر النطاق المسموح.', 'بعدها ما يقدر المعلم يسجل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مين وصل ومتى وكم طالب حاضر.', 'تتنقل بين المجمعات من الشريط اللي فوق الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، ويشوف مجمعه بس.'])
     + (S.isSuper ? sub('قسم البنات', ['فوق الصفحة زر «البنين | البنات» تتنقل فيه بين القسمين، وكل قسم منفصل تمامًا: حلقاته وطلابه ومعلميه وطلبات التسجيل والحصص والتقارير والمتجر والإعلانات وغرفة المعلمين.', 'لما تكون في قسم البنات: أي حلقة أو معلمة أو مشرفة أو جائزة أو إعلان تضيفه يصير للبنات.', 'إدارة قسم البنات: أضف مشرفة من «المعلمون» وأنت في قسم البنات، وتشوف قسم البنات بس. ومشرفين البنين ما يشوفون شي من البنات، والعكس.', 'رابط التسجيل العام وأنت في قسم البنات يكون خاص بالبنات، وطلباتهم توصل لقسمهم.', 'الطالبات والمعلمات يشوفون الموقع بتصميم وردي هادئ وكلام بصيغة المؤنث، ورسائل أولياء الأمور تصير «ابنتكم» و«بارك الله فيها».']) : '')
@@ -1713,7 +1733,7 @@ const ACT = {
   'add-teacher': () => teacherModal(null),
   'edit-teacher': el => teacherModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
   'add-halqa': () => halqaModal(null),
-  'sec': async el => { const v = el.dataset.v === 'f' ? 'f' : 'm'; if (v === S.side) return; SEC = v; try { localStorage.setItem('irtaq-sec', v); } catch {} Object.assign(ST, { sid: null, uid: null, halqa: '', branch: '', q: '', logs: null, fs: null }); if (!['dash', 'sessions', 'students', 'halaqat', 'teachers', 'reports', 'store', 'anns', 'room', 'req', 'inbox', 'wa', 'complexes', 'settings', 'logs', 'help'].includes(ST.view)) ST.view = 'dash'; document.body.classList.add('sec-switching'); await load(); document.body.classList.remove('sec-switching'); window.scrollTo(0, 0); toast(v === 'f' ? 'انتقلت لقسم البنات' : 'انتقلت لقسم البنين'); },
+  'sec': async el => { const v = el.dataset.v === 'f' ? 'f' : 'm'; if (v === S.side) return; SEC = v; try { localStorage.setItem('irtaq-sec', v); } catch {} Object.assign(ST, { sid: null, uid: null, halqa: '', branch: '', q: '', logs: null, fs: null, selOn: false, sel: new Set() }); if (!['dash', 'sessions', 'students', 'halaqat', 'teachers', 'reports', 'store', 'anns', 'room', 'req', 'inbox', 'wa', 'complexes', 'settings', 'logs', 'help', 'meet'].includes(ST.view)) ST.view = 'dash'; document.body.classList.add('sec-switching'); await load(); document.body.classList.remove('sec-switching'); window.scrollTo(0, 0); toast(v === 'f' ? 'انتقلت لقسم البنات' : 'انتقلت لقسم البنين'); },
   'edit-halqa': el => halqaModal({ ...S.halaqat[el.dataset.id], id: el.dataset.id }),
   'del-halqa': el => confirmBox('تحذف الحلقة؟', 'حذف', () => act('halqa.delete', { id: el.dataset.id }, 'حُذفت الحلقة')),
   'edit-plan': el => planModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
@@ -1967,6 +1987,7 @@ const ICO = (() => {
     swipe: s('<path d="M7 12h10M13 8l4 4-4 4"/><rect x="3" y="4" width="18" height="16" rx="3"/>'), grid: s('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
     check: s('<path d="M5 12l5 5 9-10"/>'),
     store: s('<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12M3 13h18"/><path d="M12 9C10.5 5.5 7 5 7 7.2 7 9 12 9 12 9s5 0 5-1.8C17 5 13.5 5.5 12 9z"/>'),
+    meet: s('<rect x="2" y="7" width="13" height="11" rx="2.5"/><path d="M15 11l6-3.5v10L15 14"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16c.6-1.4 1.7-2 3-2s2.4.6 3 2"/>'),
     complexes: s('<path d="M4 21V10.5l8-6 8 6V21"/><path d="M9.5 21v-5a2.5 2.5 0 0 1 5 0v5"/><path d="M12 2v2.5"/>'),
     wa: s('<path d="M4 20l1.2-3.6A8.5 8.5 0 1 1 8 19.3z"/><path d="M9.2 8.6c0 3.2 2.8 6.1 6.1 6.2l.9-1.6-2-1-1 .9c-1-.4-2.1-1.5-2.5-2.5l.9-1-1-2z"/>'),
   };
@@ -2264,6 +2285,17 @@ Object.assign(ACT, {
 
 /* ================= غرفة الحصة داخل الموقع (فيديو) ================= */
 // الغرفة في عنصر ثابت خارج #app، عشان ما تنقطع المكالمة لما تتنقل في الموقع أو تفتح التسميع والتحضير.
+/* ---- الاجتماعات بالصوت والفيديو ---- */
+const MEET_L = { admins: ['اجتماع الإدارة', 'للمدير العام وكل المشرفين والمشرفات من الدارين'], 't-m': ['اجتماع المعلمين', 'لمعلمي قسم البنين وإدارته'], 't-f': ['اجتماع المعلمات', 'لمعلمات قسم البنات وإدارته'] };
+function meetV(u) {
+  if (!S.videoOn) return `<h1>الاجتماعات</h1><div class="empty"><b>غرفة الفيديو متوقفة</b><span>${isFullAdmin(u) ? 'فعّلها من الإعدادات ← غرفة الحصة.' : 'تواصل مع المدير.'}</span></div>`;
+  const keys = Object.keys(S.meets || {}).filter(k => MEET_L[k]);
+  return `<div class="sec-head"><h1>الاجتماعات</h1></div><div class="small muted">اجتماع بالصوت والفيديو داخل الموقع مثل غرفة الحصة. «ادخل وأبلغهم» يرسل إشعار للمعنيين إن الاجتماع بدأ.</div>
+  <div class="meet-grid">${keys.map(k => { const m = S.meets[k] || {}; const ppl = m.ppl || []; const live = ppl.length > 0; const [t, d] = MEET_L[k];
+    return `<section class="card meet ${live ? 'live' : ''}"><div class="sec-head"><div><h2>${t}</h2><div class="small muted">${d}</div></div>${live ? '<span class="chip ok"><i class="dot-live"></i> شغّال الحين</span>' : '<span class="chip">ما بدأ</span>'}</div>
+      ${live ? `<div class="small">داخل الاجتماع: <b>${ppl.map(p => esc(p.n)).join('، ')}</b>${m.by ? ` <span class="muted">· بدأه ${esc(m.by)} ${clock(m.at)}</span>` : ''}</div>` : ''}
+      <div class="row"><button class="btn pri" data-act="meet-join" data-k="${k}">${ICO.live} ${live ? 'انضم للاجتماع' : 'ادخل'}</button>${live ? '' : `<button class="btn" data-act="meet-join" data-k="${k}" data-notify="1">ادخل وأبلغهم</button>`}</div></section>`; }).join('')}</div>`;
+}
 const ROOM = { sid: null, mode: 'full', url: '' };
 function roomEl() {
   let r = document.getElementById('room');
@@ -2290,7 +2322,7 @@ function roomBar() {
   if (u && u.role !== 'student' && ROOM.hasAlt) extra += `<button class="btn sm" data-act="room-switch" title="لو الصوت أو الصورة فيها مشكلة">بدّل لـ ${PV[ROOM.provider === 'jaas' ? 'daily' : 'jaas']}</button>`;
   r.querySelector('.room-bar').innerHTML = mini
     ? `<button class="room-ib" data-act="room-full" aria-label="تكبير">⤢</button><button class="room-ib bad" data-act="room-close" aria-label="خروج">✕</button>`
-    : `<button class="btn sm danger" data-act="room-close">خروج</button><b class="room-t">${s ? esc(halqaName(s.halqaId)) : 'تجربة الغرفة'}</b><div class="room-x">${extra}</div>${ext ? `<a class="btn ghost sm" href="${esc(ext)}" target="_blank" rel="noopener" title="لو ما اشتغلت الغرفة">رابط بديل</a>` : ''}<button class="btn sm" data-act="room-mini">تصغير</button>`;
+    : `<button class="btn sm danger" data-act="room-close">خروج</button><b class="room-t">${s ? esc(halqaName(s.halqaId)) : String(ROOM.sid || '').startsWith('meet:') ? (MEET_L[ROOM.sid.slice(5)] || ['اجتماع'])[0] : 'تجربة الغرفة'}</b><div class="room-x">${extra}${ROOM.slow ? '<button class="btn sm" data-act="room-help">ما فتحت؟</button>' : ''}<a class="btn ghost sm" href="${esc(ROOM.url)}" target="_blank" rel="noopener" data-act="room-newwin" title="افتح الغرفة في نافذة مستقلة لو ما اشتغلت هنا">↗ نافذة جديدة</a></div>${ext ? `<a class="btn ghost sm" href="${esc(ext)}" target="_blank" rel="noopener" title="لو ما اشتغلت الغرفة">رابط بديل</a>` : ''}<button class="btn sm" data-act="room-mini">تصغير</button>`;
   r.className = 'vroom ' + ROOM.mode;
   document.body.classList.toggle('room-full', !mini);
   document.body.classList.toggle('room-mini', mini);
@@ -2299,15 +2331,20 @@ async function openRoom(sid, alt) {
   if (alt === undefined && ROOM.sid === sid && ROOM.url) { ROOM.mode = 'full'; roomBar(); return; }
   if (ROOM.sid) closeRoom(true);
   toast('جاري تجهيز الغرفة…');
-  let r; try { r = await api('/api/act', { t: 'video.join', lessonId: sid, ...(alt !== undefined ? { alt } : {}) }); } catch (e) { return toast(e.message); }
+  const isMeet = String(sid).startsWith('meet:');
+  let r; try { r = await api('/api/act', isMeet ? { t: 'meet.join', room: sid.slice(5), ...(alt !== undefined ? { alt } : {}), ...(ROOM.notify ? { notify: true } : {}) } : { t: 'video.join', lessonId: sid, ...(alt !== undefined ? { alt } : {}) }); } catch (e) { ROOM.notify = false; return toast(e.message); }
+  ROOM.notify = false;
+  try { if (navigator.brave && await navigator.brave.isBrave()) setTimeout(() => toast('متصفح Brave: إذا ما فتحت الغرفة اضغط أيقونة الأسد 🦁 وطفّ الحماية للموقع، أو افتحها في نافذة جديدة'), 2500); } catch {}
   if (!r || !r.url) return;
   const el = roomEl(); Object.assign(ROOM, { sid, mode: 'full', url: r.url, provider: r.provider, hasAlt: !!r.hasAlt, alt: !!r.alt, movedToast: 0 });
   el.querySelector('.room-frame').innerHTML = `<iframe src="${esc(r.url)}" allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write; screen-wake-lock" allowfullscreen title="غرفة الحصة"></iframe>`;
-  el.hidden = false; window.__inRoom = true; wake(true); buzz(20); $('#toast').hidden = true; roomBar(); load();
+  el.hidden = false; window.__inRoom = true; wake(true); buzz(20); $('#toast').hidden = true; ROOM.t0 = Date.now(); roomBar(); load();
+  clearTimeout(ROOM.slowT); ROOM.slowT = setTimeout(() => { if (ROOM.url && ROOM.mode === 'full') { ROOM.slow = true; roomBar(); } }, 15000);
 }
 function closeRoom(silent) {
   const el = document.getElementById('room'); if (!el) return;
-  const sid = ROOM.sid; el.querySelector('.room-frame').innerHTML = ''; el.hidden = true;
+  const sid = ROOM.sid; el.querySelector('.room-frame').innerHTML = ''; el.hidden = true; clearTimeout(ROOM.slowT); ROOM.slow = false;
+  if (sid && String(sid).startsWith('meet:')) api('/api/act', { t: 'meet.leave', room: sid.slice(5) }).catch(() => {});
   Object.assign(ROOM, { sid: null, url: '', mode: 'full' }); window.__inRoom = false;
   document.body.classList.remove('room-full', 'room-mini'); if (!ST.fs) wake(false);
   if (!silent) { render(); load(); }
@@ -2328,7 +2365,10 @@ Object.assign(ACT, {
   'video-test': () => openRoom('test'),
   'video-test-alt': () => { if (ROOM.sid) closeRoom(true); openRoom('test', true); },
   'room-follow': () => { const sid = ROOM.sid; ROOM.movedToast = 0; closeRoom(true); openRoom(sid); },
-  'room-switch': () => confirmBox('تنقل الحصة كلها للخدمة الثانية؟ الطلاب يطلع لهم زر «انتقل مع المعلم».', 'انقل', async () => { const sid = ROOM.sid; const to = !ROOM.alt; closeRoom(true); await openRoom(sid, to); }),
+  'room-switch': () => confirmBox(String(ROOM.sid || '').startsWith('meet:') ? 'تنقل الاجتماع للخدمة الثانية؟ اللي يدخل بعدك يدخل عليها، واللي داخل الحين يطلع ويدخل من جديد.' : 'تنقل الحصة كلها للخدمة الثانية؟ الطلاب يطلع لهم زر «انتقل مع المعلم».', 'انقل', async () => { const sid = ROOM.sid; const to = !ROOM.alt; closeRoom(true); await openRoom(sid, to); }),
+  'room-newwin': () => { setTimeout(() => { closeRoom(true); render(); }, 400); },
+  'room-help': () => { ROOM.mode = 'mini'; roomBar(); openModal(`${dlgHead('الغرفة ما فتحت؟')}<ol class="steps"><li><b>افتحها في نافذة جديدة</b> من زر «↗ نافذة جديدة» فوق الغرفة.</li>${ROOM.hasAlt ? `<li><b>بدّل الخدمة</b> من زر «بدّل لـ…» فوق الغرفة.</li>` : ''}<li><b>متصفح Brave:</b> اضغط أيقونة الأسد 🦁 جنب الرابط وطفّ الحماية (Shields) للموقع، أو استخدم Chrome أو Safari.</li><li><b>اسمح بالكاميرا والمايك</b> للموقع من إعدادات المتصفح أو الجوال.</li><li>في الآيفون: افتح الموقع من Safari مو من داخل تطبيق ثاني (مثل واتساب أو تيليجرام).</li></ol><div class="dlg-foot"><button class="btn" data-act="close">تمام</button></div>`); },
+  'meet-join': el => { ROOM.notify = !!el.dataset.notify; openRoom('meet:' + el.dataset.k); },
 });
 const _render0 = render;
 // وهو داخل الغرفة بالشاشة الكاملة الصفحة مغطاة: ما نعيد رسمها كل شوي (يخفف الجوال ويمنع التعليق)، نحدّث شريط الغرفة بس
@@ -2672,18 +2712,20 @@ function navSections(u) {
       { title: '', items: [I('help', en ? 'Help' : 'الدليل')] },
     ];
   }
-  const sessions = I('sessions', 'الحصص', 0, [S_('اليوم والقادمة', { cal: false }), S_('التقويم', { cal: true })]);
+  const sessions = I('sessions', 'الحصص', 0, [S_('القائمة', { cal: false }), S_('التقويم', { cal: true })]);
   const students = I('students', u.role === 'admin' ? 'الطلاب' : 'طلابي', 0, [S_('كل الطلاب', { inact: false, arch: false }), S_('المنقطعين', { inact: true, arch: false }), S_('المؤرشفون', { arch: true, inact: false }), ...(u.role === 'admin' && has('students') ? [S_('استيراد طلاب', null, { act: 'import' })] : [])]);
   const inbox = I('inbox', 'الرسائل', dmUnreadStaff());
   const anns = I('anns', 'الإعلانات والتصويت');
   const room = I('room', inGirls() ? 'غرفة المعلمات' : 'غرفة المعلمين', msgsUnread(u));
+  const liveMeet = Object.values(S.meets || {}).reduce((n, m) => n + ((m.ppl || []).some(p => p.id !== u.id) ? 1 : 0), 0);
+  const meet = I('meet', 'الاجتماعات', liveMeet);
   const reports = I('reports', 'التقارير');
   const pendOrd = L('orders').filter(o => o.status === 'pending' && S.users[o.uid]).length;
   const store = I('store', 'المتجر والنقاط', pendOrd, [S_('الطلبات', { stTab: 'orders' }), S_('الجوائز', { stTab: 'rewards' }), S_('النقاط', { stTab: 'points' }), ...(u.role === 'admin' ? [S_('الميزانية', { stTab: 'budget' })] : [])]);
   const wa = I('wa', 'رسائل الواتساب', isFullAdmin(u) ? S.waFailed || 0 : 0, waTabsFor(u).map(([k, l]) => S_(l, { waTab: k })));
   if (u.role === 'teacher') return [
     { title: 'الحلقة', items: [sessions, students] },
-    { title: 'التواصل', items: [inbox, wa, anns, room] },
+    { title: 'التواصل', items: [inbox, wa, anns, room, ...(S.videoOn ? [meet] : [])] },
     { title: 'المتابعة', items: [reports, store] },
     { title: '', items: [I('help', 'الدليل')] },
   ];
@@ -2691,7 +2733,7 @@ function navSections(u) {
   const sec = [
     { title: 'الرئيسية', items: [I('dash', 'لوحة المدير')] },
     { title: 'الحلقات', items: [sessions, students, I('req', 'طلبات التسجيل', pend), I('halaqat', 'الحلقات')] },
-    { title: 'التواصل', items: [inbox, wa, anns, room] },
+    { title: 'التواصل', items: [inbox, wa, anns, room, ...(S.videoOn ? [meet] : [])] },
     { title: 'الإدارة', items: [...(isFullAdmin(u) || (u.perms || []).some(x => x.startsWith('b:')) ? [I('complexes', isFullAdmin(u) ? 'المجمعات' : 'مجمعي')] : []), I('teachers', 'المعلمون', 0, [S_('المعلمون والمشرفون', { sched: false }), S_('جدول الأسبوع', { sched: true })]), reports, store, I('logs', 'سجل العمليات'),
       I('settings', 'الإعدادات', 0, SET_TABS.map(([k, t]) => S_(t, { setTab: k })))] },
     { title: '', items: [I('help', 'الدليل')] },
@@ -2813,11 +2855,11 @@ async function aiSend(text, retry) {
   } catch (e) { AI.msgs.push({ role: 'assistant', text: '⚠ ' + e.message, err: true }); }
   AI.busy = false; aiSave(); aiRender();
 }
-const aiResTxt = (t, r) => t === 'user.resetpw' && r.pw ? `اسم الدخول: ${r.username} · كلمة المرور المؤقتة: ${r.pw}` : t === 'wa.bulk' ? `انرسلت ${r.sent || 0}${r.queued ? ' · ' + r.queued + ' تطلع خلال دقائق' : ''}${r.skipped ? ' · ' + r.skipped + ' بدون رقم' : ''}` : t === 'wa.weekNow' ? `انضاف ${r.n || 0} تقرير للإرسال` : t === 'wa.retryFailed' ? `رجعت ${r.n || 0} رسالة للإرسال` : t === 'students.assign' ? `انتقل ${r.n || 0}` : t === 'plan.applyTpl' ? `تطبقت على ${r.done || 0}` : t === 'dm.bulk' ? `وصلت لـ ${r.n || 0}` : t === 'rec.addMany' && r.grade ? 'التقدير: ' + r.grade : t === 'lessons.time' ? `تعدّل وقت ${r.n || 0} حصة` : t === 'halqa.time' ? `تعدّلت ${r.n || 0} حلقة و${r.fixed || 0} حصة جاية` : t === 'halqa.save' && r.fixed ? `وتعدّل وقت ${r.fixed} حصة جاية` : '';
+const aiResTxt = (t, r) => t === 'lessons.bulk' ? `تعدّلت ${r.n || 0} حصة` : t === 'halqa.mode' && r.n > 1 ? `تعدّلت ${r.n} حلقات` : t === 'user.resetpw' && r.pw ? `اسم الدخول: ${r.username} · كلمة المرور المؤقتة: ${r.pw}` : t === 'wa.bulk' ? `انرسلت ${r.sent || 0}${r.queued ? ' · ' + r.queued + ' تطلع خلال دقائق' : ''}${r.skipped ? ' · ' + r.skipped + ' بدون رقم' : ''}` : t === 'wa.weekNow' ? `انضاف ${r.n || 0} تقرير للإرسال` : t === 'wa.retryFailed' ? `رجعت ${r.n || 0} رسالة للإرسال` : t === 'students.assign' ? `انتقل ${r.n || 0}` : t === 'plan.applyTpl' ? `تطبقت على ${r.done || 0}` : t === 'dm.bulk' ? `وصلت لـ ${r.n || 0}` : t === 'rec.addMany' && r.grade ? 'التقدير: ' + r.grade : t === 'lessons.time' ? `تعدّل وقت ${r.n || 0} حصة` : t === 'halqa.time' ? `تعدّلت ${r.n || 0} حلقة و${r.fixed || 0} حصة جاية` : t === 'halqa.save' && r.fixed ? `وتعدّل وقت ${r.fixed} حصة جاية` : '';
 async function aiRun(mi, ai, batch) {
   const a = AI.msgs[mi] && AI.msgs[mi].actions[ai]; if (!a || a.state === 'done' || a.error) return;
   a.state = 'busy'; aiRender();
-  try { const r = await api('/api/act', { t: a.t, ...(a.payload || {}) }); a.state = 'done'; a.res = aiResTxt(a.t, r || {}); buzz(15); if (!batch) await load(); }
+  try { const r = await api('/api/act', { t: a.t, _side: SEC, ...(a.payload || {}) }); a.state = 'done'; a.res = aiResTxt(a.t, r || {}); buzz(15); if (!batch) await load(); }
   catch (e) { a.state = 'err'; a.msg = e.message; }
   aiSave(); aiRender();
 }
@@ -2995,12 +3037,31 @@ function quickRecModal() {
   openModal(`${dlgHead('تسجيل تسميع')}<div class="small muted">بدون ما تنشئ حصة. اختر الطالب، وتقدر تغيّر التاريخ لو تسجّل تسميع يوم فات. ولو فيه حصة لحلقته بنفس اليوم ينربط فيها لحاله.</div>
   <input id="qr-q" data-input="qr-q" placeholder="ابحث بالاسم" value="${esc(ST.qrq || '')}" autocomplete="off"><div class="list qr-list" id="qr-list">${qrItems()}</div>`);
 }
+function sesInView() {
+  const hs = myHalaqat(me()); const ids = ST.halqa ? [ST.halqa] : hs.map(h => h.id); const t = today();
+  const sr = ST.sr || 'week'; const sd = ST.sd || t; const ws = weekStartC(sd); const ms = sd.slice(0, 8) + '01';
+  const me0 = (() => { const d = new Date(ms + 'T00:00'); d.setMonth(d.getMonth() + 1); d.setDate(0); return isoDate(d); })();
+  const [from, to] = sr === 'day' ? [sd, sd] : sr === 'week' ? [ws, addDays(ws, 6)] : sr === 'month' ? [ms, me0] : [t, '9999-12-31'];
+  return L('sessions').filter(s => ids.includes(s.halqaId) && s.date >= from && s.date <= to);
+}
+async function bulkDo(payload, msg) {
+  const ids = [...ST.sel]; if (!ids.length) return toast('اختر الحصص أول');
+  const r = await act('lessons.bulk', { ids, ...payload }, x => msg || `تعدّلت ${x.n || 0} حصة`);
+  if (r) { closeModal(); ST.sel = new Set(); ST.selOn = false; render(); }
+}
+CHG['bulk-mode'] = el => { const v = el.value; if (!v) return; el.value = ''; const L0 = { onsite: 'حضوري', remote: 'عن بعد', hybrid: 'هجين', default: 'حسب نوع الحلقة' }; confirmBox(`${ST.sel.size} حصة تصير «${L0[v]}»؟`, 'غيّر', () => bulkDo({ mode: v === 'default' ? '' : v }, `صارت ${L0[v]}`)); };
+FORMS['bulk-time'] = async (f, d) => bulkDo({ time: d.get('time') });
+FORMS['bulk-cancel'] = async (f, d) => bulkDo({ cancel: true, note: (d.get('note') || '').trim() }, 'انلغت الحصص');
 INP['qr-q'] = el => { ST.qrq = el.value; const box = document.getElementById('qr-list'); if (box) { box.innerHTML = qrItems(); femify(box); } };
+/** حالة المعلم بعد تسجيل وصوله: زر تسجيل الخروج، أو وقت انصرافه */
+function tinState(t, end) {
+  if (t.out) return `<div class="tin ok out">${ICO.check}<span>وصلت ${clock(t.at)} · انصرفت ${clock(t.out)}${t.outAuto ? ' (تلقائي مع وقت الانصراف)' : ''}${t.outEarly ? ` · <b class="c-warn">قبل الوقت بـ ${t.outEarly} د</b>` : ''}</span>${!t.outAuto && Date.now() - t.out < 30 * 60000 ? '<button class="linkbtn" data-act="tout-undo">تراجع</button>' : ''}</div>`;
+  return `<div class="tin in"><div class="grow"><b>${ICO.check} سجّلت وصولك ${clock(t.at)}${t.dist != null ? ` <span class="small muted">· على بعد ${t.dist} م</span>` : ''}</b><span class="small">${end ? `وقت الانصراف ${clock(end)}، وإذا ما سجّلت خروجك ينسجّل لحاله` : 'سجّل خروجك إذا طلعت من الجامع'}</span></div><button class="btn" data-act="tout">🚪 تسجيل خروج</button></div>`;
+}
 function checkinBar(u, s) {
   if (u.role !== 'teacher' || s.date !== today() || !isOnsiteL(s)) return '';
   const t = myTin(); const need = !!placeOf(s.halqaId); const end = dayEndOf(s.halqaId);
-  if (t && t.out) return `<div class="tin ok out">${ICO.check}<span>وصلت ${clock(t.at)} · انصرفت ${clock(t.out)}${t.outAuto ? ' (تلقائي مع وقت الانصراف)' : ''}${t.outEarly ? ` · <b class="c-warn">قبل الوقت بـ ${t.outEarly} د</b>` : ''}</span>${!t.outAuto && Date.now() - t.out < 30 * 60000 ? '<button class="linkbtn" data-act="tout-undo">تراجع</button>' : ''}</div>`;
-  if (t) return `<div class="tin in"><div class="grow"><b>${ICO.check} سجّلت وصولك ${clock(t.at)}${t.dist != null ? ` <span class="small muted">· على بعد ${t.dist} م</span>` : ''}</b><span class="small">${end ? `وقت الانصراف ${clock(end)}، وإذا ما سجّلت خروجك ينسجّل لحاله` : 'سجّل خروجك إذا طلعت من الجامع'}</span></div><button class="btn" data-act="tout">🚪 تسجيل خروج</button></div>`;
+  if (t) return tinState(t, end);
   return `<div class="tin ${need ? 'need' : ''}"><div class="grow"><b>سجّل وصولك للجامع</b><span class="small">${need ? 'لازم تكون داخل الجامع، وما تقدر تحضّر أو تسجّل تسميع قبلها' : 'ينحفظ وقت وصولك للحلقة'}${end ? ` · الانصراف اليوم ${clock(end)}` : ''}</span></div><button class="btn pri" data-act="tin">📍 وصلت الجامع</button></div>`;
 }
 /** بطاقة تسجيل الوصول أعلى الصفحة الأساسية للمعلم: تطلع في أي يوم عنده فيه حلقة حضورية، حتى لو الحصة ما انفتحت بعد */
@@ -3010,7 +3071,7 @@ function checkinCard(u) {
   const allT = L('sessions').filter(s => s.date === t && (hs.some(h => h.id === s.halqaId) || s.subId === ST.meId));
   const onsiteToday = allT.some(s => !s.cancelled && isOnsiteL(s)) || (!isHolidayC(t) && hs.some(h => (h.mode || 'onsite') !== 'remote' && halqaDays(h.id).includes(wd) && !allT.some(s => s.halqaId === h.id)));
   const tn = myTin();
-  if (tn) return `<div class="tin ok">${ICO.check}<span>سجّلت وصولك اليوم ${clock(tn.at)}${tn.dist != null ? ` · على بعد ${tn.dist} م من الجامع` : ''}</span></div>`;
+  if (tn) return tinState(tn, (S.dayEnd || {})[(hs.find(h => (h.mode || 'onsite') !== 'remote') || hs[0] || {}).branch || '_'] || (S.dayEnd || {})._);
   if (!onsiteToday) return '';
   return `<section class="tin-card"><div class="tin-ico" aria-hidden="true">📍</div><div class="grow"><b>سجّل حضورك اليوم</b><span class="small">${needLoc() ? 'ضغطة وحدة داخل الجامع، والتحضير والتسميع يفتح بعدها' : 'ضغطة وحدة وينحفظ وقت وصولك'}</span></div><button class="btn pri tin-go" data-act="tin">وصلت الجامع</button></section>`;
 }
@@ -3213,7 +3274,7 @@ Object.assign(ACT, {
   },
   'tout': async el => {
     el.disabled = true; const old = el.textContent; el.textContent = 'لحظة…';
-    const pos = await Promise.race([getPos(), new Promise(r => setTimeout(() => r(null), 6000))]);
+    const g = await Promise.race([getPos(), new Promise(r => setTimeout(() => r({}), 8000))]); const pos = g && g.pos;
     const body = pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy } : {};
     const r = await act('teacher.checkout', body, x => x.needConfirm ? '' : x.already ? 'مسجّل خروجك من قبل' : 'سجّلت خروجك ✓');
     el.disabled = false; el.textContent = old;
@@ -3221,6 +3282,18 @@ Object.assign(ACT, {
   },
   'tout-undo': () => act('teacher.checkout', { undo: true }, 'رجّعنا تسجيل الخروج'),
   'quick-rec': () => { ST.qrq = ''; quickRecModal(); },
+  // صفحة الحصص: الفترة والتنقل والتعديل المتعدد
+  'ses-r': el => { ST.sr = el.dataset.v; if (ST.sr === 'up') ST.sd = today(); render(); },
+  'ses-step': el => { ST.sd = addDays(ST.sd || today(), +el.dataset.n); render(); },
+  'ses-day': el => { ST.sd = el.dataset.d; ST.sr = 'day'; render(); },
+  'ses-today': () => { ST.sd = today(); render(); },
+  'ses-sel-on': () => { ST.selOn = !ST.selOn; ST.sel = new Set(); render(); },
+  'ses-sel-off': () => { ST.selOn = false; ST.sel = new Set(); render(); },
+  'ses-sel': el => { const id = el.dataset.id; if (ST.sel.has(id)) ST.sel.delete(id); else ST.sel.add(id); render(); },
+  'ses-sel-day': el => { const ids = sesInView().filter(s => s.date === el.dataset.d).map(s => s.id); const all = ids.every(id => ST.sel.has(id)); ids.forEach(id => all ? ST.sel.delete(id) : ST.sel.add(id)); render(); },
+  'ses-sel-all': () => { const ids = sesInView().map(s => s.id); const all = ids.length && ids.every(id => ST.sel.has(id)); ids.forEach(id => all ? ST.sel.delete(id) : ST.sel.add(id)); render(); },
+  'bulk-time': () => openModal(`${dlgHead('وقت ' + ST.sel.size + ' حصة')}<form data-form="bulk-time" class="fld"><label class="fld"><span>الوقت الجديد</span><input type="time" name="time" required></label><div class="small muted">يتغير لهذي الحصص بس، ووقت الحلقة الدائم ما يتغير.</div><div class="dlg-foot"><button class="btn pri" type="submit">تغيير</button></div></form>`),
+  'bulk-cancel': el => { const v = el.dataset.v === '1'; const n = ST.sel.size; if (!v) return bulkDo({ cancel: false }, `استرجعت ${n} حصة`); openModal(`${dlgHead('إلغاء ' + n + ' حصة')}<form data-form="bulk-cancel"><label class="fld"><span>السبب (يطلع للطلاب)</span><input name="note" placeholder="مثال: مطر، إجازة، اختبارات"></label><div class="dlg-foot"><button class="btn danger" type="submit">إلغاء الحصص</button></div></form>`); },
   'os-f': el => { ST.osf = el.dataset.v; render(); },
   'os-arr': async el => { const s = curSession(); el.disabled = true; const r = await act('lesson.arrive', { id: s.id, uid: el.dataset.id }); if (r && r.v === 'l') toast(`متأخر ${r.min} دقيقة`); buzz(12); },
   'os-att': el => { const s = curSession(); act('lesson.att', { id: s.id, uid: el.dataset.id, v: el.dataset.v }); },
