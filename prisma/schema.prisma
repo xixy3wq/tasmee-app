@@ -391,3 +391,40 @@ model Bid {
 
   @@unique([rewardId, userId])
 }
+
+/// دفتر مجالس المشايخ (صفحة /majalis للمدير فقط)
+model Majlis {
+  id        String    @id @default(cuid())
+  userId    String
+  sheikh    String
+  topic     String    @default("")
+  /// YYYY-MM-DD
+  date      String    @default("")
+  place     String    @default("")
+  opening   String    @default("")
+  briefing  String    @default("")
+  books     String    @default("")
+  general   String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  questions MajlisQ[]
+
+  @@index([userId])
+}
+
+/// grp: core | ask | spare
+model MajlisQ {
+  id        String   @id @default(cuid())
+  majlisId  String
+  majlis    Majlis   @relation(fields: [majlisId], references: [id], onDelete: Cascade)
+  text      String
+  why       String   @default("")
+  grp       String   @default("core")
+  pos       Int      @default(0)
+  asked     Boolean  @default(false)
+  answer    String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([majlisId])
+}
