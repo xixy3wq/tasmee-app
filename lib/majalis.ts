@@ -3,11 +3,13 @@ import { prisma } from "./db";
 import { currentUser, fail } from "./auth";
 import masaed from "@/prisma/majalis-seed.json";
 import shahri from "@/prisma/majalis-seed-shahri.json";
+import khudairi from "@/prisma/majalis-seed-khudairi.json";
 
 // كل مجلس جاهز له مفتاح في Setting؛ لو حذفه المدير ما يرجع
 const SEEDS: { key: string; data: any }[] = [
   { key: "majalis_seeded_", data: masaed },
   { key: "majalis_seeded_shahri_", data: shahri },
+  { key: "majalis_seeded_khudairi_", data: khudairi },
 ];
 
 export async function requireAdmin() {
