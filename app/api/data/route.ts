@@ -9,18 +9,20 @@ import { syncAutoLessons } from "@/lib/lessons";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
-import { halqaPoints } from "@/lib/points";
+import { halqaPoints, balances, groupProgress } from "@/lib/points";
+import { closeAuction } from "@/lib/store";
+import { scopeSpec } from "@/lib/scope";
 export const dynamic = "force-dynamic";
 
 // كل ما يحتاجه المستخدم الحالي، مفلترًا حسب دوره
 const userOut = (u: any) => ({
   role: u.role, status: u.status, name: u.name, username: u.username, halqaId: u.halqaId, reqHalqa: u.reqHalqaId || "",
   canPlan: u.canPlan, canAuto: u.canAuto, autoAllowed: u.autoAllowed, plan: u.plan || null,
-  goal: u.goal || null, perms: u.role === "admin" ? (u.perms ?? null) : undefined, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, lastSeen: u.lastSeenAt ? +u.lastSeenAt : null, ...((u.info as object) || {}),
+  goal: u.goal || null, wish: u.wish || "", level: u.level || null, perms: u.role === "admin" ? (u.perms ?? null) : undefined, createdAt: +u.createdAt, approvedAt: u.approvedAt ? +u.approvedAt : null, lastSeen: u.lastSeenAt ? +u.lastSeenAt : null, ...((u.info as object) || {}),
 });
 const lessonOut = (l: any) => ({
   halqaId: l.halqaId, date: l.date, time: l.time, link: l.link, note: l.note, att: l.att || {}, queue: l.queue || [], current: l.currentId || null,
-  auto: !!l.autoKey, cancelled: !!l.cancelled, issues: l.issues || {}, subId: l.subId || "", teacherAt: l.teacherAt ? +l.teacherAt : null, teacherBy: l.teacherBy || "", ...(l.qnames ? { qnames: l.qnames, cname: l.cname } : {}),
+  auto: !!l.autoKey, cancelled: !!l.cancelled, mode: l.mode || "", arr: l.arr || {}, left: l.left || {}, closedAt: l.closedAt ? +l.closedAt : null, issues: l.issues || {}, subId: l.subId || "", teacherAt: l.teacherAt ? +l.teacherAt : null, teacherBy: l.teacherBy || "", ...(l.qnames ? { qnames: l.qnames, cname: l.cname } : {}),
 });
 const recOut = (r: any) => ({ uid: r.userId, sid: r.lessonId, halqaId: r.halqaId, date: r.date, type: r.type, surah: r.surah, from: r.fromA, to: r.toA, mistakes: r.mistakes, alerts: r.alerts, grade: r.grade, pass: r.pass, note: r.note, by: r.byId || "", secs: r.secs ?? null, full: !!r.full, quick: !!r.quick, at: +r.at });
 const map = <T,>(rows: any[], f: (r: any) => T) => Object.fromEntries(rows.map((r) => [r.id, f(r)]));
@@ -140,6 +142,39 @@ export async function GET() {
   ]);
   const votes = polls.length ? await prisma.pollVote.findMany({ where: { pollId: { in: polls.map((p) => p.id) } } }) : [];
   const msgs = staff ? await prisma.msg.findMany({ orderBy: { at: "desc" }, take: 100 }) : [];
+  // ---------- الحضوري: وصول المعلمين اليوم ----------
+  const today0 = localDate();
+  const tinRows = me.role === "student" ? [] : await prisma.teacherIn.findMany({ where: { date: today0, ...(me.role === "teacher" ? { userId: me.id } : {}) } });
+  const tins = Object.fromEntries(tinRows.filter((t) => me.role === "teacher" || users.some((x) => x.id === t.userId)).map((t) => [t.userId, { at: +t.at, dist: t.dist, noLoc: t.noLoc, branch: t.branch }]));
+  // ---------- النقاط والمتجر ----------
+  const studsVis = users.filter((x) => x.role === "student" && x.status !== "pending");
+  const cache = ((globalThis as any).__balCache ??= new Map<string, { t: number; v: any }>());
+  const bkey = studsVis.map((x) => x.id).sort().join(",");
+  let balMap: Record<string, any> = {};
+  const hitB = cache.get(bkey);
+  if (hitB && Date.now() - hitB.t < 20000) balMap = hitB.v; else { balMap = await balances(studsVis.map((x) => ({ id: x.id, halqaId: x.halqaId })), settings, today0); cache.set(bkey, { t: Date.now(), v: balMap }); if (cache.size > 200) cache.clear(); }
+  const brs = [...new Set(halaqat.map((h) => h.branch || ""))];
+  const sp = me.role === "admin" ? scopeSpec(me) : null;
+  let rewards = await prisma.reward.findMany({ where: me.role === "admin" ? (sp && sp.b.length ? { branch: { in: [...sp.b, ""] } } : {}) : { branch: { in: [...brs, ""] }, ...(me.role === "student" ? { active: true } : {}) }, orderBy: { at: "desc" }, take: 200 });
+  for (const r of rewards) if (r.kind === "auction" && !r.closed && r.endsAt && +r.endsAt < Date.now()) { await closeAuction(r).catch(() => null); }
+  if (rewards.some((r) => r.kind === "auction" && !r.closed && r.endsAt && +r.endsAt < Date.now())) rewards = await prisma.reward.findMany({ where: { id: { in: rewards.map((r) => r.id) } }, orderBy: { at: "desc" } });
+  const aucIds = rewards.filter((r) => r.kind === "auction").map((r) => r.id);
+  const bids = aucIds.length ? await prisma.bid.findMany({ where: { rewardId: { in: aucIds } }, orderBy: { amount: "desc" } }) : [];
+  const gcache = ((globalThis as any).__grpCache ??= new Map<string, { t: number; v: number }>());
+  const prog = async (r: any, hid: string) => { const k = r.id + "_" + hid; const h = gcache.get(k); if (h && Date.now() - h.t < 60000) return h.v; const v = await groupProgress([hid], new Date(+r.at + 3 * 3600000).toISOString().slice(0, 10), today0, settings); gcache.set(k, { t: Date.now(), v }); return v; };
+  const rewardsOut: Record<string, any> = {};
+  for (const r of rewards) {
+    const o: any = { name: r.name, note: r.note, kind: r.kind, price: r.price, eff: r.salePrice != null && r.saleUntil && r.saleUntil >= today0 ? r.salePrice : r.price, stock: r.stock, branch: r.branch, salePrice: r.salePrice, saleUntil: r.saleUntil, endsAt: r.endsAt ? +r.endsAt : null, target: r.target, halqaId: r.halqaId || "", closed: r.closed, active: r.active, winnerId: r.winnerId || "", at: +r.at };
+    if (staff) o.cost = r.cost;
+    if (r.kind === "auction") { const bs = bids.filter((x) => x.rewardId === r.id); o.top = bs[0]?.amount || 0; o.n = bs.length; o.mine = bs.find((x) => x.userId === me.id)?.amount || 0; o.lead = bs[0]?.userId === me.id; if (staff) o.bids = bs.slice(0, 5).map((x) => ({ uid: x.userId, amount: x.amount })); }
+    if (r.kind === "group") { const hs = r.halqaId ? halaqat.filter((h) => h.id === r.halqaId) : halaqat.filter((h) => !r.branch || h.branch === r.branch); o.progress = {}; for (const h of hs.slice(0, 30)) o.progress[h.id] = await prog(r, h.id); }
+    rewardsOut[r.id] = o;
+  }
+  const visIds = studsVis.map((x) => x.id);
+  const [orders, ptx] = await Promise.all([
+    prisma.rewardOrder.findMany({ where: { userId: { in: me.role === "student" ? [me.id] : visIds } }, orderBy: { at: "desc" }, take: 300 }),
+    prisma.pointTx.findMany({ where: { userId: { in: me.role === "student" ? [me.id] : visIds } }, orderBy: { at: "desc" }, take: me.role === "student" ? 100 : 400 }),
+  ]);
   const full = me.role === "admin" && !me.perms;
   const backups = full ? await prisma.backup.findMany({ orderBy: { at: "desc" }, select: { id: true, at: true, size: true } }) : [];
   const { exportKey, ...pubSettings } = settings as any;
@@ -148,7 +183,7 @@ export async function GET() {
     appV: APP_V,
     today: localDate(),
     users: map(users, userOut),
-    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub, branch: h.branch || "" })),
+    halaqat: map(halaqat, (h) => ({ name: h.name, teacherId: h.teacherId || "", days: h.days, time: h.time, link: h.link || "", auto: !!h.auto, sub: !!h.sub, branch: h.branch || "", mode: h.mode || "onsite", place: h.place || "", gender: h.gender === "f" ? "f" : "m" })),
     sessions: map(lessons, lessonOut),
     recs: map(recs, recOut),
     joins: Object.fromEntries(joins.map((j) => [j.lessonId + "_" + j.userId, { sid: j.lessonId, uid: j.userId, at: +j.at, left: j.leftAt ? +j.leftAt : null }])),
@@ -164,6 +199,11 @@ export async function GET() {
     anns: map(anns, (a) => ({ halqaId: a.halqaId || "", title: a.title, body: a.body, byName: a.byName, at: +a.at, reads: reads.filter((r) => r.annId === a.id).map((r) => ({ uid: r.userId, at: +r.at })) })),
     wirds: Object.fromEntries(wirds.map((w) => [w.userId + "_" + w.date, { uid: w.userId, date: w.date, items: w.items, read: w.read, note: w.note }])),
     board,
+    tins,
+    bal: Object.fromEntries(Object.entries(balMap).map(([k, v]: any) => [k, v.bal])),
+    rewards: rewardsOut,
+    orders: map(orders, (o) => ({ rid: o.rewardId, uid: o.userId, price: o.price, code: me.role === "student" || staff ? o.code : "", status: o.status, byName: o.byName, at: +o.at, doneAt: o.doneAt ? +o.doneAt : null })),
+    ptx: map(ptx, (t) => ({ uid: t.userId, amount: t.amount, kind: t.kind, reason: t.reason, byName: t.byName, at: +t.at })),
     dms: map(dms, (m) => ({ sid: m.studentId, by: m.byId, byName: m.byName, staff: m.fromStaff, kind: m.kind, date: m.date, text: m.text, at: +m.at, read: m.readAt ? +m.readAt : null })),
     behav: map(behav, (x) => ({ uid: x.userId, by: x.byId, byName: x.byName, kind: x.kind, text: x.text, visible: x.visible, at: +x.at })),
     polls: map(polls, (p) => {

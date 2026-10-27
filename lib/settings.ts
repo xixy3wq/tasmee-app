@@ -47,13 +47,17 @@ export const DEF = {
     { id: "t2", name: "نصف وجه حفظ و3 أوجه مراجعة", newAmt: 0.5, revAmt: 3, tathAmt: 2 },
     { id: "t3", name: "وجه حفظ و5 أوجه مراجعة", newAmt: 1, revAmt: 5, tathAmt: 3 },
   ] as { id: string; name: string; newAmt: number; revAmt: number; tathAmt: number }[],
-  /// قواعد النقاط التلقائية
-  points: { present: 2, late: 1, ex: 3, vg: 2, gd: 1, page: 2 },
+  /// قواعد النقاط التلقائية (absent و bad خصم: الغياب بدون عذر، وملاحظة السلوك السلبية)
+  points: { present: 2, late: 1, ex: 3, vg: 2, gd: 1, page: 2, absent: 0, bad: 0 },
+  /// يُحسب الطالب متأخر إذا وصل بعد بداية الحلقة بكم دقيقة
+  lateMin: 10,
+  /// مواقع الجوامع لتسجيل حضور المعلم: { "<المجمع>" أو "_" للأساسي: { lat, lng, radius } }
+  places: {} as Record<string, { lat: number; lng: number; radius: number }>,
   /// لوحة الشرف للطلاب: show | top3 | hide
   board: "show",
   /// وقت التسميع المقترح لكل طالب بالدقائق (0 = بدون تنبيه)
   recMin: 0,
-  /// الفروع أو المساجد
+  /// المجمعات أو الجوامع
   branches: [] as string[],
   /// مناسبات التقويم: [{ date, name, kind: exam | event }]
   events: [] as { date: string; name: string; kind: string }[],

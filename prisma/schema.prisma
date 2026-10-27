@@ -33,6 +33,10 @@ model User {
   approvedAt   DateTime?
   /// آخر مرة فتح فيها الموقع
   lastSeenAt   DateTime?
+  /// الجائزة اللي يجمع لها (سلة الأمنيات)
+  wish         String?
+  /// نتيجة اختبار تحديد المستوى
+  level        Json?
 }
 
 model Halqa {
@@ -45,8 +49,14 @@ model Halqa {
   link      String   @default("")
   /// إنشاء الحصص تلقائيًا حسب أيام الدوام
   auto      Boolean  @default(false)
-  /// الفرع أو المسجد (فارغ = الافتراضي)
+  /// المجمع أو الجامع (فارغ = الأساسي)
   branch    String   @default("")
+  /// نوع الحلقة: onsite حضوري، remote عن بعد، hybrid هجين
+  mode      String   @default("onsite")
+  /// مكانها داخل الجامع (مثل: القبو)
+  place     String   @default("")
+  /// m رجالية، f نسائية
+  gender    String   @default("m")
   createdAt DateTime @default(now())
 }
 
@@ -77,6 +87,14 @@ model Lesson {
   issues    Json     @default("{}")
   /// حصة تلقائية عدّل المعلم وقتها أو تاريخها يدويًا (ما تتبع جدول الحلقة بعدها)
   custom    Boolean  @default(false)
+  /// نوع هذي الحصة لو تغيّر عن نوع الحلقة (تحويل بضغطة)
+  mode      String   @default("")
+  /// وقت وصول كل طالب { uid: ms }
+  arr       Json     @default("{}")
+  /// الانصراف بدري { uid: { at, reason } }
+  left      Json     @default("{}")
+  /// المعلم أنهى الحلقة
+  closedAt  DateTime?
   createdBy String?
   createdAt DateTime @default(now())
 
@@ -274,4 +292,89 @@ model PollVote {
   at     DateTime @default(now())
 
   @@unique([pollId, userId])
+}
+
+/// حضور المعلم للجامع (مرة باليوم) مع المسافة عن موقع الجامع
+model TeacherIn {
+  id     String   @id @default(cuid())
+  userId String
+  date   String
+  at     DateTime @default(now())
+  lat    Float?
+  lng    Float?
+  dist   Int?
+  acc    Int?
+  branch String   @default("")
+  /// ما فيه موقع محدد للجامع وقت التسجيل
+  noLoc  Boolean  @default(false)
+
+  @@unique([userId, date])
+}
+
+/// حركات النقاط اليدوية والمتجر (النقاط التلقائية تنحسب من الحضور والتسميع)
+model PointTx {
+  id     String   @id @default(cuid())
+  userId String
+  amount Int
+  /// manual يدوي، spend شراء، refund استرجاع، auction مزاد
+  kind   String
+  reason String   @default("")
+  byId   String?
+  byName String   @default("")
+  ref    String?
+  at     DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// جوائز المتجر: item جائزة عادية، group جائزة للحلقة كاملة، auction مزاد
+model Reward {
+  id        String    @id @default(cuid())
+  name      String
+  note      String    @default("")
+  kind      String    @default("item")
+  price     Int       @default(0)
+  /// تكلفتها بالريال (للميزانية)
+  cost      Float     @default(0)
+  /// الكمية (فارغ = بدون حد)
+  stock     Int?
+  branch    String    @default("")
+  salePrice Int?
+  saleUntil String?
+  /// نهاية المزاد
+  endsAt    DateTime?
+  /// هدف نقاط الحلقة للجائزة الجماعية
+  target    Int?
+  halqaId   String?
+  winnerId  String?
+  closed    Boolean   @default(false)
+  active    Boolean   @default(true)
+  at        DateTime  @default(now())
+}
+
+model RewardOrder {
+  id       String    @id @default(cuid())
+  rewardId String
+  userId   String
+  price    Int
+  code     String
+  /// pending بانتظار التسليم، delivered تم، rejected مرفوض، cancelled ألغاه الطالب
+  status   String    @default("pending")
+  byId     String?
+  byName   String    @default("")
+  at       DateTime  @default(now())
+  doneAt   DateTime?
+  doneBy   String?
+
+  @@index([userId])
+}
+
+model Bid {
+  id       String   @id @default(cuid())
+  rewardId String
+  userId   String
+  amount   Int
+  at       DateTime @default(now())
+
+  @@unique([rewardId, userId])
 }

@@ -1,6 +1,7 @@
 import { prisma } from "./db";
+import { femTxt } from "./fem";
 import { getSettings, localDate, weekStart, isHoliday } from "./settings";
-import { halqaPoints } from "./points";
+import { halqaPoints, balances } from "./points";
 import { rangePages } from "./pages";
 // ربط الواتساب عبر مزوّد خارجي (مثل الواتس الذكي smart-whats.com).
 // الإعداد في جدول Setting بالمفتاح "wa" ولا يُرسل للواجهة إلا للمدير الكامل.
@@ -9,6 +10,7 @@ export type WaCfg = {
   autoAbsent: boolean; autoPresent: boolean; autoLate: boolean; autoRec: boolean; delayMin: number;
   tplPresent: string; tplLate: string; tplRec: string;
   autoWeek: boolean; weekDay: number; weekHour: number; tplWeek: string;
+  autoMonth: boolean; monthDay: number; monthHour: number; tplMonth: string; tplLeft: string;
 };
 export const WA_DEF: WaCfg = {
   enabled: false, method: "GET", url: "", body: "", okWord: "",
@@ -18,6 +20,9 @@ export const WA_DEF: WaCfg = {
   tplRec: "السلام عليكم ورحمة الله، تسميع ابنكم {الطالب} في حلقة {الحلقة} يوم {التاريخ}:\n{التسميع}",
   autoWeek: false, weekDay: 4, weekHour: 20,
   tplWeek: "السلام عليكم ورحمة الله، تقرير ابنكم {الطالب} في {الحلقة} لهذا الأسبوع:\n- الحضور: {الحضور}\n- الحفظ: {الحفظ} وجه\n- المراجعة والتثبيت: {المراجعة} وجه\n- التسميع: {التسميع}\n- النقاط: {النقاط}\nجزاكم الله خيرًا على المتابعة.",
+  autoMonth: false, monthDay: 1, monthHour: 20,
+  tplMonth: "السلام عليكم ورحمة الله، تقرير ابنكم {الطالب} في {الحلقة} لشهر {الشهر}:\n- الحضور: {الحضور}\n- التأخر: {التأخر}\n- الحفظ: {الحفظ} وجه\n- المراجعة والتثبيت: {المراجعة} وجه\n- التسميع: {التسميع}\n- رصيد النقاط: {الرصيد}\n- الجوائز: {الجوائز}\nجزاكم الله خيرًا على المتابعة.",
+  tplLeft: "السلام عليكم ورحمة الله، نفيدكم بانصراف ابنكم {الطالب} من حلقة {الحلقة} اليوم الساعة {الوقت}{السبب}.",
 };
 export async function waCfg(): Promise<WaCfg> {
   const r = await prisma.setting.findUnique({ where: { key: "wa" } });
@@ -58,8 +63,9 @@ export async function waSend(cfg: WaCfg, phone: string, text: string): Promise<{
 }
 
 /** إضافة أو تحديث رسالة في الطابور (نفس المفتاح يستبدل الرسالة المعلقة) */
-export async function queueMsg(key: string, kind: string, phone: string, text: string, delayMin: number, meta: { userId?: string; lessonId?: string } = {}) {
+export async function queueMsg(key: string, kind: string, phone: string, text: string, delayMin: number, meta: { userId?: string; lessonId?: string; fem?: boolean } = {}) {
   if (!intlPhone(phone)) return;
+  if (meta.fem) text = femTxt(text);
   const sendAfter = new Date(Date.now() + Math.max(0, delayMin) * 60000);
   const ex = await prisma.outMsg.findUnique({ where: { key } });
   if (ex && ex.status === "sent") {
@@ -81,6 +87,7 @@ export async function processQueue(limit = 8) {
   try {
     const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) return 0;
     try { await maybeWeekly(cfg); } catch (e) { console.error("wa weekly", e); }
+    try { await maybeMonthly(cfg); } catch (e) { console.error("wa monthly", e); }
     const due = await prisma.outMsg.findMany({ where: { status: "pending", sendAfter: { lte: new Date() } }, orderBy: { sendAfter: "asc" }, take: limit });
     let n = 0;
     for (const m of due) {
@@ -125,7 +132,7 @@ export async function queueWeekly(halqaId?: string) {
         .replace(/\{الغياب\}/g, String(abs))
         .replace(/\{الحفظ\}/g, fmtPg(pNew)).replace(/\{المراجعة\}/g, fmtPg(pRev))
         .replace(/\{النقاط\}/g, String(pts.find((x) => x.id === st.id)?.pts ?? 0));
-      await queueMsg(`week-${st.id}-${from}`, "week", phone, text, 0, { userId: st.id });
+      await queueMsg(`week-${st.id}-${from}`, "week", phone, text, 0, { userId: st.id, fem: h.gender === "f" });
       n++;
     }
   }
@@ -142,4 +149,65 @@ async function maybeWeekly(cfg: WaCfg) {
   if ((flag?.value as any)?.wk === wk) return;
   await prisma.setting.upsert({ where: { key: "waWeek" }, create: { key: "waWeek", value: { wk } }, update: { value: { wk } } });
   await queueWeekly();
+}
+
+/* ---------------- التقرير الشهري لأولياء الأمور ---------------- */
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+/** من أول الشهر الميلادي اللي قبل (لو بداية الشهر) أو الحالي لين اليوم */
+function monthRange(to: string) {
+  const [y, m, d] = to.split("-").map(Number);
+  // في أول 5 أيام من الشهر: التقرير عن الشهر اللي فات
+  const prev = d <= 5; const yy = prev ? (m === 1 ? y - 1 : y) : y; const mm = prev ? (m === 1 ? 12 : m - 1) : m;
+  const from = `${yy}-${String(mm).padStart(2, "0")}-01`;
+  const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+  const end = prev ? `${yy}-${String(mm).padStart(2, "0")}-${last}` : to;
+  return { from, to: end, name: MONTHS_AR[mm - 1] + " " + yy, key: `${yy}-${mm}` };
+}
+export async function queueMonthly(halqaId?: string) {
+  const cfg = await waCfg(); const s = await getSettings();
+  const r = monthRange(localDate());
+  const halaqat = await prisma.halqa.findMany({ where: halqaId ? { id: halqaId } : {} });
+  let n = 0;
+  for (const h of halaqat) {
+    const studs = await prisma.user.findMany({ where: { halqaId: h.id, role: "student", status: "active" } });
+    if (!studs.length) continue;
+    const lessons = (await prisma.lesson.findMany({ where: { halqaId: h.id, cancelled: false, date: { gte: r.from, lte: r.to } } })).filter((l) => !isHoliday(s, l.date));
+    const recs = await prisma.rec.findMany({ where: { userId: { in: studs.map((x) => x.id) }, date: { gte: r.from, lte: r.to } } });
+    const bal = await balances(studs.map((x) => ({ id: x.id, halqaId: x.halqaId })), s, localDate());
+    const orders = await prisma.rewardOrder.findMany({ where: { userId: { in: studs.map((x) => x.id) }, status: { in: ["pending", "delivered"] }, at: { gte: new Date(r.from + "T00:00:00+03:00") } } });
+    const rws = orders.length ? await prisma.reward.findMany({ where: { id: { in: [...new Set(orders.map((o) => o.rewardId))] } }, select: { id: true, name: true } }) : [];
+    for (const st of studs) {
+      const info = (st.info as any) || {}; const phone = String(info.parentPhone || info.phone || "");
+      if (!intlPhone(phone)) continue;
+      const att = lessons.map((l) => ((l.att as any) || {})[st.id]);
+      const pres = att.filter((v) => v === "p" || v === "l").length, abs = att.filter((v) => v === "a").length, late = att.filter((v) => v === "l").length;
+      const rs = recs.filter((x) => x.userId === st.id);
+      let pNew = 0, pRev = 0;
+      for (const x of rs) { const pg = await rangePages(x.surah, x.fromA, x.toA); if (x.type === "new") pNew += pg; else pRev += pg; }
+      const cnt = (g: string) => rs.filter((x) => x.grade === g).length;
+      const recTxt = rs.length ? `${rs.length} (ممتاز ${cnt("ممتاز")}، جيد جدًا ${cnt("جيد جدًا")}، جيد ${cnt("جيد")}، إعادة ${cnt("يعاد")})` : "لا يوجد";
+      const prizes = orders.filter((o) => o.userId === st.id).map((o) => rws.find((w) => w.id === o.rewardId)?.name).filter(Boolean);
+      const text = fillVars(cfg.tplMonth || WA_DEF.tplMonth, { student: st.name, halqa: h.name, date: r.to, rec: recTxt })
+        .replace(/\{الشهر\}/g, r.name)
+        .replace(/\{الحضور\}/g, `${pres} من ${lessons.length}${abs ? ` (غاب ${abs})` : ""}`)
+        .replace(/\{الغياب\}/g, String(abs)).replace(/\{التأخر\}/g, String(late))
+        .replace(/\{الحفظ\}/g, fmtPg(pNew)).replace(/\{المراجعة\}/g, fmtPg(pRev))
+        .replace(/\{الرصيد\}/g, String(bal[st.id]?.bal ?? 0)).replace(/\{النقاط\}/g, String(bal[st.id]?.bal ?? 0))
+        .replace(/\{الجوائز\}/g, prizes.length ? prizes.join("، ") : "لا يوجد");
+      await queueMsg(`month-${st.id}-${r.key}`, "month", phone, text, 0, { userId: st.id, fem: h.gender === "f" });
+      n++;
+    }
+  }
+  return n;
+}
+async function maybeMonthly(cfg: WaCfg) {
+  if (!cfg.autoMonth) return;
+  const off = Number(process.env.APP_TZ_OFFSET_MIN ?? 180);
+  const now = new Date(Date.now() + off * 60000);
+  if (now.getUTCDate() !== (cfg.monthDay || 1) || now.getUTCHours() < (cfg.monthHour ?? 20)) return;
+  const key = localDate().slice(0, 7);
+  const flag = await prisma.setting.findUnique({ where: { key: "waMonth" } });
+  if ((flag?.value as any)?.k === key) return;
+  await prisma.setting.upsert({ where: { key: "waMonth" }, create: { key: "waMonth", value: { k: key } }, update: { value: { k: key } } });
+  await queueMonthly();
 }

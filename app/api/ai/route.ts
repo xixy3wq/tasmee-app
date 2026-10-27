@@ -402,9 +402,10 @@ async function studentChat(u: U, b: any) {
   const tools = STU_TOOLS.filter((t) => t.ok(sc));
   const system = [
     `أنت «مساعد ارتق»: مساعد لطيف للطالب وولي أمره في موقع «${s.center}» لحلقات تسميع القرآن عن بعد. ترد بلهجة سعودية بسيطة ومختصرة تناسب الطلاب.`,
-    `الطالب: ${u.name}. الحلقة: ${h?.name || "—"}${teacher ? ` (المعلم: ${teacher.name})` : ""}. أيام الحلقة: ${h ? h.days.map((d: number) => DAYS[d]).join("، ") + " " + h.time : "—"}. اليوم ${today} = ${hj(today)} (${wd(today)}).`,
+    `${(h as any)?.gender === "f" ? "الطالبة" : "الطالب"}: ${u.name}. الحلقة: ${h?.name || "—"}${teacher ? ` (${(h as any)?.gender === "f" ? "المعلمة" : "المعلم"}: ${teacher.name})` : ""}. أيام الحلقة: ${h ? h.days.map((d: number) => DAYS[d]).join("، ") + " " + h.time : "—"}. اليوم ${today} = ${hj(today)} (${wd(today)}).`,
     "قواعد: جاوب عن بيانات هذا الطالب فقط من المعطى. ساعده في طرق الحفظ والمراجعة والتثبيت وتنظيم الوقت بنصائح عملية. لأسئلة المعاني اعطِ معنى عام مختصر مما هو معروف في التفاسير، وانصحه يسأل معلمه للتفصيل، ولا تفتِ في الأحكام. لا تكتب نص آيات من ذاكرتك (قد تخطئ)؛ اذكر اسم السورة ورقم الآية وانصحه يرجع للمصحف. لا تخترع أرقاماً غير موجودة.",
     `تقدر تسوي عنه كل شي يقدر يسويه في الموقع باستخدام الأدوات (${tools.map((t) => t.spec.description.split(" (")[0]).join("، ")}). إذا طلب شي منها استخدم الأداة مباشرة، وهو يأكد بزر قبل التنفيذ. ما تقدر تحذف شي ولا تغيّر كلمة المرور.`,
+    (h as any)?.gender === "f" ? "مهم: هذي طالبة في حلقة نسائية. خاطبها بصيغة المؤنث دائمًا (أحسنتِ، تقدرين، عليكِ، سمّعتِ)، وقل «المعلمة» بدل «المعلم»، وكن لطيفًا ومشجعًا بأسلوب يناسب البنات." : "",
     due ? `المطلوب منه في خطته الحالية: ${due}` : "",
     sc.tasks.length ? `مهام اليوم (لأداة الورد): ${sc.tasks.join("؛ ")}${wird ? ` — المسجّل اليوم: ${((wird.items as any[]) || []).filter((x) => x.done).length} منجزة، تلاوة ${wird.read || 0} وجه` : ""}` : "",
     memInfo(u) ? memInfo(u) + "." : "",
@@ -463,7 +464,8 @@ export async function POST(req: Request) {
       const pres = att.filter((v: string) => v === "p" || v === "l").length, abs = att.filter((v: string) => v === "a").length;
       const rs = ctx.recs.filter((r) => r.userId === st!.id && r.date >= since);
       const notes = rs.map((r) => r.note).filter(Boolean).slice(0, 3);
-      const facts = [`الطالب: ${st!.name}`, `الحضور آخر أسبوعين: ${pres} من ${ls.length}${abs ? ` (غاب ${abs})` : ""}`,
+      const fem = (await prisma.halqa.findUnique({ where: { id: st!.halqaId || "" }, select: { gender: true } }).catch(() => null))?.gender === "f";
+      const facts = [`${fem ? "الطالبة (حلقة نسائية، اكتب الرسالة بصيغة المؤنث: ابنتكم)" : "الطالب"}: ${st!.name}`, `الحضور آخر أسبوعين: ${pres} من ${ls.length}${abs ? ` (غاب ${abs})` : ""}`,
         `التسميع: ${rs.length ? rs.slice(0, 8).map((r) => `${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}`).join("، ") : "ما سمّع"}`,
         notes.length ? `ملاحظات المعلم: ${notes.join(" / ")}` : "", b.extra ? `إضافة من المعلم: ${str(b.extra, 300)}` : ""].filter(Boolean).join("\n");
       const tone = b.tone === "praise" ? "ثناء وتشجيع" : b.tone === "concern" ? "قلق بلطف وطلب تعاون" : "اطمئنان";
@@ -501,8 +503,9 @@ export async function POST(req: Request) {
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
       "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      ctx.halaqat.some((h: any) => h.gender === "f") ? `الحلقات النسائية: تكلّم عن طالباتها بصيغة المؤنث، وأي رسالة لأولياء أمورهن تكون بصيغة المؤنث (ابنتكم، بارك الله فيها).${u!.role === "teacher" && ctx.halaqat.length && ctx.halaqat.every((h: any) => h.gender === "f") ? " والمستخدمة معلمة: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
-      `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""})`).join("؛ ") || "لا يوجد"}`,
+      `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""}${(h as any).gender === "f" ? " · نسائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
       ctx.pending.length ? `طلبات التسجيل المعلّقة: ${ctx.pending.map((p: any) => `${p.name}${p.reqHalqaId ? " (طلب حلقة " + hName(p.reqHalqaId) + ")" : ""}`).join("، ")}` : "",
       `الحصص (آخر أسبوع والقادمة): ${lessonLines.join("؛ ") || "لا يوجد"}`,

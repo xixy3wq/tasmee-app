@@ -6,9 +6,11 @@ import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
 import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video";
-import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly } from "@/lib/wa";
+import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly, queueMonthly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
-import { scopeHalqaIds } from "@/lib/scope";
+import { scopeHalqaIds, scopeSpec } from "@/lib/scope";
+import { balanceOf } from "@/lib/points";
+import { closeAuction } from "@/lib/store";
 import { syncAutoLessons } from "@/lib/lessons";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
@@ -23,7 +25,7 @@ const AMT = (v: unknown, max = 40) => { const n = Number(v); return Number.isFin
 const defPlan = () => ({ mode: "manual", manual: {}, auto: { dir: "bwd", memStart: 0, newPos: 0, revPos: 0, newAmt: 0.25, revAmt: 2, tathAmt: 0 } });
 const planOf = (u: any) => { const p: any = u.plan || {}; const d = defPlan(); return { ...d, ...p, manual: p.manual || {}, auto: { ...d.auto, ...(p.auto || {}) } }; };
 
-const PERMS = ["req", "students", "teachers", "halaqat", "anns", "reports", "settings", "logs"];
+const PERMS = ["req", "students", "teachers", "halaqat", "anns", "reports", "settings", "logs", "store"];
 const isFull = (u: Me) => isAdmin(u) && !u.perms;
 const needAdmin = (u: Me, perm?: string) => {
   if (!isAdmin(u)) fail("هذا الإجراء للمدير فقط", 403);
@@ -72,6 +74,49 @@ function cleanInfo(fields: Field[], src: any) {
 const validDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 const validLink = (s: string) => !s || /^https?:\/\//i.test(s);
 
+// ---------- الحضوري: حضور المعلم بالموقع ----------
+const distM = (a: number, b: number, c: number, d: number) => { const R = 6371000, r = Math.PI / 180; const x = Math.sin(((c - a) * r) / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(((d - b) * r) / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(x))); };
+const lessonStart = (l: { date: string; time: string }) => (l.time ? Date.parse(`${l.date}T${l.time}:00+03:00`) : 0);
+const placeKey = (branch: string | null | undefined) => branch || "_";
+/** في الحلقة الحضورية: المعلم ما يحضّر ولا يسجّل تسميع اليوم إلا بعد ما يسجّل وصوله للجامع (إذا موقع الجامع محدد) */
+async function needCheckin(u: Me, l: any) {
+  if (u.role !== "teacher" || l.date !== localDate()) return;
+  const h = await prisma.halqa.findUnique({ where: { id: l.halqaId } }); if (!h) return;
+  if ((l.mode || h.mode || "onsite") === "remote") return;
+  const s: any = await getSettings(); if (!(s.places || {})[placeKey(h.branch)]) return;
+  const tin = await prisma.teacherIn.findUnique({ where: { userId_date: { userId: u.id, date: localDate() } } });
+  if (!tin) fail("سجّل وصولك للجامع أول من زر «وصلت الجامع»", 403);
+}
+// رابط خرائط قوقل → إحداثيات (يفك الروابط المختصرة)
+async function coordsFrom(link: string): Promise<[number, number] | null> {
+  const pick = (t: string): [number, number] | null => {
+    const m = /@(-?\d+\.\d+),\s*(-?\d+\.\d+)/.exec(t) || /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/.exec(t) || /[?&](?:q|query|ll|destination|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i.exec(t) || /^\s*(-?\d{1,2}\.\d+)\s*[,،]\s*(-?\d{1,3}\.\d+)\s*$/.exec(t);
+    return m ? [Number(m[1]), Number(m[2])] : null;
+  };
+  let c = pick(link); if (c) return c;
+  if (/^https:\/\/(maps\.app\.goo\.gl|goo\.gl|maps\.google\.|www\.google\.)/i.test(link)) {
+    let url = link;
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(8000) }).catch(() => null); if (!r) break;
+      const loc = r.headers.get("location"); if (!loc) { const t = await r.text().catch(() => ""); return pick(t); }
+      c = pick(decodeURIComponent(loc)); if (c) return c; url = new URL(loc, url).toString();
+    }
+  }
+  return null;
+}
+const salePrice = (r: any) => (r.salePrice != null && r.saleUntil && r.saleUntil >= localDate() ? r.salePrice : r.price);
+async function refundOrder(u: Me, o: any, status: string) {
+  await prisma.$transaction([
+    prisma.rewardOrder.update({ where: { id: o.id }, data: { status, doneAt: new Date(), doneBy: u.id } }),
+    prisma.pointTx.create({ data: { userId: o.userId, amount: o.price, kind: "refund", reason: status === "cancelled" ? "إلغاء طلب" : "رفض طلب", byId: u.id, byName: u.name, ref: o.id } }),
+  ]);
+  await prisma.reward.updateMany({ where: { id: o.rewardId, stock: { not: null } }, data: { stock: { increment: 1 } } });
+}
+async function storeAdmin(u: Me, branch: string) {
+  needAdmin(u, "store");
+  const sp = scopeSpec(u); if (sp && sp.b.length && !sp.b.includes(branch)) fail("هذي الجائزة خارج مجمعك", 403);
+}
+
 type H = (u: Me, b: any) => Promise<unknown>;
 const A: Record<string, H> = {
   // ---------- الإعدادات ----------
@@ -92,10 +137,10 @@ const A: Record<string, H> = {
     const cur = await getSettings();
     const tpls = Array.isArray(d.tpls) ? d.tpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "x" + i, name: str(t.name, 40) || "رسالة", text: str(t.text, 800) })).filter((t: any) => t.text) : cur.tpls;
     const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
-    const pp = d.points || {}; const points = { present: AMT(pp.present ?? cur.points.present, 100), late: AMT(pp.late ?? cur.points.late, 100), ex: AMT(pp.ex ?? cur.points.ex, 100), vg: AMT(pp.vg ?? cur.points.vg, 100), gd: AMT(pp.gd ?? cur.points.gd, 100), page: AMT(pp.page ?? cur.points.page, 100) };
+    const pp = d.points || {}; const cp: any = cur.points; const points = { present: AMT(pp.present ?? cp.present, 100), late: AMT(pp.late ?? cp.late, 100), ex: AMT(pp.ex ?? cp.ex, 100), vg: AMT(pp.vg ?? cp.vg, 100), gd: AMT(pp.gd ?? cp.gd, 100), page: AMT(pp.page ?? cp.page, 100), absent: AMT(pp.absent ?? cp.absent ?? 0, 100), bad: AMT(pp.bad ?? cp.bad ?? 0, 100) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
     await audit(u, "settings", null, "تعديل الإعدادات");
   },
@@ -269,7 +314,7 @@ const A: Record<string, H> = {
     let teacherId: string | null = str(d.teacherId) || null;
     if (teacherId) { const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t || t.role !== "teacher") teacherId = null; }
     const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
-    const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "", branch: str(d.branch, 60) };
+    const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "", branch: str(d.branch, 60), mode: ["onsite", "remote", "hybrid"].includes(d.mode) ? d.mode : "onsite", place: str(d.place, 60), gender: d.gender === "f" ? "f" : "m" };
     if (id) await needScope(u, id); else if (await scopeHalqaIds(u)) fail("إنشاء الحلقات للمدير بدون نطاق محدد", 403);
     let h: any;
     if (id) {
@@ -376,7 +421,7 @@ const A: Record<string, H> = {
     await prisma.$transaction([prisma.join.deleteMany({ where: { lessonId: l.id } }), prisma.lesson.delete({ where: { id: l.id } })]);
   },
   async "lesson.att"(u, b) {
-    const l = await lessonFor(u, str(b.id));
+    const l = await lessonFor(u, str(b.id)); await needCheckin(u, l);
     const studs = new Set((await prisma.user.findMany({ where: { halqaId: l.halqaId, role: "student" }, select: { id: true } })).map((s) => s.id));
     const att: Record<string, string> = { ...((l.att as any) || {}) };
     const changes = b.map && typeof b.map === "object" ? b.map : { [str(b.uid)]: b.v };
@@ -399,7 +444,7 @@ const A: Record<string, H> = {
           const key = `att-${l.id}-${uid}`; const vars = { student: usr?.name || "", halqa: h?.name || "", date: fmtD(l.date) };
           const want = v === "a" && cfg.autoAbsent ? ["absent", st.tpl.absent] : v === "p" && cfg.autoPresent ? ["present", cfg.tplPresent] : v === "l" && cfg.autoLate ? ["late", cfg.tplLate] : null;
           if (!want || !phone) { await cancelMsg(key); continue; }
-          await queueMsg(key, want[0], phone, fillVars(want[1], vars), cfg.delayMin, { userId: uid, lessonId: l.id });
+          await queueMsg(key, want[0], phone, fillVars(want[1], vars), cfg.delayMin, { userId: uid, lessonId: l.id, fem: h?.gender === "f" });
         }
       }
     }
@@ -456,7 +501,7 @@ const A: Record<string, H> = {
   async "rec.addMany"(u, b) {
     if (u.role === "student") fail("غير مصرح", 403);
     let lesson: any = null;
-    if (b.lessonId) lesson = await lessonFor(u, str(b.lessonId));
+    if (b.lessonId) { lesson = await lessonFor(u, str(b.lessonId)); await needCheckin(u, lesson); }
     const st = await studentFor(u, str(b.uid), lesson);
     if (lesson && lesson.halqaId !== st.halqaId) fail("الطالب ليس في حلقة هذه الحصة");
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 10);
@@ -492,7 +537,7 @@ const A: Record<string, H> = {
       // المقاطع المتتالية من نفس الحفظة (نفس النوع والتقدير) سطر واحد بدل سطر لكل سورة
       const mg: any[] = []; for (const r of all) { const l = mg[mg.length - 1]; if (l && +l.at === +r.at && l.type === r.type && l.grade === r.grade) { l.list.push(r); l.mistakes += r.mistakes; } else mg.push({ ...r, list: [r] }); }
       const lines = mg.map((m) => { const fwd = planOf(st).auto.dir === "fwd"; const it = [...m.list].sort((x: any, y: any) => (fwd ? x.surah - y.surah : y.surah - x.surah) || x.fromA - y.fromA); const a = it[0], z = it[it.length - 1]; return `- ${TYPE_AR[m.type]}: ${it.length > 1 ? `من ${SN[a.surah - 1]} ${a.fromA} إلى ${SN[z.surah - 1]} ${z.toA}` : `${SN[a.surah - 1]} ${a.fromA}-${a.toA}`} (${m.grade}${m.quick ? "" : "، أخطاء " + m.mistakes}${it.find((x: any) => x.note)?.note ? "، " + it.find((x: any) => x.note).note : ""})`; }).join("\n");
-      if (phone) await queueMsg(`rec-${lesson ? lesson.id : date}-${st.id}`, "rec", phone, fillVars(wcfg.tplRec, { student: st.name, halqa: h?.name || "", date: fmtD(date), rec: lines }), wcfg.delayMin, { userId: st.id, lessonId: lesson?.id });
+      if (phone) await queueMsg(`rec-${lesson ? lesson.id : date}-${st.id}`, "rec", phone, fillVars(wcfg.tplRec, { student: st.name, halqa: h?.name || "", date: fmtD(date), rec: lines }), wcfg.delayMin, { userId: st.id, lessonId: lesson?.id, fem: (h as any)?.gender === "f" });
     }
     // تقدّم الخطة التلقائية بعد النجاح فقط
     const p = planOf(st); let moved = false;
@@ -652,6 +697,7 @@ const A: Record<string, H> = {
       delayMin: Math.min(240, Math.max(0, int(d.delayMin, 10))),
       tplPresent: str(d.tplPresent, 800) || WA_DEF.tplPresent, tplLate: str(d.tplLate, 800) || WA_DEF.tplLate, tplRec: str(d.tplRec, 800) || WA_DEF.tplRec,
       autoWeek: !!d.autoWeek, weekDay: Math.min(6, Math.max(0, int(d.weekDay, 4))), weekHour: Math.min(23, Math.max(0, int(d.weekHour, 20))), tplWeek: str(d.tplWeek, 1200) || WA_DEF.tplWeek,
+      autoMonth: !!d.autoMonth, monthDay: Math.min(28, Math.max(1, int(d.monthDay, 1))), monthHour: Math.min(23, Math.max(0, int(d.monthHour, 20))), tplMonth: str(d.tplMonth, 1500) || WA_DEF.tplMonth, tplLeft: str(d.tplLeft, 600) || WA_DEF.tplLeft,
     };
     if (value.url && !/^https:\/\//i.test(value.url)) fail("رابط الإرسال لازم يبدأ بـ https://");
     const HOW = "اطلع لأول قسم «ربط الواتساب»، في مربع «الربط السريع» اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، وبعدها اضغط حفظ.";
@@ -1017,6 +1063,292 @@ const A: Record<string, H> = {
     await audit(u, "plan", st.id, pz ? `${st.name}: إيقاف الخطة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : `${st.name}: استئناف الخطة`);
   },
 
+  // ---------- الحضوري ----------
+  async "teacher.checkin"(u, b) {
+    if (u.role !== "teacher") fail("تسجيل الوصول للمعلمين");
+    const today = localDate();
+    const ex = await prisma.teacherIn.findUnique({ where: { userId_date: { userId: u.id, date: today } } });
+    if (ex) return { at: +ex.at, dist: ex.dist, noLoc: ex.noLoc, already: true };
+    const own = await prisma.halqa.findMany({ where: { teacherId: u.id } });
+    const sub = await prisma.lesson.findMany({ where: { subId: u.id, date: today }, select: { halqaId: true } });
+    const subH = sub.length ? await prisma.halqa.findMany({ where: { id: { in: sub.map((x) => x.halqaId) } } }) : [];
+    const hs = [...own, ...subH];
+    const s: any = await getSettings(); const places = s.places || {};
+    const keys = [...new Set(hs.map((h) => placeKey(h.branch)))].filter((k) => places[k]);
+    const lat = Number(b.lat), lng = Number(b.lng), acc = Math.max(0, Math.round(Number(b.acc) || 0));
+    let dist: number | null = null, branch = keys[0] || placeKey(hs[0]?.branch);
+    if (keys.length) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) fail("ما وصلنا موقعك. اسمح للموقع يوصل لموقعك من إعدادات الجوال وجرّب مرة ثانية");
+      let best: { k: string; d: number; r: number } | null = null;
+      for (const k of keys) { const p = places[k]; const d = distM(lat, lng, p.lat, p.lng); if (!best || d - p.radius < best.d - best.r) best = { k, d, r: p.radius }; }
+      dist = best!.d; branch = best!.k;
+      if (best!.d > best!.r + Math.min(acc, 80)) fail(`أنت بعيد عن الجامع بحوالي ${best!.d} م. سجّل وصولك وأنت داخل الجامع`);
+    }
+    const tin = await prisma.teacherIn.create({ data: { userId: u.id, date: today, lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, dist, acc, branch: branch === "_" ? "" : branch, noLoc: !keys.length } });
+    await prisma.lesson.updateMany({ where: { date: today, teacherAt: null, OR: [{ halqaId: { in: own.map((h) => h.id) } }, { subId: u.id }] }, data: { teacherAt: tin.at, teacherBy: u.id } });
+    await audit(u, "teacher.in", u.id, `وصل الجامع${dist != null ? ` (على بعد ${dist} م)` : ""}`);
+    return { at: +tin.at, dist, noLoc: !keys.length };
+  },
+  // تحضير بلمسة: ينحفظ وقت الوصول، ويصير «متأخر» تلقائيًا إذا وصل بعد المهلة
+  async "lesson.arrive"(u, b) {
+    const l = await lessonFor(u, str(b.id)); await needCheckin(u, l);
+    const uid = str(b.uid); const st = await prisma.user.findUnique({ where: { id: uid } });
+    if (!st || st.halqaId !== l.halqaId) fail("الطالب مو في هذي الحلقة");
+    const arr: Record<string, number> = { ...((l.arr as any) || {}) };
+    if (b.undo) { delete arr[uid]; await prisma.lesson.update({ where: { id: l.id }, data: { arr } }); await A["lesson.att"](u, { id: l.id, map: { [uid]: null } }); return { v: null }; }
+    const now = Date.now(); arr[uid] = arr[uid] || now;
+    const s: any = await getSettings(); const start = lessonStart(l); const grace = (s.lateMin ?? 10) * 60000;
+    const late = l.date === localDate() && start && arr[uid] > start + grace;
+    const v = b.v && ATT.includes(String(b.v)) ? String(b.v) : late ? "l" : "p";
+    await prisma.lesson.update({ where: { id: l.id }, data: { arr } });
+    await A["lesson.att"](u, { id: l.id, map: { [uid]: v } });
+    return { v, min: late ? Math.round((arr[uid] - start) / 60000) : 0 };
+  },
+  // الانصراف بدري مع رسالة لولي الأمر
+  async "lesson.out"(u, b) {
+    const l = await lessonFor(u, str(b.id)); await needCheckin(u, l);
+    const uid = str(b.uid); const st = await prisma.user.findUnique({ where: { id: uid } });
+    if (!st || st.halqaId !== l.halqaId) fail("الطالب مو في هذي الحلقة");
+    const left: Record<string, any> = { ...((l.left as any) || {}) };
+    if (b.undo) { delete left[uid]; await prisma.lesson.update({ where: { id: l.id }, data: { left } }); await cancelMsg(`left-${l.id}-${uid}`); return { ok: true }; }
+    const at = Date.now(); const reason = str(b.reason, 100);
+    left[uid] = { at, reason };
+    await prisma.lesson.update({ where: { id: l.id }, data: { left } });
+    const cfg = await waCfg(); const phone = String(((st!.info as any) || {}).parentPhone || "");
+    if (cfg.enabled && phone) {
+      const h = await prisma.halqa.findUnique({ where: { id: l.halqaId } });
+      const hm = new Intl.DateTimeFormat("ar-SA-u-nu-latn", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh" }).format(new Date(at));
+      const text = fillVars(cfg.tplLeft || WA_DEF.tplLeft, { student: st!.name, halqa: h?.name || "", date: fmtD(l.date) }).replace(/\{الوقت\}/g, hm).replace(/\{السبب\}/g, reason ? "، والسبب: " + reason : "");
+      await queueMsg(`left-${l.id}-${uid}`, "left", phone, text, 0, { userId: uid, lessonId: l.id, fem: (h as any)?.gender === "f" });
+    }
+    await audit(u, "lesson.out", uid, `انصراف ${st!.name} بدري${reason ? ": " + reason : ""}`);
+    return { ok: true };
+  },
+  // إنهاء الحلقة: ملخص يوصل للمدير
+  async "lesson.close"(u, b) {
+    const l = await lessonFor(u, str(b.id));
+    if (b.undo) { await prisma.lesson.update({ where: { id: l.id }, data: { closedAt: null } }); return { ok: true }; }
+    const h = await prisma.halqa.findUnique({ where: { id: l.halqaId } });
+    const studs = await prisma.user.findMany({ where: { halqaId: l.halqaId, role: "student", status: "active" }, select: { id: true, name: true } });
+    const att: Record<string, string> = (l.att as any) || {};
+    const recs = await prisma.rec.findMany({ where: { lessonId: l.id }, select: { userId: true, pass: true } });
+    const recBy = new Set(recs.map((r) => r.userId));
+    const cnt = (v: string) => studs.filter((x) => att[x.id] === v).length;
+    const sum = { total: studs.length, p: cnt("p"), l: cnt("l"), a: cnt("a"), e: cnt("e"), none: studs.filter((x) => !att[x.id]).length, rec: recBy.size, retry: [...new Set(recs.filter((r) => !r.pass).map((r) => r.userId))].length, notRec: studs.filter((x) => (att[x.id] === "p" || att[x.id] === "l") && !recBy.has(x.id)).map((x) => x.name), out: Object.keys((l.left as any) || {}).length };
+    await prisma.lesson.update({ where: { id: l.id }, data: { closedAt: new Date() } });
+    const admins = await prisma.user.findMany({ where: { role: "admin", status: "active" } });
+    const ids: string[] = [];
+    for (const a of admins) { const sc = await scopeHalqaIds(a as any); if (!sc || sc.includes(l.halqaId)) ids.push(a.id); }
+    await notify(ids, { title: `انتهت ${h?.name || "الحلقة"}`, body: `حضر ${sum.p + sum.l} من ${sum.total}${sum.a ? `، غاب ${sum.a}` : ""}، سمّع ${sum.rec}${sum.notRec.length ? `، ما سمّع ${sum.notRec.length}` : ""}`, url: "/", tag: "close-" + l.id }).catch(() => {});
+    await audit(u, "lesson.close", l.id, `إنهاء ${h?.name || "الحلقة"} ${l.date}: حضر ${sum.p + sum.l}/${sum.total}، سمّع ${sum.rec}`);
+    return sum;
+  },
+  // تحويل حصة وحدة لعن بعد أو حضوري (مثلًا يوم مطر)
+  async "lesson.mode"(u, b) {
+    const l = await lessonFor(u, str(b.id));
+    const mode = ["onsite", "remote", "hybrid", ""].includes(b.mode) ? b.mode : "";
+    await prisma.lesson.update({ where: { id: l.id }, data: { mode } });
+    await audit(u, "lesson.mode", l.id, `حصة ${l.date}: ${({ onsite: "حضوري", remote: "عن بعد", hybrid: "هجين", "": "حسب الحلقة" } as any)[mode]}`);
+  },
+  // الحفظ الجديد للحصة الجاية (المعلم يحدده بسهولة بعد التسميع)
+  async "plan.next"(u, b) {
+    const st = await studentFor(u, str(b.id)); const p: any = planOf(st);
+    if (b.newAmt !== undefined) {
+      p.mode = "auto"; p.auto = { ...p.auto, newAmt: AMT(b.newAmt, 5) };
+    } else {
+      const m = b.seg || {}; const s0 = int(m.surah); const ts = int(m.toSurah) || s0;
+      if (!s0) { delete p.manual.new; }
+      else {
+        const fr = int(m.from) || 1, to = int(m.to) || AYAS[ts - 1];
+        if (ts === s0 ? !validRange(s0, fr, to) : (fr < 1 || fr > AYAS[s0 - 1] || to < 1 || to > AYAS[ts - 1])) fail("آيات المقطع غير صحيحة");
+        p.mode = "manual"; p.manual = { ...p.manual, new: { surah: s0, from: fr, toSurah: ts, to } };
+      }
+    }
+    await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+    await audit(u, "plan", st.id, b.newAmt !== undefined ? `${st.name}: الحفظ الجديد ${b.newAmt} وجه` : `${st.name}: الحفظ الجديد ${b.seg?.surah ? SN[int(b.seg.surah) - 1] + " " + (b.seg.from || 1) + "-" + (b.seg.to || "") : "بدون"}`);
+  },
+  // تسجيل محفوظ الطالب (الحفظ السابق) واختبار تحديد المستوى
+  async "student.level"(u, b) {
+    const st = await studentFor(u, str(b.id)); const p: any = planOf(st);
+    const dir = b.dir === "fwd" ? "fwd" : "bwd";
+    const okPos = (sv: number, av: number) => sv >= 1 && sv <= 114 && av >= 1 && av <= AYAS[sv - 1];
+    if (b.none) { p.auto = { ...p.auto, dir, memStart: 0, newPos: 0, revPos: 0 }; }
+    else {
+      const fs = int(b.fromS), fa = int(b.fromA) || 1, ts = int(b.toS), ta = int(b.toA) || 1;
+      if (!okPos(fs, fa) || !okPos(ts, ta)) fail("تأكد من سور وآيات المحفوظ");
+      const ms = ORD[dir].pos[gOf(fs, fa)], me = ORD[dir].pos[gOf(ts, ta)];
+      if (me < ms) fail("نهاية المحفوظ قبل بدايته حسب اتجاه الحفظ");
+      p.auto = { ...p.auto, dir, memStart: ms, newPos: Math.min(TOTAL, me + 1), revPos: ms };
+    }
+    if (b.amounts) { const a = b.amounts; p.mode = "auto"; p.auto = { ...p.auto, newAmt: AMT(a.newAmt, 5), revAmt: AMT(a.revAmt), tathAmt: AMT(a.tathAmt, 10) }; }
+    else if (!Object.keys(p.manual || {}).length && p.mode !== "auto") { const t0 = ((await getSettings()).planTpls || [])[0]; p.mode = "auto"; p.auto = { ...p.auto, newAmt: t0 ? t0.newAmt : 0.25, revAmt: t0 ? t0.revAmt : 2, tathAmt: t0 ? t0.tathAmt : 1 }; }
+    const level = b.test ? { at: Date.now(), by: u.name, marks: (Array.isArray(b.test.marks) ? b.test.marks : []).slice(0, 10), result: str(b.test.result, 40) } : (st.level ?? undefined);
+    await prisma.user.update({ where: { id: st.id }, data: { plan: p, ...(level ? { level: level as any } : {}) } });
+    await audit(u, "plan", st.id, `${st.name}: تسجيل المحفوظ${b.test ? " واختبار تحديد المستوى (" + str(b.test.result, 40) + ")" : ""}`);
+  },
+  async "halqa.mode"(u, b) {
+    needAdmin(u, "halaqat"); const id = str(b.id); await needScope(u, id);
+    const mode = ["onsite", "remote", "hybrid"].includes(b.mode) ? b.mode : "onsite";
+    await prisma.halqa.update({ where: { id }, data: { mode } });
+    await audit(u, "halqa.save", id, `نوع الحلقة: ${({ onsite: "حضوري", remote: "عن بعد", hybrid: "هجين" } as any)[mode]}`);
+  },
+
+  // ---------- المجمعات ومواقعها ----------
+  async "place.save"(u, b) {
+    needAdmin(u);
+    const key = str(b.branch, 60) || "_";
+    if (!isFull(u)) { const sp = scopeSpec(u); if (!(sp && sp.b.includes(key))) fail("تحديد موقع هذا المجمع للمدير العام أو مدير المجمع", 403); }
+    const cur: any = await getSettings(); const places = { ...(cur.places || {}) };
+    if (b.clear) delete places[key];
+    else {
+      let lat = Number(b.lat), lng = Number(b.lng);
+      if (str(b.link, 1500)) { const c = await coordsFrom(str(b.link, 1500).trim()); if (!c) fail("ما قدرت أطلع الموقع من الرابط. افتح الجامع في خرائط قوقل، اضغط مشاركة وانسخ الرابط، أو اكتب الإحداثيات مثل 24.7136, 46.6753"); [lat, lng] = c!; }
+      if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || (lat === 0 && lng === 0)) fail("الموقع غير صحيح");
+      places[key] = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radius: Math.min(1000, Math.max(50, int(b.radius, (places[key] || {}).radius || 150))) };
+    }
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, places } }, update: { value: { ...cur, places } } });
+    await audit(u, "settings", null, `موقع ${key === "_" ? "الجامع" : key}${b.clear ? ": حذف" : ""}`);
+    return { place: places[key] || null };
+  },
+  async "branch.add"(u, b) {
+    if (!isFull(u)) fail("للمدير العام فقط", 403);
+    const name = str(b.name, 60).trim(); if (!name) fail("اكتب اسم المجمع");
+    const cur: any = await getSettings(); const list: string[] = cur.branches || [];
+    if (list.includes(name)) fail("المجمع موجود");
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches: [...list, name] } }, update: { value: { ...cur, branches: [...list, name] } } });
+    if (b.moveAll) await prisma.halqa.updateMany({ where: { branch: "" }, data: { branch: name } });
+    await audit(u, "settings", null, "إضافة مجمع: " + name);
+  },
+  async "branch.rename"(u, b) {
+    if (!isFull(u)) fail("للمدير العام فقط", 403);
+    const from = str(b.from, 60), to = str(b.to, 60).trim(); if (!to) fail("اكتب الاسم الجديد");
+    const cur: any = await getSettings(); const list: string[] = cur.branches || [];
+    if (!list.includes(from)) fail("المجمع غير موجود"); if (from !== to && list.includes(to)) fail("فيه مجمع بنفس الاسم");
+    const places = { ...(cur.places || {}) }; if (places[from]) { places[to] = places[from]; delete places[from]; }
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches: list.map((x) => (x === from ? to : x)), places } }, update: { value: { ...cur, branches: list.map((x) => (x === from ? to : x)), places } } });
+    await prisma.halqa.updateMany({ where: { branch: from }, data: { branch: to } });
+    await prisma.reward.updateMany({ where: { branch: from }, data: { branch: to } });
+    for (const a of await prisma.user.findMany({ where: { role: "admin" } })) { const ps = a.perms as string[] | null; if (Array.isArray(ps) && ps.includes("b:" + from)) await prisma.user.update({ where: { id: a.id }, data: { perms: ps.map((x) => (x === "b:" + from ? "b:" + to : x)) } }); }
+    await audit(u, "settings", null, `تغيير اسم مجمع: ${from} ← ${to}`);
+  },
+  async "branch.delete"(u, b) {
+    if (!isFull(u)) fail("للمدير العام فقط", 403);
+    const name = str(b.name, 60); const n = await prisma.halqa.count({ where: { branch: name } });
+    if (n) fail(`انقل حلقات المجمع (${n}) لمجمع ثاني قبل حذفه`);
+    const cur: any = await getSettings(); const places = { ...(cur.places || {}) }; delete places[name];
+    const branches = (cur.branches || []).filter((x: string) => x !== name);
+    await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches, places } }, update: { value: { ...cur, branches, places } } });
+    await audit(u, "settings", null, "حذف مجمع: " + name);
+  },
+
+  // ---------- النقاط والمتجر ----------
+  async "points.add"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const amount = Math.round(Number(b.amount)); if (!amount || Math.abs(amount) > 1000) fail("اكتب عدد النقاط");
+    const reason = str(b.reason, 120).trim(); if (!reason) fail("اكتب السبب");
+    const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(String).filter(Boolean).slice(0, 300); if (!ids.length) fail("اختر طالب");
+    for (const id of ids) { const st = await studentFor(u, id); await prisma.pointTx.create({ data: { userId: st.id, amount, kind: "manual", reason, byId: u.id, byName: u.name } }); }
+    if (ids.length === 1) await notify(ids, { title: amount > 0 ? `+${amount} نقطة` : `${amount} نقطة`, body: reason, url: "/", tag: "pts" }).catch(() => {});
+    await audit(u, "points", ids.length === 1 ? ids[0] : null, `${amount > 0 ? "+" : ""}${amount} نقطة لـ ${ids.length} طالب: ${reason}`);
+    return { n: ids.length };
+  },
+  async "reward.save"(u, b) {
+    const d = b.data || {}; const id = str(b.id);
+    const branch = str(d.branch, 60);
+    await storeAdmin(u, branch);
+    if (id) { const old = await prisma.reward.findUnique({ where: { id } }); if (!old) fail("الجائزة غير موجودة", 404); await storeAdmin(u, old!.branch); }
+    const name = str(d.name, 80).trim(); if (!name) fail("اكتب اسم الجائزة");
+    const kind = ["item", "group", "auction"].includes(d.kind) ? d.kind : "item";
+    const num = (v: any) => (v === "" || v == null ? null : Math.max(0, Math.round(Number(v)) || 0));
+    const data: any = {
+      name, note: str(d.note, 300), kind, price: num(d.price) ?? 0, cost: Math.max(0, Number(d.cost) || 0), stock: kind === "item" ? num(d.stock) : null, branch,
+      salePrice: kind === "item" ? num(d.salePrice) : null, saleUntil: kind === "item" && validDate(str(d.saleUntil)) ? str(d.saleUntil) : null,
+      endsAt: kind === "auction" && d.endsAt && !isNaN(Date.parse(String(d.endsAt))) ? new Date(String(d.endsAt)) : null,
+      target: kind === "group" ? num(d.target) : null, halqaId: kind === "group" ? (str(d.halqaId) || null) : null, active: d.active !== false,
+    };
+    if (kind === "item" && !data.price) fail("حدد سعر الجائزة بالنقاط");
+    if (kind === "auction" && !data.endsAt) fail("حدد متى ينتهي المزاد");
+    if (kind === "group" && !data.target) fail("حدد هدف النقاط للحلقة");
+    if (data.salePrice != null && data.salePrice >= data.price) fail("سعر العرض لازم أقل من السعر الأصلي");
+    if (data.halqaId) await needScope(u, data.halqaId);
+    const r = id ? await prisma.reward.update({ where: { id }, data }) : await prisma.reward.create({ data });
+    await audit(u, "store", r.id, (id ? "تعديل جائزة: " : "إضافة جائزة: ") + name);
+    return { id: r.id };
+  },
+  async "reward.delete"(u, b) {
+    const r = await prisma.reward.findUnique({ where: { id: str(b.id) } }); if (!r) return;
+    await storeAdmin(u, r.branch);
+    for (const o of await prisma.rewardOrder.findMany({ where: { rewardId: r.id, status: "pending" } })) await refundOrder(u, o, "cancelled");
+    await prisma.$transaction([prisma.bid.deleteMany({ where: { rewardId: r.id } }), prisma.reward.delete({ where: { id: r.id } })]);
+    await audit(u, "store", null, "حذف جائزة: " + r.name);
+  },
+  async "reward.done"(u, b) {
+    const r = await prisma.reward.findUnique({ where: { id: str(b.id) } }); if (!r) fail("الجائزة غير موجودة", 404);
+    await storeAdmin(u, r!.branch);
+    if (r!.kind === "auction" && !r!.closed) { const w = await closeAuction(r, { id: u.id, name: u.name }); return { winner: w }; }
+    await prisma.reward.update({ where: { id: r!.id }, data: { closed: !r!.closed } });
+  },
+  async "order.create"(u, b) {
+    const r = await prisma.reward.findUnique({ where: { id: str(b.rewardId) } });
+    if (!r || !r.active || r.closed || r.kind !== "item") fail("الجائزة مو متاحة");
+    const st: any = u.role === "student" ? u : await studentFor(u, str(b.uid));
+    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("الجائزة لمجمع ثاني"); }
+    if (r!.stock != null && r!.stock <= 0) fail("خلصت الكمية");
+    const price = salePrice(r);
+    const bal = await balanceOf({ id: st.id, halqaId: st.halqaId }, await getSettings(), localDate());
+    if (bal.bal < price) fail(`رصيد ${u.role === "student" ? "ك" : st.name + " "}${bal.bal} نقطة، والجائزة بـ ${price}`);
+    if (r!.stock != null) { const dec = await prisma.reward.updateMany({ where: { id: r!.id, stock: { gt: 0 } }, data: { stock: { decrement: 1 } } }); if (!dec.count) fail("خلصت الكمية"); }
+    const code = String(crypto.randomInt(1000, 10000));
+    const o = await prisma.rewardOrder.create({ data: { rewardId: r!.id, userId: st.id, price, code, byId: u.id, byName: u.name } });
+    await prisma.pointTx.create({ data: { userId: st.id, amount: -price, kind: "spend", reason: "جائزة: " + r!.name, byId: u.id, byName: u.name, ref: o.id } });
+    if (u.role === "student") { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if (h?.teacherId) await notify([h.teacherId], { title: "طلب جائزة", body: `${st.name}: ${r!.name}`, url: "/", tag: "ord" }).catch(() => {}); }
+    else await notify([st.id], { title: "انطلبت لك جائزة 🎁", body: `${r!.name} · رمز الاستلام ${code}`, url: "/", tag: "ord" }).catch(() => {});
+    if (st.wish === r!.id) await prisma.user.update({ where: { id: st.id }, data: { wish: null } });
+    return { id: o.id, code };
+  },
+  async "order.done"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const o = await prisma.rewardOrder.findUnique({ where: { id: str(b.id) } }); if (!o || o.status !== "pending") fail("الطلب غير موجود أو انتهى");
+    await studentFor(u, o!.userId);
+    if (b.status === "rejected") { await refundOrder(u, o, "rejected"); await notify([o!.userId], { title: "انرفض طلب الجائزة", body: "رجعت نقاطك", url: "/", tag: "ord" }).catch(() => {}); return; }
+    if (b.code !== undefined && str(b.code) !== o!.code) fail("رمز الاستلام غلط");
+    await prisma.rewardOrder.update({ where: { id: o!.id }, data: { status: "delivered", doneAt: new Date(), doneBy: u.id } });
+  },
+  async "order.cancel"(u, b) {
+    const o = await prisma.rewardOrder.findUnique({ where: { id: str(b.id) } });
+    if (!o || o.userId !== u.id || o.status !== "pending") fail("الطلب غير موجود");
+    await refundOrder(u, o, "cancelled");
+  },
+  async "wish.set"(u, b) {
+    if (u.role !== "student") fail("للطالب");
+    const id = str(b.rewardId); if (id && !(await prisma.reward.findUnique({ where: { id } }))) fail("الجائزة غير موجودة");
+    await prisma.user.update({ where: { id: u.id }, data: { wish: id || null } });
+  },
+  async "bid.place"(u, b) {
+    const r = await prisma.reward.findUnique({ where: { id: str(b.rewardId) } });
+    if (!r || r.kind !== "auction" || !r.active || r.closed || !r.endsAt || +r.endsAt < Date.now()) fail("المزاد انتهى أو مو متاح");
+    const st: any = u.role === "student" ? u : await studentFor(u, str(b.uid));
+    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("المزاد لمجمع ثاني"); }
+    const amount = Math.round(Number(b.amount));
+    const top = await prisma.bid.findFirst({ where: { rewardId: r!.id }, orderBy: { amount: "desc" } });
+    const min = Math.max(r!.price || 1, top ? top.amount + 1 : 1);
+    if (!(amount >= min)) fail(`أقل مزايدة ${min} نقطة`);
+    const bal = await balanceOf({ id: st.id, halqaId: st.halqaId }, await getSettings(), localDate());
+    if (bal.bal < amount) fail(`الرصيد ${bal.bal} نقطة بس`);
+    await prisma.bid.upsert({ where: { rewardId_userId: { rewardId: r!.id, userId: st.id } }, create: { rewardId: r!.id, userId: st.id, amount }, update: { amount, at: new Date() } });
+    if (top && top.userId !== st.id) await notify([top.userId], { title: "أحد زايد عليك", body: `${r!.name}: صار ${amount} نقطة`, url: "/", tag: "auc-" + r!.id }).catch(() => {});
+    return { amount };
+  },
+  async "wa.monthNow"(u, b) {
+    const hid = str(b.halqaId);
+    if (hid) { const h = await prisma.halqa.findUnique({ where: { id: hid } }); if (!h) fail("الحلقة غير موجودة", 404); if (u.role !== "admin" && h!.teacherId !== u.id) fail("ما عندك صلاحية على هذه الحلقة", 403); if (u.role === "admin") await needScope(u, hid); }
+    else if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أول");
+    const n = await queueMonthly(hid || undefined);
+    await audit(u, "wa.month", null, `إرسال التقرير الشهري (${n} رسالة)`);
+    return { n };
+  },
+
   // ---------- كلمة مرور مؤقتة ----------
   async "user.resetpw"(u, b) {
     needAdmin(u);
@@ -1038,6 +1370,7 @@ export async function POST(req: Request) {
     const h = A[String(b.t)];
     if (!h) fail("إجراء غير معروف");
     const out = (await h(u!, b)) ?? { ok: true };
+    (globalThis as any).__balCache?.clear(); (globalThis as any).__grpCache?.clear();
     await processQueue(6);
     return out;
   });
