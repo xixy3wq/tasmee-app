@@ -1233,3 +1233,43 @@ html[data-fem] .top{background-image:none;box-shadow:none}
 .home-mid{display:grid;gap:22px;align-items:start}
 @media (min-width:1024px){.home-mid{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}.home-mid .kpis{grid-template-columns:1fr 1fr}.home-mid .kpi-sec{position:sticky;top:calc(var(--hdr) + 16px)}}
 .tl:not(.tl-day) .tl-b{flex:0 1 240px}
+
+/* «سَكينة — ورد»: قسم البنات بهوية كاملة (برقوقي عميق + وردي ورد + لافندر)، فاتح وداكن. محددات أقوى من الأساس حتى ما يختلط الأزرق بالوردي */
+html[data-fem],html[data-fem][data-theme="light"]{
+  --bg:#fbf6f9; --surface:#ffffff; --sunk:#f6edf2; --ink:#2e1426; --muted:#7a5c6e; --line:#f0e2ea; --line-2:#e2cdd9;
+  --accent:#5b1f4f; --accent-ink:#ffffff; --accent-soft:#f6e8f1; --accent-deep:#431539; --gold:#9a6a0c; --gold-soft:#fbf1dc;
+  --teal:#d6457f; --teal-ink:#a8305f; --teal-soft:#fbe3ec; --glow:rgba(214,69,127,.32);
+  --info:#7a4bb0; --info-soft:#efe7fa;
+  --art-bg:#5b1f4f; --art-ink:#ffffff; --mark-bg:#5b1f4f; --mark-ink:#ffffff; --mark-dot:#ff9ec4;
+  --btn-grad:linear-gradient(135deg,#5b1f4f 0%,#8a2d6b 55%,#c2457d 100%);
+  --hero-grad:radial-gradient(120% 140% at 85% 0%,#8a3a7a 0%,#5b1f4f 45%,#3a1233 100%);
+  --sh-1:0 1px 2px rgba(46,20,38,.05),0 6px 20px -6px rgba(91,31,79,.12);
+  --sh-2:0 2px 6px rgba(46,20,38,.06),0 18px 40px -12px rgba(91,31,79,.24);
+  --glass:rgba(255,255,255,.8);
+}
+@media (prefers-color-scheme: dark){html[data-fem]:not([data-theme="light"]){
+  --bg:#140a12; --surface:#1d1019; --sunk:#261521; --ink:#f6e8f0; --muted:#b996aa; --line:#36202f; --line-2:#4a2c40;
+  --accent:#f28fbc; --accent-ink:#2b0a1c; --accent-soft:#3a1730; --accent-deep:#e676a8; --gold:#f0c06a; --gold-soft:#2c2414;
+  --teal:#ff8fc0; --teal-ink:#f7a3c8; --teal-soft:#3a1730; --glow:rgba(255,143,192,.42);
+  --info:#c3a6f0; --info-soft:#2a1d3d;
+  --art-bg:#2a1026; --art-ink:#f6e8f0; --mark-bg:#6d2a62; --mark-ink:#ffffff; --mark-dot:#ff8fc0;
+  --btn-grad:linear-gradient(135deg,#6d2a62 0%,#93356f 55%,#c2457d 100%);
+  --hero-grad:radial-gradient(120% 140% at 85% 0%,#5e2356 0%,#3a1233 50%,#140a12 100%);
+  --card-edge:rgba(255,143,192,.10); --glass:rgba(29,16,25,.78);
+}}
+html[data-fem][data-theme="dark"]{
+  --bg:#140a12; --surface:#1d1019; --sunk:#261521; --ink:#f6e8f0; --muted:#b996aa; --line:#36202f; --line-2:#4a2c40;
+  --accent:#f28fbc; --accent-ink:#2b0a1c; --accent-soft:#3a1730; --accent-deep:#e676a8; --gold:#f0c06a; --gold-soft:#2c2414;
+  --teal:#ff8fc0; --teal-ink:#f7a3c8; --teal-soft:#3a1730; --glow:rgba(255,143,192,.42);
+  --info:#c3a6f0; --info-soft:#2a1d3d;
+  --art-bg:#2a1026; --art-ink:#f6e8f0; --mark-bg:#6d2a62; --mark-ink:#ffffff; --mark-dot:#ff8fc0;
+  --btn-grad:linear-gradient(135deg,#6d2a62 0%,#93356f 55%,#c2457d 100%);
+  --hero-grad:radial-gradient(120% 140% at 85% 0%,#5e2356 0%,#3a1233 50%,#140a12 100%);
+  --card-edge:rgba(255,143,192,.10); --glass:rgba(29,16,25,.78);
+}
+/* زخرفة البنات: بتلات خفيفة بدل الحلقات، وخط الترويسة وردي */
+html[data-fem] body{background-image:radial-gradient(circle at 12% 0,color-mix(in srgb,var(--teal) 8%,transparent),transparent 38%),radial-gradient(circle at 100% 30%,color-mix(in srgb,var(--info) 7%,transparent),transparent 30%)}
+html[data-fem] .top::after{background:linear-gradient(90deg,transparent,var(--teal),var(--info),var(--teal),transparent);opacity:.5}
+html[data-fem] .btn.pri{background:var(--btn-grad);border-color:transparent}
+.sec-sw button.on{color:var(--accent-ink)}
+html[data-fem] .sec-sw button.f.on,.sec-sw button.f.on{background:linear-gradient(135deg,#8a2d6b,#c2457d);color:#fff}
