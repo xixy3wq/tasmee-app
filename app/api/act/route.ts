@@ -6,7 +6,7 @@ import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
 import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video";
-import { waCfg, WA_DEF, waSend, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly, queueMonthly } from "@/lib/wa";
+import { waCfg, WA_DEF, waSend, waFrame, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly, queueMonthly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 import { scopeHalqaIds, scopeSpec, sideOf, sideVal, isSuper, genderWhere, type Side } from "@/lib/scope";
 import { balanceOf } from "@/lib/points";
@@ -1037,7 +1037,7 @@ const A: Record<string, H> = {
     const studs = await prisma.user.findMany({ where, select: { id: true, info: true } });
     const st = studs.find((x) => [(x.info as any)?.parentPhone, (x.info as any)?.phone].some((v) => v && intlPhone(String(v)) === phone));
     if (!st) fail("هذا الرقم مو لأحد طلابك", 403);
-    const r = await waSend(cfg, phone, text);
+    const r = await waSend(cfg, phone, waFrame(text, (await getSettings()).center));
     await prisma.outMsg.create({ data: { key: "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), kind: "manual", userId: st!.id, toPhone: phone, text, sendAfter: new Date(Date.now() + 2 * 60000), status: r.ok ? "sent" : "pending", sentAt: r.ok ? new Date() : null, tries: 1, resp: r.resp } });
     return { ok: r.ok, resp: r.resp };
   },
@@ -1113,7 +1113,7 @@ const A: Record<string, H> = {
       if (!phone || !text) { skipped++; continue; }
       const key = "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
       if (Date.now() - t0 < 20000) {
-        const r = await waSend(cfg, phone, text);
+        const r = await waSend(cfg, phone, waFrame(text, (await getSettings()).center));
         await prisma.outMsg.create({ data: { key, kind: "manual", userId: st.id, toPhone: phone, text, sendAfter: new Date(Date.now() + 2 * 60000), status: r.ok ? "sent" : "pending", sentAt: r.ok ? new Date() : null, tries: 1, resp: r.resp } });
         if (r.ok) sent++; else queued++;
       } else { await queueMsg(key, "manual", phone, text, 0, { userId: st.id }); queued++; }

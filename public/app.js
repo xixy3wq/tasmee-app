@@ -57,7 +57,9 @@ function normPhone(p) {
   else if (d.startsWith('5') && d.length === 9) d = '966' + d;
   return d;
 }
-const waLink = (phone, text) => { const p = normPhone(phone); return p ? 'https://wa.me/' + p + '?text=' + encodeURIComponent(text) : ''; };
+// كل رسالة واتساب بإطار موحّد: اسم الجهة بخط عريض ثم فاصل. raw = بدون إطار (مثل رسالة الدعم الفني)
+const waFrame = t => { const c = (typeof SET === 'function' && SET().center) || ''; const head = '*' + c + '* 📖'; return !c || String(t).startsWith(head) ? String(t) : head + '\n━━━━━━━━━━━━\n' + String(t).trim(); };
+const waLink = (phone, text, raw) => { const p = normPhone(phone); return p ? 'https://wa.me/' + p + '?text=' + encodeURIComponent(raw ? text : waFrame(text)) : ''; };
 function toast(msg) { const t = $('#toast'); t.textContent = FEM_MODE === 'ui' ? femUiTxt(msg) : FEM_MODE === 'noun' ? femMsg(msg) : msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, Math.max(3500, String(msg).length * 75)); }
 
 /* ---------------- server ---------------- */
@@ -973,12 +975,18 @@ function weekMsg(st) {
   const att = ss.map(s => (s.att || {})[st.id]); const pres = att.filter(v => v === 'p' || v === 'l').length; const abs = att.filter(v => v === 'a').length;
   const rs = recsOf(st.id).filter(r => r.date >= from); const pg = pagesSum(rs);
   const grades = rs.map(r => r.grade); const cnt = g => grades.filter(x => x === g).length;
-  const o = `السلام عليكم ورحمة الله، تقرير ابنكم ${st.name} في ${halqaName(st.halqaId)} لهذا الأسبوع:
-- الحضور: ${pres} من ${ss.length}${abs ? ' (غاب ' + abs + ')' : ''}
-- الحفظ: ${fmtPages(pg.new)} وجه، والمراجعة والتثبيت: ${fmtPages(pg.review + pg.tath)} وجه
-- التسميع: ${rs.length}${rs.length ? ' (ممتاز ' + cnt('ممتاز') + '، جيد جدًا ' + cnt('جيد جدًا') + '، جيد ' + cnt('جيد') + '، إعادة ' + cnt('يعاد') + ')' : ''}
-- النقاط: ${ptsOf(st, from, t)}
-جزاكم الله خيرًا على المتابعة.`;
+  const o = `السلام عليكم ورحمة الله وبركاته
+ولي أمر الطالب *${st.name}* حفظه الله
+
+📊 *التقرير الأسبوعي* — ${halqaName(st.halqaId)}
+
+▫️ الحضور: ${pres} من ${ss.length}${abs ? ' (غاب ' + abs + ')' : ''}
+▫️ الحفظ: ${fmtPages(pg.new)} وجه
+▫️ المراجعة والتثبيت: ${fmtPages(pg.review + pg.tath)} وجه
+▫️ التسميع: ${rs.length}${rs.length ? ' (ممتاز ' + cnt('ممتاز') + '، جيد جدًا ' + cnt('جيد جدًا') + '، جيد ' + cnt('جيد') + '، إعادة ' + cnt('يعاد') + ')' : ''}
+▫️ النقاط: ${ptsOf(st, from, t)}
+
+جزاكم الله خيرًا على المتابعة 🌿`;
   return femSt(st) ? femMsg(o) : o;
 }
 function waListModal(title, rows) {
@@ -1359,7 +1367,7 @@ async function switchTo(id) {
 const ICON_I = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 const tip = html => `<div class="tip">${ICON_I}<div>${html}</div></div>`;
 const support = () => { const st = S.settings.main ? SET() : (ST.regInfo || {}); return { name: st.supportName || 'إدارة الحلقة', phone: st.supportPhone || '' }; };
-const supportBtn = (label, text) => { const sp = support(); const l = sp.phone && waLink(sp.phone, text || 'السلام عليكم، احتاج مساعدة في موقع الحلقة'); return l ? `<a class="btn wa" href="${l}" target="_blank" rel="noopener">${label || 'تواصل مع ' + esc(sp.name)}</a>` : ''; };
+const supportBtn = (label, text) => { const sp = support(); const l = sp.phone && waLink(sp.phone, text || 'السلام عليكم، احتاج مساعدة في موقع الحلقة', true); return l ? `<a class="btn wa" href="${l}" target="_blank" rel="noopener">${label || 'تواصل مع ' + esc(sp.name)}</a>` : ''; };
 const pwField = (id, name, label, auto, extra = '') => `<label class="fld"><span>${label}</span><div class="pw-wrap"><input id="${id}" name="${name}" type="password" autocomplete="${auto}" required ${extra}><button type="button" class="pw-eye" data-act="pw-eye" aria-label="إظهار كلمة المرور">إظهار</button></div></label>`;
 
 /* جولة تعريفية: تظهر أول مرة على كل جهاز */
@@ -1718,7 +1726,7 @@ const ACT = {
   'edit-goal': el => goalModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
   'goal-del': el => act('goal.save', { id: el.dataset.id, goal: null }, 'حُذف الهدف').then(r => r && closeModal()),
   'plan-log': async el => { const r = await act('log.list', { target: el.dataset.id }); if (!r) return; openModal(`${dlgHead('سجل الخطة والتغييرات')}<div class="list">${(r.rows || []).length ? r.rows.map(x => `<div class="item"><div class="grow">${esc(x.text)}<div class="small muted">${esc(x.by)} · ${fmtDate(isoDate(new Date(x.at)))} ${clock(x.at)}</div></div></div>`).join('') : '<div class="empty small">ما فيه تغييرات مسجلة.</div>'}</div>`); },
-  'reset-pw': el => { const st = S.users[el.dataset.id]; confirmBox('تولّد كلمة مرور جديدة لـ ' + esc(st.name) + '؟ القديمة تتوقف.', 'توليد', async () => { const r = await act('user.resetpw', { id: el.dataset.id }); if (!r) return; const msg = `السلام عليكم ورحمة الله، بيانات دخول ${st.name} في ${SET().center}:\nالرابط: ${location.origin}\nاسم المستخدم: ${r.username}\nكلمة المرور: ${r.pw}`; const l = st.parentPhone && waLink(st.parentPhone, msg);
+  'reset-pw': el => { const st = S.users[el.dataset.id]; confirmBox('تولّد كلمة مرور جديدة لـ ' + esc(st.name) + '؟ القديمة تتوقف.', 'توليد', async () => { const r = await act('user.resetpw', { id: el.dataset.id }); if (!r) return; const msg = `السلام عليكم ورحمة الله وبركاته\n\n🔐 *بيانات الدخول* — ${st.name}\n▫️ الرابط: ${location.origin}\n▫️ اسم المستخدم: ${r.username}\n▫️ كلمة المرور: ${r.pw}\n\nاحفظوها عندكم، وبالتوفيق 🌿`; const l = st.parentPhone && waLink(st.parentPhone, msg);
     openModal(`${dlgHead('كلمة المرور الجديدة')}<dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right">${esc(r.username)}</dd><dt>كلمة المرور</dt><dd dir="ltr" style="text-align:right"><b class="num">${r.pw}</b></dd></dl><div class="dlg-foot">${l ? `<a class="btn wa" href="${l}" target="_blank" rel="noopener">إرسال لولي الأمر بالواتساب</a>` : ''}<button class="btn" data-act="copy" data-text="${esc(r.pw)}">نسخ</button></div>`); }); },
   'ann-del': el => confirmBox('تحذف الإعلان؟', 'حذف', () => act('ann.delete', { id: el.dataset.id }, 'حُذف')),
   'ann-read': el => act('ann.read', { id: el.dataset.id }),
@@ -2231,7 +2239,7 @@ function todayAlertsHtml(u) {
   todayL.filter(s => lessonMode(s) !== 'onsite' && !effLink(s) && lessonTs(s) + 3600000 > now).forEach(s => items.push({ k: 'warn', t: `حصة ${halqaName(s.halqaId)} ${fmtTime(s.time)} بدون رابط`, b: `<button class="btn sm" data-act="edit-session" data-id="${s.id}">أضف الرابط</button>` }));
   todayL.filter(s => !s.teacherAt && lessonTs(s) + 10 * 60000 < now && lessonTs(s) + 3 * 3600000 > now).forEach(s => {
     const h = S.halaqat[s.halqaId] || {}; const tid = s.subId || h.teacherId; const tch = S.users[tid] || {};
-    const l = tch.phone && waLink(tch.phone, h.gender === 'f' ? `السلام عليكم، حصة ${h.name || ''} بدأت ${fmtTime(s.time)}، الطالبات ينتظرنكِ.` : `السلام عليكم، حصة ${h.name || ''} بدأت ${fmtTime(s.time)}، الطلاب ينتظرونك.`);
+    const l = tch.phone && waLink(tch.phone, h.gender === 'f' ? `السلام عليكم ورحمة الله\nالأستاذة *${tch.name || ''}* حفظها الله\n\n⏰ *تذكير بالحصة*\n▫️ الحلقة: ${h.name || ''}\n▫️ الموعد: ${fmtTime(s.time)}\n\nالحصة بدأت والطالبات ينتظرنكِ، جزاكِ الله خيرًا 🌿` : `السلام عليكم ورحمة الله\nالأستاذ *${tch.name || ''}* حفظه الله\n\n⏰ *تذكير بالحصة*\n▫️ الحلقة: ${h.name || ''}\n▫️ الموعد: ${fmtTime(s.time)}\n\nالحصة بدأت والطلاب ينتظرونك، جزاك الله خيرًا 🌿`);
     items.push({ k: 'bad', t: `معلم ${halqaName(s.halqaId)} ما فتح الحصة (${esc(tch.name || 'بدون معلم')})`, b: l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">راسله</a>` : `<button class="btn sm" data-act="open-session" data-id="${s.id}">افتح</button>` });
   });
   todayL.filter(s => lessonTs(s) + 25 * 60000 < now && !Object.keys(s.att || {}).length && studentsOf(s.halqaId).length).forEach(s => items.push({ k: 'warn', t: `حصة ${halqaName(s.halqaId)} ما تحضّرت`, b: `<button class="btn sm" data-act="open-session" data-id="${s.id}">حضّرها</button>` }));
@@ -2728,7 +2736,7 @@ Object.assign(ACT, {
     if (!r) { el.disabled = false; el.textContent = 'استيراد'; return; }
     const txt = r.created.map(c => `${c.name}\t${c.username}\t${c.password}`).join('\n');
     $('#modal .dlg').innerHTML = `${dlgHead('تم الاستيراد')}<div><b>${r.created.length}</b> طالب انضافوا.</div>${r.errors.length ? `<details open><summary class="c-bad">${r.errors.length} ما انضافوا</summary><div class="small">${r.errors.map(esc).join('<br>')}</div></details>` : ''}
-      ${r.created.length ? `<div class="tbl-wrap" style="max-height:260px"><table><thead><tr><th>الطالب</th><th>اسم المستخدم</th><th>كلمة المرور</th><th></th></tr></thead><tbody>${r.created.map(c => { const l = c.parentPhone && waLink(c.parentPhone, `السلام عليكم ورحمة الله، بيانات دخول ${c.name} في ${SET().center}:\nالرابط: ${location.origin}\nاسم المستخدم: ${c.username}\nكلمة المرور: ${c.password}`); return `<tr><td>${esc(c.name)}</td><td dir="ltr">${esc(c.username)}</td><td dir="ltr">${esc(c.password)}</td><td>${l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">إرسال</a>` : ''}</td></tr>`; }).join('')}</tbody></table></div><div class="dlg-foot"><button class="btn" data-act="copy" data-text="${esc(txt)}">نسخ الكل</button></div>` : ''}`;
+      ${r.created.length ? `<div class="tbl-wrap" style="max-height:260px"><table><thead><tr><th>الطالب</th><th>اسم المستخدم</th><th>كلمة المرور</th><th></th></tr></thead><tbody>${r.created.map(c => { const l = c.parentPhone && waLink(c.parentPhone, `السلام عليكم ورحمة الله وبركاته\n\n🔐 *بيانات الدخول* — ${c.name}\n▫️ الرابط: ${location.origin}\n▫️ اسم المستخدم: ${c.username}\n▫️ كلمة المرور: ${c.password}\n\nاحفظوها عندكم، وبالتوفيق 🌿`); return `<tr><td>${esc(c.name)}</td><td dir="ltr">${esc(c.username)}</td><td dir="ltr">${esc(c.password)}</td><td>${l ? `<a class="btn wa sm" href="${l}" target="_blank" rel="noopener">إرسال</a>` : ''}</td></tr>`; }).join('')}</tbody></table></div><div class="dlg-foot"><button class="btn" data-act="copy" data-text="${esc(txt)}">نسخ الكل</button></div>` : ''}`;
   },
   'status-check': async () => { const r = await act('status.check', {}); if (r) { ST.status = r; render(); } },
   'q-skip': () => { const s = curSession(); if (!s.current) return; const q = [...(s.queue || [])].filter(x => x !== s.current); const nx = q.shift() || null; q.push(s.current); buzz(12); setQueue(s, q, nx).then(r => r && toast('انتقل لآخر الطابور')); },

@@ -64,11 +64,13 @@ export const DEF = {
   /// مناسبات التقويم: [{ date, name, kind: exam | event }]
   events: [] as { date: string; name: string; kind: string }[],
   tpl: {
-    absent: "السلام عليكم ورحمة الله، نفيدكم بغياب ابنكم {الطالب} عن حلقة {الحلقة} يوم {التاريخ}. نرجو الحرص على الحضور، وجزاكم الله خيرًا.",
-    excellent: "السلام عليكم ورحمة الله، يسعدنا إبلاغكم بتميّز ابنكم {الطالب} في حلقة {الحلقة} يوم {التاريخ}. بارك الله فيه وفيكم.",
+    absent: "السلام عليكم ورحمة الله وبركاته\nولي أمر الطالب *{الطالب}* حفظه الله\n\nنفيدكم بـ *غياب* ابنكم عن الحلقة 📌\n▫️ الحلقة: {الحلقة}\n▫️ التاريخ: {التاريخ}\n\nنأمل الحرص على الحضور، وإن كان هناك عذر فنرجو إبلاغ المعلم.\nجزاكم الله خيرًا 🌿",
+    excellent: "السلام عليكم ورحمة الله وبركاته\nولي أمر الطالب *{الطالب}* حفظه الله\n\nيسعدنا إبلاغكم بـ *تميّز* ابنكم في الحلقة ✨\n▫️ الحلقة: {الحلقة}\n▫️ التاريخ: {التاريخ}\n\nبارك الله فيه وفيكم 🌿",
   },
 };
 export type Settings = typeof DEF;
+/** القوالب القديمة غير المعدّلة تتحول للصيغة المرتبة */
+const OLD_TPL: Record<string, string> = { absent: "السلام عليكم ورحمة الله، نفيدكم بغياب ابنكم {الطالب} عن حلقة {الحلقة} يوم {التاريخ}. نرجو الحرص على الحضور، وجزاكم الله خيرًا.", excellent: "السلام عليكم ورحمة الله، يسعدنا إبلاغكم بتميّز ابنكم {الطالب} في حلقة {الحلقة} يوم {التاريخ}. بارك الله فيه وفيكم." };
 export async function getSettings(): Promise<Settings> {
   const row = await prisma.setting.findUnique({ where: { key: "main" } });
   const m = ((row?.value as any) || {}) as Partial<Settings>;
@@ -77,7 +79,7 @@ export async function getSettings(): Promise<Settings> {
   const fields = ((m.fields as Field[]) || DEF_FIELDS).slice();
   if (!fields.some((f) => f.type === "memo") && !(m as any).memoRemoved) fields.push(MEMO_FIELD);
   m.fields = fields;
-  return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, points: { ...DEF.points, ...(m.points || {}) }, tpl: { ...DEF.tpl, ...(m.tpl || {}) }, fields: (m.fields as Field[]) || DEF_FIELDS };
+  return { ...DEF, ...m, grade: { ...DEF.grade, ...(m.grade || {}) }, points: { ...DEF.points, ...(m.points || {}) }, tpl: (() => { const t: any = { ...DEF.tpl, ...(m.tpl || {}) }; for (const [k, o] of Object.entries(OLD_TPL)) if (!t[k] || t[k] === o) t[k] = (DEF.tpl as any)[k]; return t; })(), fields: (m.fields as Field[]) || DEF_FIELDS };
 }
 export function gradeOf(s: Settings, m: number, al: number) {
   const g = s.grade;
