@@ -375,23 +375,27 @@ function render() {
   const sy = window.scrollY;
   const regF = !me() && (ST.reg || isRegRoute()) && (ST.regInfo || {}).side === 'f';
   FEM_MODE = READY && me() ? (inGirls() ? (femMe() ? 'ui' : 'noun') : '') : regF ? 'ui' : '';
-  const fem = !!FEM_MODE; if (fem !== document.documentElement.hasAttribute('data-fem')) { document.documentElement.toggleAttribute('data-fem', fem); const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.setAttribute('content', fem ? '#a23c6b' : '#1c6a5a'); }
+  const fem = !!FEM_MODE; if (fem !== document.documentElement.hasAttribute('data-fem')) { document.documentElement.toggleAttribute('data-fem', fem); const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.setAttribute('content', fem ? '#a23c6b' : isDarkNow() ? '#0a0f1f' : '#f5f7fb'); }
   app.innerHTML = view(); applyZoom(); if (fem) femify(app);
   for (const id in saved) { const el = document.getElementById(id); if (!el || !app.contains(el)) continue; el.dataset.dirty = 1; if ('c' in saved[id]) el.checked = saved[id].c; else el.value = saved[id].v; }
   if (fid) { const el = document.getElementById(fid); if (el) { el.focus({ preventScroll: true }); try { if (sel) el.setSelectionRange(sel[0], sel[1]); } catch {} } }
   window.scrollTo(0, sy);
 }
 function clean() { $('#app').querySelectorAll('[data-dirty]').forEach(el => delete el.dataset.dirty); }
-function go(v, extra) { clean(); Object.assign(ST, { view: v }, extra || {}); render(); window.scrollTo(0, 0); }
+function go(v, extra) { clean(); ST.tmore = false; Object.assign(ST, { view: v }, extra || {}); render(); window.scrollTo(0, 0); }
 document.addEventListener('input', e => { if (e.target.id) e.target.dataset.dirty = 1; }, true);
 document.addEventListener('change', e => { if (e.target.id) e.target.dataset.dirty = 1; }, true);
 
 const FLOWER = `<svg class="flower" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="12" cy="6.6" r="3.4"/><circle cx="17.1" cy="10.3" r="3.4"/><circle cx="15.2" cy="16.3" r="3.4"/><circle cx="8.8" cy="16.3" r="3.4"/><circle cx="6.9" cy="10.3" r="3.4"/></g><circle cx="12" cy="12" r="2.6" fill="var(--surface)"/></svg>`;
 // الشعار: حلقة من ثمانية طلاب حول نقطة
 const RING = [[35.5, 24], [32.13, 32.13], [24, 35.5], [15.87, 32.13], [12.5, 24], [15.87, 15.87], [24, 12.5], [32.13, 15.87]];
-const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="9" fill="var(--accent)"/><g fill="var(--accent-ink)">${RING.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.3"/>`).join('')}</g><circle cx="24" cy="24" r="3.6" fill="var(--gold)"/></svg>`;
-const RING_ART = `<svg class="ring" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width=".5"><circle cx="24" cy="24" r="11.5"/><circle cx="24" cy="24" r="17"/>${RING.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.3" fill="currentColor"/>`).join('')}</svg>`;
-const authArt = name => `<aside class="auth-art"><div class="brand">${MARK}<span>${esc(name)}</span></div><div class="verse-big">﴿وَرَتِّلِ الْقُرْآنَ تَرْتِيلًا﴾<small>سورة المزمل، الآية ٤</small></div>${RING_ART}</aside>`;
+const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="2" y="2" width="44" height="44" rx="14" fill="var(--mark-bg,#1f2a5a)"/><g fill="none" stroke="var(--mark-ink,#fff)" stroke-linecap="round"><path d="M16.9 16.9A10 10 0 0 0 16.9 31.1M31.1 16.9A10 10 0 0 1 31.1 31.1" stroke-width="2.6"/><path d="M12.7 12.7A16 16 0 0 0 12.7 35.3M35.3 12.7A16 16 0 0 1 35.3 35.3" stroke-width="2.2" stroke-opacity=".55"/></g><circle cx="24" cy="24" r="4.2" fill="var(--mark-dot,#2fd0c2)"/></svg>`;
+// زخرفة «سكينة»: حلقات متحدة المركز وموجة صوت هادئة (التلاوة)
+const RINGS = `<svg class="rings" viewBox="0 0 400 400" aria-hidden="true" fill="none" stroke="currentColor">${[34, 70, 106, 142, 178].map((r, i) => `<circle cx="200" cy="200" r="${r}" stroke-width="${i ? 1 : 1.6}" stroke-opacity="${(0.55 - i * 0.1).toFixed(2)}"/>`).join('')}</svg>`;
+const WAVE_H = [6, 12, 20, 14, 26, 36, 22, 30, 40, 28, 18, 32, 24, 14, 20, 10, 6];
+const WAVE = `<svg class="wave" viewBox="0 0 ${WAVE_H.length * 8} 44" aria-hidden="true" fill="currentColor">${WAVE_H.map((h, i) => `<rect x="${i * 8 + 1.5}" y="${22 - h / 2}" width="4" height="${h}" rx="2"/>`).join('')}</svg>`;
+const RING_ART = RINGS;
+const authArt = name => `<aside class="auth-art">${RINGS}<div class="aa-in"><div class="brand">${MARK}<span>${esc(name)}</span></div><div class="verse-big">﴿وَرَتِّلِ الْقُرْآنَ تَرْتِيلًا﴾<small>سورة المزمل، الآية ٤</small></div>${WAVE}</div></aside>`;
 
 /* ---------------- views ---------------- */
 function joinHid() { const p = new URLSearchParams(location.search); const h = location.hash.replace('#', ''); return p.get('join') || (h.startsWith('join-') ? h.slice(5) : ''); }
@@ -515,16 +519,18 @@ function shellV(u) {
   if (ST.fs) { const f = fsV(u); if (f) { document.body.classList.add('fs-on'); return banner() + f; } if (ST.busyFs) return `<div class="center-box"><div class="spin"></div></div>`; ST.fs = null; ST.sw = null; wake(false); }
   document.body.classList.remove('fs-on');
   if (u.role === 'student' && LANG !== 'en' && !ST.tourShown && !tourSeen(u)) { ST.tourShown = true; setTimeout(() => { if ($('#modal').hidden) showTour(0); }, 600); }
+  const flat = navSections(u).flatMap(x => x.items); const curItem = flat.find(i => i.k === activeTab);
+  const themeIco = isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>';
   return `${banner()}<header class="top"><div class="top-in ${S.isSuper ? 'has-sec' : ''}"><div class="brand-row ${S.isSuper ? 'has-sec' : ''}">
-      <button class="hb only-n" data-act="drawer" aria-label="القائمة"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-      <div class="brand">${MARK}<span>${esc(SET().center)}</span></div>
+      <button class="hb only-n" data-act="drawer" aria-label="القائمة"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h16"/></svg></button>
+      <div class="brand">${MARK}<span class="brand-n">${esc(SET().center)}</span><span class="tb-title" aria-hidden="true">${esc(curItem ? curItem.label : '')}</span></div>
+      ${topNavHtml(u, flat, activeTab)}
       ${S.isSuper ? `<div class="sec-sw" role="tablist" aria-label="القسم"><button role="tab" class="${inGirls() ? '' : 'on'}" data-act="sec" data-v="m" aria-selected="${!inGirls()}">البنين</button><button role="tab" class="f ${inGirls() ? 'on' : ''}" data-act="sec" data-v="f" aria-selected="${inGirls()}">${FLOWER} البنات</button></div>` : ''}
-      <div class="who">${u.role !== 'student' ? '<button class="btn ghost sm" data-act="search">بحث</button>' : ''}<span class="small hide-n">${esc(u.name)}</span><span class="chip acc hide-n">${ROLE[u.role]}</span>
-        <button class="hb" data-act="theme" aria-label="تبديل المظهر" title="تبديل المظهر">${isDarkNow() ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>'}</button>
-        <button class="hb" data-act="account" aria-label="حسابي" title="حسابي">${ICO.settings}</button>
-        <button class="btn ghost sm" data-act="logout">خروج</button></div></div></div></header>
-  <div class="shell ${SIDE_MINI ? 'mini' : ''}"><aside class="side">${sideNavHtml(u, activeTab, SIDE_MINI)}<button class="side-fold" data-act="side-mini" title="طي القائمة"><span>⇥</span>${SIDE_MINI ? '' : ' طي القائمة'}</button></aside>
-  <main class="wrap">${['dash', 'sessions', 'students', 'reports', 'halaqat', 'store'].includes(ST.view) ? branchBar(u) : ''}${body}</main></div>${bottomNav(u, tabs, activeTab)}${drawerHtml(u, activeTab)}`;
+      <div class="who">${u.role !== 'student' ? `<button class="hb hide-n" data-act="search" aria-label="بحث" title="بحث">${ICO.search}</button>` : ''}
+        <button class="hb" data-act="theme" aria-label="تبديل المظهر" title="تبديل المظهر">${themeIco}</button>
+        <button class="me-pill" data-act="account" aria-label="حسابي" title="حسابي"><span class="me-av" aria-hidden="true">${esc(initialOf(u.name))}</span><span class="me-t hide-n"><b>${esc((u.name || '').split(' ').slice(0, 2).join(' '))}</b><span>${ROLE[u.role]}</span></span></button>
+        <button class="hb hide-n" data-act="logout" aria-label="خروج" title="خروج">${ICO.logout}</button></div></div></div></header>
+  <div class="shell"><main class="wrap">${['dash', 'sessions', 'students', 'reports', 'halaqat', 'store'].includes(ST.view) ? branchBar(u) : ''}${body}</main></div>${bottomNav(u, tabs, activeTab)}${drawerHtml(u, activeTab)}`;
 }
 
 /* ---- admin: requests ---- */
@@ -579,15 +585,21 @@ function sessionsV(u) {
       <button class="btn sm" data-act="ses-sel-all">${inR.length && inR.every(x => ST.sel.has(x.id)) ? 'إلغاء تحديد الكل' : 'تحديد الكل (' + inR.length + ')'}</button>
       ${n ? `<select id="bulk-mode" data-change="bulk-mode" aria-label="نوع الحصص"><option value="">نوع الحصة…</option><option value="onsite">حضوري</option><option value="remote">عن بعد</option><option value="hybrid">هجين</option><option value="default">حسب الحلقة</option></select><button class="btn sm" data-act="bulk-time">🕒 الوقت</button><button class="btn sm danger" data-act="bulk-cancel" data-v="1">إلغاء الحصص</button><button class="btn sm" data-act="bulk-cancel" data-v="0">استرجاع</button>` : ''}
       <button class="btn sm ghost" data-act="ses-sel-off">✕ إنهاء التحديد</button></div></div>`; })() : '';
+  const nowMs = Date.now(); const byT = (a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''));
+  const curS = all.filter(s => s.date === t && !s.cancelled && !s.closedAt && lessonTs(s) + 90 * 60000 > nowMs).sort(byT)[0] || all.filter(s => s.date > t && !s.cancelled).sort(byT)[0];
+  const nowCard = curS && !ST.selOn ? (() => { const live = curS.date === t && lessonTs(curS) <= nowMs; const n = studentsOf(curS.halqaId).length; const pr = Object.values(curS.att || {}).filter(v => v === 'p' || v === 'l').length;
+    return `<section class="now-card ses-now">${RINGS}<div class="nc-main"><span class="nc-lbl">${live ? '<span class="live-dot"></span> الحصة الحالية' : curS.date === t ? 'حصة اليوم' : 'الحصة القادمة'}</span><b class="nc-big">${esc(halqaName(curS.halqaId))}</b><span class="nc-sub">${fmtDateH(curS.date)} · ${fmtTime(curS.time) || 'بدون وقت'}${live ? '' : ` · <span class="cd" data-cd="${lessonTs(curS)}">${cdText(lessonTs(curS))}</span>`}</span></div>
+      <div class="nc-side"><div class="nc-m"><b class="num">${pr}/${n}</b><span>${MODE_L[lessonMode(curS)]} · حضور</span></div><button class="btn pri big" data-act="open-session" data-id="${curS.id}">افتح الحصة</button></div></section>`; })() : '';
   return `${checkinCard(u)}<div class="sec-head"><h1>الحصص</h1><div class="row"><button class="btn" data-act="cal">${ST.cal ? 'عرض القائمة' : 'عرض التقويم'}</button>${ST.cal ? '' : `<button class="btn ${ST.selOn ? 'pri' : ''}" data-act="ses-sel-on">☑ تعديل متعدد</button>`}<button class="btn" data-act="quick-rec">${ICO.reports || ''} تسجيل تسميع</button><button class="btn pri" data-act="new-session">حصة إضافية</button></div></div>
+  ${nowCard}
   ${hs.length > 1 ? `<div class="row">${['', ...hs.map(h => h.id)].map(id => `<button class="btn sm ${ST.halqa === id ? 'pri' : ''}" data-act="filter-h" data-h="${id}">${id ? esc(halqaName(id)) : 'كل الحلقات'}</button>`).join('')}</div>` : ''}
   ${absentAlertsHtml(ids)}
   ${ST.cal ? calendarHtml(ids) : `<div class="ses-nav card"><div class="ses-nav-top">${step ? `<button class="btn sm ghost" data-act="ses-step" data-n="-${step}" aria-label="السابق">→</button>` : ''}<div class="ses-range">${rangeLbl}</div>${step ? `<button class="btn sm ghost" data-act="ses-step" data-n="${step}" aria-label="التالي">←</button>` : ''}${sr !== 'up' && !(from <= t && t <= to) ? '<button class="btn sm" data-act="ses-today">اليوم</button>' : ''}</div>
     <div class="seg ses-seg">${[['day', 'يوم'], ['week', 'أسبوع'], ['month', 'شهر'], ['up', 'القادمة']].map(([k, l]) => `<button class="${sr === k ? 'on' : ''}" data-act="ses-r" data-v="${k}">${l}</button>`).join('')}</div>${strip}</div>
   ${selBar}
-  ${sr === 'up' ? `<section class="card">${inR.length ? `<div class="list">${inR.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
-    ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list">${past.map(row).join('')}</div></section>` : ''}`
-  : Object.keys(byDay).length ? Object.entries(byDay).map(([d, ls]) => `<section class="card ses-day ${d === t ? 'is-today' : ''}"><div class="sec-head"><h2>${fmtDateH(d)}${d === t ? ' <span class="chip gold">اليوم</span>' : d === addDays(t, 1) ? ' <span class="chip">بكرة</span>' : ''}</h2>${ST.selOn ? `<button class="linkbtn" data-act="ses-sel-day" data-d="${d}">تحديد اليوم</button>` : ''}</div><div class="list">${ls.map(row).join('')}</div></section>`).join('')
+  ${sr === 'up' ? `<section class="card">${inR.length ? `<div class="list tl-list">${inR.map(row).join('')}</div>` : `<div class="empty"><span>ما فيه حصص قادمة. فعّل «الجدول الثابت» من إعدادات الحلقة وتنشأ الحصص لحالها، أو أضف حصة إضافية.</span></div>`}</section>
+    ${past.length ? `<section class="card"><h2>السابقة</h2><div class="list tl-list">${past.map(row).join('')}</div></section>` : ''}`
+  : Object.keys(byDay).length ? Object.entries(byDay).map(([d, ls]) => `<section class="card ses-day ${d === t ? 'is-today' : ''}"><div class="sec-head"><h2>${fmtDateH(d)}${d === t ? ' <span class="chip gold">اليوم</span>' : d === addDays(t, 1) ? ' <span class="chip">بكرة</span>' : ''}</h2>${ST.selOn ? `<button class="linkbtn" data-act="ses-sel-day" data-d="${d}">تحديد اليوم</button>` : ''}</div><div class="list tl-list">${ls.map(row).join('')}</div></section>`).join('')
   : `<div class="empty"><span>ما فيه حصص ${sr === 'day' ? 'هاليوم' : sr === 'week' ? 'هالأسبوع' : 'هالشهر'}.</span></div>`}`}`;
 }
 function joinText(j, s) {
@@ -878,26 +890,32 @@ function homeV(u) {
   const next = upcoming.find(s => !s.cancelled);
   const a = attStats(u, 30); const rs = recsOf(u.id); const pg = pagesSum(rs.filter(r => r.date >= addDays(t, -7)));
   const past = sess.filter(s => s.date <= t && !s.cancelled).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 6);
+  const later = upcoming.filter(s => s !== next).slice(0, 3);
   const vd = verseOfDay(t);
-  return `<div><h1>السلام عليكم، ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${hs ? esc(hs.name) : ''} · ${fmtDateH(t)} · هذه الصفحة يتابع منها ولي الأمر أيضًا</div></div>
-  ${parentSummary(u)}
-  ${(() => { const w = u.wish && S.rewards[u.wish]; const b = balOf(u.id); return `<button class="st-chip" data-act="nav" data-v="store"><span>⭐ <b class="num">${b}</b> نقطة</span>${w ? `<span class="small">${b >= w.eff ? 'رصيدك يكفي لـ ' + esc(w.name) : 'باقي ' + (w.eff - b) + ' على ' + esc(w.name)}</span>` : '<span class="small">المتجر</span>'}</button>`; })()}
-  ${studentPollsHtml(u)}
-  ${afterLessonHtml(u)}
-  <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
-  ${studentAnnsHtml(u)}
-  ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
+  const pts = (() => { const w = u.wish && S.rewards[u.wish]; const b = balOf(u.id); return `<button class="st-chip" data-act="nav" data-v="store"><span>⭐ <b class="num">${b}</b> نقطة</span>${w ? `<span class="small">${b >= w.eff ? 'رصيدك يكفي لـ ' + esc(w.name) : 'باقي ' + (w.eff - b) + ' على ' + esc(w.name)}</span>` : '<span class="small">المتجر</span>'}</button>`; })();
+  const node = (s, kind) => { const v = (s.att || {})[u.id]; return `<li class="tl-i ${kind} ${s.cancelled ? 'x' : ''} ${s.date === t ? 'today' : ''}"><span class="tl-dot" aria-hidden="true"></span><div class="tl-b"><b>${fmtDate(s.date)}</b><span class="small muted">${fmtTime(s.time)}${s.note ? ' · ' + esc(s.note) : ''}</span></div>${s.cancelled ? '<span class="chip">ملغاة</span>' : kind === 'past' ? `<span class="chip ${v ? ATTC[v] : ''}">${v ? ATT[v] : 'لم يُحضَّر'}</span>` : s.date === t ? '<span class="chip gold">اليوم</span>' : ''}</li>`; };
+  return `<div class="pg-head"><span class="eyebrow">${fmtDateH(t)}</span><h1>السلام عليكم، ${esc((u.name || '').split(' ')[0])}</h1><div class="muted">${hs ? esc(hs.name) + ' · ' : ''}هذه الصفحة يتابع منها ولي الأمر أيضًا</div></div>
+  <section class="now-zone">
   ${liveSession(u) ? `<button class="live-cta" data-act="live-open"><span class="live-dot"></span><div class="grow"><b>الحصة قربت أو بدأت</b><span>افتح شاشة الحصة: الدخول وترتيبك في الطابور</span></div>${ICO.live}</button>` : ''}
+  ${next ? lessonCard(u, next) : `<div class="empty now-empty">${RINGS}<b>ما فيه حصة قادمة حاليًا</b></div>`}
+  ${cancelledSoon.map(s => `<div class="note">حصة ${fmtDate(s.date)} ملغاة${s.note ? ': ' + esc(s.note) : ''}.</div>`).join('')}
+  </section>
+  ${parentSummary(u)}
+  ${afterLessonHtml(u)}
   ${dueCard(u)}
-  ${next ? lessonCard(u, next) : `<div class="empty">ما فيه حصة قادمة حاليًا.</div>`}
+  ${studentPollsHtml(u)}
+  ${studentAnnsHtml(u)}
+  <div class="home-mid">
+  <section class="card tl-card"><div class="sec-head"><h2>جدولك وحضورك</h2><span class="small muted">آخر الحصص والقادمة</span></div>
+    <ol class="tl">${later.length ? `<li class="tl-h">القادمة</li>${later.map(s => node(s, 'up')).join('')}` : ''}${past.length ? `<li class="tl-h">السابقة</li>${past.map(s => node(s, 'past')).join('')}` : ''}${!later.length && !past.length ? '<li class="tl-h">ما فيه حصص بعد</li>' : ''}</ol></section>
+  <section class="kpi-sec"><h2 class="sr-h">إنجازك</h2><div class="stats kpis"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>الحضور، 30 يوم</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة هالأسبوع</span></div></div>${pts}</section></div>
   <div class="grid2">
     <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>خطتك</h2></div>${planHtml(u)}${goalHtml(u)}</section>
     ${tasksHtml(u)}
   </div>
   <div class="grid2">
     ${motivHtml(u)}
-    <section class="card" style="display:grid;gap:12px"><h2>إنجازك</h2><div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>الحضور، 30 يوم</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة هالأسبوع</span></div></div>
-    ${past.length ? `<div class="list">${past.map(s => { const v = (s.att || {})[u.id]; return `<div class="item"><div class="grow">${fmtDate(s.date)}</div><span class="chip ${v ? ATTC[v] : ''}">${v ? ATT[v] : 'لم يُحضَّر'}</span></div>`; }).join('')}</div>` : ''}</section>
+    <div class="verse"><span class="small muted">آية اليوم</span><p>﴿${vd[0]}﴾</p><span class="small muted">${vd[1]}</span></div>
   </div>
   ${behavStudentHtml(u)}
   <section class="card"><h2>سجل التسميع</h2>${historyTable(rs)}</section>
@@ -1028,12 +1046,17 @@ function dashV(u) {
   const stuck = studs.filter(st => { const rs = recsOf(st.id).filter(r => r.date >= addDays(t, -14)); return rs.length ? rs.filter(r => r.pass === false).length >= 2 : (st.approvedAt && st.approvedAt < Date.now() - 14 * 864e5); });
   const issues = todayL.flatMap(s => Object.entries(s.issues || {}).map(([id, x]) => ({ s, id, x })));
   const pg = pagesSum(recsW);
-  return `<h1>لوحة المدير</h1><div class="muted">${fmtDateH(t)}</div>
-  ${todayAlertsHtml(u)}
-  <div class="stats"><div class="stat"><b>${studs.length}</b><span>طالب نشط</span></div><div class="stat"><b>${hs.length}</b><span>حلقة</span></div><div class="stat"><b>${todayL.length}</b><span>حصص اليوم</span></div><div class="stat"><b>${marked.length ? Math.round(pres / marked.length * 100) + '٪' : '—'}</b><span>حضور اليوم</span></div><div class="stat"><b>${recsW.length}</b><span>تسميع هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div></div>
-  ${pend ? `<div class="note"><b>${pend}</b> طلب تسجيل ينتظر الاعتماد. <button class="btn sm" data-act="tab" data-v="req">اعرضها</button></div>` : ''}
+  const now = Date.now(); const ordered = [...todayL].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const liveL = ordered.filter(s => lessonTs(s) <= now && lessonTs(s) + 90 * 60000 > now && !s.closedAt); const nextL = ordered.find(s => lessonTs(s) > now);
+  return `<div class="pg-head"><span class="eyebrow">${fmtDateH(t)}</span><h1>لوحة المدير</h1></div>
+  <section class="now-card">${RINGS}<div class="nc-main"><span class="nc-lbl">${liveL.length ? '<span class="live-dot"></span> شغالة الآن' : 'اليوم'}</span>
+    <b class="nc-big">${liveL.length ? liveL.map(s => esc(halqaName(s.halqaId))).join('، ') : todayL.length ? todayL.length + ' ' + (todayL.length === 1 ? 'حصة' : todayL.length <= 10 ? 'حصص' : 'حصة') + ' اليوم' : 'ما فيه حصص اليوم'}</b>
+    <span class="nc-sub">${nextL ? `التالية: ${esc(halqaName(nextL.halqaId))} · ${fmtTime(nextL.time)} · <span class="cd" data-cd="${lessonTs(nextL)}">${cdText(lessonTs(nextL))}</span>` : todayL.length ? 'ما بقى حصص جاية اليوم' : 'يوم هادئ'}</span></div>
+    <div class="nc-side"><div class="nc-m"><b class="num">${marked.length ? Math.round(pres / marked.length * 100) + '٪' : '—'}</b><span>حضور اليوم</span></div>${pend ? `<button class="nc-m nc-btn" data-act="tab" data-v="req"><b class="num">${pend}</b><span>طلب تسجيل ينتظر الاعتماد · اعرضها</span></button>` : ''}${issues.length ? `<div class="nc-m bad"><b class="num">${issues.length}</b><span>مشاكل دخول الآن</span></div>` : ''}</div></section>
   ${issues.length ? `<div class="note bad-note"><b>مشاكل دخول الآن:</b> ${issues.map(o => esc(subName(o.id)) + ' (' + esc(halqaName(o.s.halqaId)) + ')').join('، ')}</div>` : ''}
-  ${todayBoardHtml(u) || '<section class="card"><h2>حصص اليوم</h2><div class="empty small">ما فيه حصص اليوم.</div></section>'}
+  ${todayAlertsHtml(u)}
+  ${todayBoardHtml(u) || '<section class="card tl-card"><h2>حصص اليوم</h2><div class="empty small">ما فيه حصص اليوم.</div></section>'}
+  <div class="stats kpis"><div class="stat"><b>${studs.length}</b><span>طالب نشط</span></div><div class="stat"><b>${hs.length}</b><span>حلقة</span></div><div class="stat"><b>${todayL.length}</b><span>حصص اليوم</span></div><div class="stat"><b>${marked.length ? Math.round(pres / marked.length * 100) + '٪' : '—'}</b><span>حضور اليوم</span></div><div class="stat"><b>${recsW.length}</b><span>تسميع هالأسبوع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ هالأسبوع</span></div></div>
   <div class="grid2">${absentAlertsHtml(hs.map(h => h.id)) || '<section class="card"><h2>تنبيه الغياب المتكرر</h2><div class="empty small">ما فيه أحد.</div></section>'}
   <section class="card"><h2>يحتاجون متابعة</h2><div class="small muted">أعادوا مرتين أو أكثر آخر أسبوعين، أو ما سمّعوا من أسبوعين</div>${stuck.length ? `<div class="list">${stuck.slice(0, 15).map(x => `<div class="item click" data-act="open-student" data-id="${x.id}"><div class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(halqaName(x.halqaId))}</div></div></div>`).join('')}</div>` : '<div class="empty small">ما فيه أحد.</div>'}</section></div>
   ${teachersReport(30)}`;
@@ -2736,6 +2759,17 @@ document.addEventListener('toggle', e => { if (e.target.dataset && e.target.data
 
 /* ================= القائمة الجانبية (يمين): أقسام ← صفحات ← خيارات داخلية ================= */
 // نفس ترتيب منصة الحلقة التربوية: قائمة ثابتة يمين للكمبيوتر وتنطوي، ودرج من اليمين للجوال
+/* شريط التنقل العلوي للشاشات الكبيرة: أقسام رئيسية كأزرار، والباقي في «المزيد» */
+const initialOf = n => { const w = String(n || '؟').trim().split(/\s+/); const t = /^(الشيخ|الأستاذ|الاستاذ|الأستاذة|الشيخة|أبو|أم|د\.?|الدكتور|المعلم|المعلمة)$/.test(w[0]) && w[1] ? w[1] : w[0]; return (t.startsWith('ال') && t.length > 3 ? t.slice(2) : t).charAt(0) || '؟'; };
+function topNavHtml(u, flat, active) {
+  const N = u.role === 'student' ? 6 : 5; const prim = flat.slice(0, N); const rest = flat.slice(N);
+  const restOn = rest.some(i => i.k === active); const restCnt = rest.reduce((a, i) => a + (+i.count || 0), 0);
+  const live = u.role === 'student' && liveSession(u);
+  return `<nav class="tnav ${u.role !== 'student' ? 'staff' : ''}" aria-label="الأقسام">${prim.map(i => `<button class="tn ${i.k === active ? 'on' : ''}" data-act="nav" data-v="${i.k}" ${i.k === active ? 'aria-current="page"' : ''}>${ICO[i.k] || ICO.more}<span>${esc(i.label)}</span>${i.count ? `<b class="tn-c">${i.count}</b>` : ''}</button>`).join('')}
+    ${u.role === 'student' ? `<button class="tn ${live ? 'hot' : ''}" data-act="live-open">${ICO.live}<span>${LANG === 'en' ? 'Class' : 'الحصة'}</span>${live ? '<i class="tn-live"></i>' : ''}</button>` : ''}
+    ${rest.length ? `<div class="tn-more"><button class="tn ${restOn || ST.tmore ? 'on' : ''}" data-act="tnav-more" aria-expanded="${!!ST.tmore}" aria-haspopup="true">${ICO.grid || ICO.more}<span>${restOn ? esc(rest.find(i => i.k === active).label) : 'المزيد'}</span>${restCnt ? `<b class="tn-c">${restCnt}</b>` : ''}<svg class="tn-car" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      ${ST.tmore ? `<div class="tn-panel" role="menu">${sideNavHtml(u, active, false)}</div>` : ''}</div>` : ''}</nav>`;
+}
 function navSections(u) {
   const has = k => !TAB_PERM[k] || can(u, TAB_PERM[k]);
   const I = (k, label, count, subs) => ({ k, label, count: count || 0, subs });
@@ -2803,7 +2837,7 @@ function accountSheet() {
     ${it('theme', 'theme', isDarkNow() ? 'المظهر الفاتح' : 'المظهر الداكن')}${it('my-pw', 'key', 'كلمة المرور')}${it('logout', 'logout', 'خروج')}</div>`);
 }
 Object.assign(ACT, {
-  'nav': el => { ST.drawer = false; const v = el.dataset.v; const def = { students: { inact: false, arch: false }, teachers: { sched: false }, sessions: { cal: false } }[v] || {}; go(v, def); },
+  'nav': el => { ST.drawer = false; ST.tmore = false; const v = el.dataset.v; const def = { students: { inact: false, arch: false }, teachers: { sched: false }, sessions: { cal: false } }[v] || {}; go(v, def); },
   'nav-exp': el => { ST.navOpen = ST.navOpen || {}; const k = el.dataset.k; const u = me(); const on = (PARENT_TAB[ST.view] || ST.view) === k; ST.navOpen[k] = !(ST.navOpen[k] ?? on); render(); },
   'nav-sub': el => {
     const u = me(); const item = navSections(u).flatMap(s => s.items).find(i => i.k === el.dataset.v); const x = item && item.subs[+el.dataset.j]; if (!x) return;
@@ -2813,6 +2847,7 @@ Object.assign(ACT, {
   },
   'drawer': () => { ST.drawer = true; buzz(8); render(); },
   'drawer-x': () => { ST.drawer = false; render(); },
+  'tnav-more': () => { ST.tmore = !ST.tmore; render(); },
   'side-mini': () => { SIDE_MINI = !SIDE_MINI; try { localStorage.setItem('irtaq-side-mini', SIDE_MINI ? '1' : '0'); } catch {} render(); },
   'account': () => { ST.drawer = false; render(); accountSheet(); },
 });
@@ -2827,7 +2862,11 @@ Object.assign(ACT, {
     else if (ST.drawer && dx > 70 && Math.abs(dy) < 60) { ST.drawer = false; render(); }
   }, { passive: true });
 })();
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.drawer) { ST.drawer = false; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.drawer) { ST.drawer = false; render(); } if (e.key === 'Escape' && ST.tmore) { ST.tmore = false; render(); } });
+// «المزيد» في الشريط العلوي: يقفل إذا ضغطت برا القائمة
+document.addEventListener('click', e => { if (ST.tmore && !e.target.closest('.tn-more')) { ST.tmore = false; render(); } });
+// العنوان الكبير في الجوال يصغر مع النزول، ويطلع عنوان الصفحة في الشريط
+(() => { let on = false; const f = () => { const v = window.scrollY > 48; if (v !== on) { on = v; document.documentElement.classList.toggle('is-scrolled', v); } }; window.addEventListener('scroll', f, { passive: true }); f(); })();
 
 /* ================= المساعد الذكي (مساعد ارتق) ================= */
 // يتكلم معك، ويجاوب من بيانات حلقاتك، ويجهز إجراءات (إعلان، تصويت، إجازة، حصة…) تنفذها بعد تأكيدك.
@@ -3415,14 +3454,15 @@ function todayBoardHtml(u) {
   if (!rows.length) return '';
   const now = Date.now();
   const noPlace = hs.some(h => (h.mode || 'onsite') !== 'remote' && !placeOf(h.id));
-  return `<section class="card" style="display:grid;gap:10px"><div class="sec-head"><h2>اليوم في الجامع</h2><span class="small muted">يتحدث لحاله</span></div>
+  return `<section class="card tl-card"><div class="sec-head"><h2>جدول اليوم</h2><span class="small muted">يتحدث لحاله</span></div>
     ${noPlace && isFullAdmin(u) ? `<div class="note small row"><span class="grow">حدد موقع الجامع عشان ما يقدر المعلم يسجّل وصوله إلا وهو فيه.</span><button class="btn sm" data-act="nav" data-v="complexes">حدد الموقع</button></div>` : ''}
-    <div class="tbl-wrap"><table><thead><tr><th>الحلقة</th><th>الوقت</th><th>المعلم</th><th class="num">حاضر</th><th class="num">متأخر</th><th class="num">سمّع</th><th></th></tr></thead><tbody>
+    <ol class="tl tl-day">
     ${rows.map(({ h, s }) => { const studs = studentsOf(h.id); const att = s.att || {}; const pres = studs.filter(x => att[x.id] === 'p' || att[x.id] === 'l').length; const late = studs.filter(x => att[x.id] === 'l').length; const rec = new Set(L('recs').filter(r => r.sid === s.id).map(r => r.uid)).size;
       const tid = s.subId || h.teacherId; const tin = (S.tins || {})[tid]; const start = lessonTs(s); const remote = lessonMode(s) === 'remote';
       const tTxt = remote ? '<span class="chip">عن بعد</span>' : tin ? `<span class="chip ${tin.at > start + 5 * 60000 ? 'warn' : 'ok'}">${clock(tin.at)}${tin.at > start + 5 * 60000 ? ' متأخر ' + Math.round((tin.at - start) / 60000) + ' د' : ''}</span>${tin.out ? ` <span class="chip ${tin.outEarly ? 'warn' : ''}">انصرف ${clock(tin.out)}${tin.outEarly ? ' مبكر ' + tin.outEarly + ' د' : tin.outAuto ? ' تلقائي' : ''}</span>` : ''}` : now > start ? '<span class="chip bad">ما وصل</span>' : '<span class="chip">ما بعد</span>';
-      return `<tr class="click" data-act="open-session" data-id="${s.id}"><td><b>${esc(h.name)}</b>${h.place ? `<div class="small muted">${esc(h.place)}</div>` : ''}</td><td>${fmtTime(s.time)}</td><td>${esc((S.users[tid] || {}).name || '—')} ${tTxt}</td><td class="num">${pres}/${studs.length}</td><td class="num">${late || ''}</td><td class="num">${rec}</td><td>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}</td></tr>`; }).join('')}
-    </tbody></table></div></section>`;
+      const st = s.closedAt ? 'done' : now >= start && now < start + 90 * 60000 ? 'live' : now < start ? 'up' : 'past';
+      return `<li class="tl-i ${st} click" data-act="open-session" data-id="${s.id}"><span class="tl-time num">${fmtTime(s.time)}</span><span class="tl-dot" aria-hidden="true"></span><div class="tl-b"><b>${esc(h.name)}${st === 'live' ? ' <span class="chip ok">الآن</span>' : ''}</b><span class="small muted">${esc((S.users[tid] || {}).name || '—')}${h.place ? ' · ' + esc(h.place) : ''}</span><div class="tl-meta">${tTxt}<span class="chip num">حاضر ${pres}/${studs.length}</span>${late ? `<span class="chip warn num">متأخر ${late}</span>` : ''}<span class="chip num">سمّع ${rec}</span>${s.closedAt ? '<span class="chip ok">انتهت</span>' : ''}</div></div></li>`; }).join('')}
+    </ol></section>`;
 }
 
 /* ================= المجمعات ================= */
