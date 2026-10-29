@@ -387,7 +387,11 @@ document.addEventListener('input', e => { if (e.target.id) e.target.dataset.dirt
 document.addEventListener('change', e => { if (e.target.id) e.target.dataset.dirty = 1; }, true);
 
 const FLOWER = `<svg class="flower" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="12" cy="6.6" r="3.4"/><circle cx="17.1" cy="10.3" r="3.4"/><circle cx="15.2" cy="16.3" r="3.4"/><circle cx="8.8" cy="16.3" r="3.4"/><circle cx="6.9" cy="10.3" r="3.4"/></g><circle cx="12" cy="12" r="2.6" fill="var(--surface)"/></svg>`;
-const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="4" width="40" height="40" rx="10" fill="var(--accent)"/><path d="M14 16c4-2 7-2 10 1 3-3 6-3 10-1v17c-4-2-7-2-10 1-3-3-6-3-10-1z" fill="none" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linejoin="round"/><path d="M24 17v17" stroke="var(--accent-ink)" stroke-width="2.4"/></svg>`;
+// الشعار: حلقة من ثمانية طلاب حول نقطة
+const RING = [[35.5, 24], [32.13, 32.13], [24, 35.5], [15.87, 32.13], [12.5, 24], [15.87, 15.87], [24, 12.5], [32.13, 15.87]];
+const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="9" fill="var(--accent)"/><g fill="var(--accent-ink)">${RING.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.3"/>`).join('')}</g><circle cx="24" cy="24" r="3.6" fill="var(--gold)"/></svg>`;
+const RING_ART = `<svg class="ring" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width=".5"><circle cx="24" cy="24" r="11.5"/><circle cx="24" cy="24" r="17"/>${RING.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.3" fill="currentColor"/>`).join('')}</svg>`;
+const authArt = name => `<aside class="auth-art"><div class="brand">${MARK}<span>${esc(name)}</span></div><div class="verse-big">﴿وَرَتِّلِ الْقُرْآنَ تَرْتِيلًا﴾<small>سورة المزمل، الآية ٤</small></div>${RING_ART}</aside>`;
 
 /* ---------------- views ---------------- */
 function joinHid() { const p = new URLSearchParams(location.search); const h = location.hash.replace('#', ''); return p.get('join') || (h.startsWith('join-') ? h.slice(5) : ''); }
@@ -445,25 +449,26 @@ const FTYPE = { text: 'نص', tel: 'جوال', number: 'رقم', choice: 'اخت
 
 function loginV() {
   if (!ST.regInfo) loadRegInfo();
-  return `${banner()}<div class="center-box">
-  <div class="hero-mark">${MARK}<div><h1>${esc(SET().center !== DEF.center ? SET().center : 'حلقات ارتق')}</h1><div class="muted">تسميع، مراجعة، وتثبيت عن بُعد</div></div></div>
+  const cname = SET().center !== DEF.center ? SET().center : 'حلقات ارتق';
+  return `${banner()}<div class="auth">${authArt(cname)}<div class="auth-form"><div class="inner">
+  <div><h1>أهلًا بك</h1><div class="sub">تسميع، مراجعة، وتثبيت عن بُعد. ادخل بحسابك وكمّل من حيث وقفت.</div></div>
   <form class="card" data-form="login">
     <label class="fld"><span>اسم المستخدم</span><input id="lg-user" name="username" dir="ltr" autocomplete="username" autocapitalize="none" required value="${esc((() => { try { return new URLSearchParams(location.search).get('u') || ''; } catch { return ''; } })())}"></label>
     ${pwField('lg-pw', 'password', 'كلمة المرور', 'current-password')}
-    <button class="btn pri big" type="submit">دخول</button>
+    <button class="btn pri big" type="submit" style="width:100%">دخول</button>
     <div class="row" style="justify-content:space-between"><span class="small muted">ولي الأمر يدخل بحساب ابنه.</span><button type="button" class="linkbtn" data-act="forgot">نسيت كلمة المرور؟</button></div>
   </form>
   ${accounts().length ? `<div class="card" style="display:grid;gap:8px"><b>حسابات محفوظة على هذا الجهاز</b><div class="list">${accounts().map(a => `<div class="item"><div class="grow">${esc(a.name)}</div><button class="btn pri sm" data-act="switch" data-id="${a.id}">دخول</button></div>`).join('')}</div></div>` : ''}
   <div class="card guide-box"><b>أول مرة؟</b><ol class="steps"><li>اضغط «سجّل بياناتك» تحت، وعبّ النموذج.</li><li>انتظر اعتماد الإدارة، وغالبًا يكون خلال يوم.</li><li>ارجع هنا وادخل باسم المستخدم وكلمة المرور اللي اخترتها.</li></ol>
     <div class="row" style="justify-content:center"><button class="btn pri" data-act="to-reg">سجّل بياناتك</button></div></div>
-  </div>`;
+  </div></div></div>`;
 }
 function regV(hid) {
   const info = ST.regInfo;
   if (!info) { loadRegInfo(); return `<div class="center-box"><div class="row"><div class="spin"></div><span class="muted">جاري تحميل نموذج التسجيل…</span></div></div>`; }
   const hs = info.halaqat || []; const fixedH = hid && hs.find(h => h.id === hid);
-  return `${banner()}<div class="center-box" style="max-width:560px">
-  <div class="hero-mark">${MARK}<div><h1>تسجيل طالب جديد</h1><div class="muted">${esc(info.center)}${fixedH ? ' · ' + esc(fixedH.name) : ''}</div></div></div>
+  return `${banner()}<div class="auth">${authArt(info.center)}<div class="auth-form"><div class="inner wide">
+  <div><h1>تسجيل طالب جديد</h1><div class="sub">${esc(info.center)}${fixedH ? ' · ' + esc(fixedH.name) : ''}</div></div>
   <ol class="stepper"><li class="on"><b>1</b><span>عبّ البيانات</span></li><li><b>2</b><span>اعتماد الإدارة</span></li><li><b>3</b><span>ادخل للموقع</span></li></ol>
   <form class="card" data-form="register" data-hid="${esc(fixedH ? hid : '')}">
     <label class="fld"><span>اسم الطالب الكامل <i>*</i></span><input id="rg-name" name="name" required autocomplete="name" placeholder="مثال: عبدالله محمد العتيبي"></label>
@@ -477,7 +482,8 @@ function regV(hid) {
     <button class="btn pri big" type="submit">إرسال الطلب</button>
     <div class="small muted">بعد الإرسال تراجع الإدارة طلبك وتعتمده، وبعدها تدخل باسم المستخدم وكلمة المرور.</div>
   </form>
-  <button class="btn ghost" data-act="from-reg">رجوع لتسجيل الدخول</button></div>`;
+  <div class="alt-line"><span class="muted">عندك حساب؟</span><button class="btn sm" data-act="from-reg">تسجيل الدخول</button></div>
+  </div></div></div>`;
 }
 let regLoading = false;
 async function loadRegInfo() {
@@ -487,13 +493,13 @@ async function loadRegInfo() {
 }
 function regDoneV() {
   const c = ST.regCred || {}; const msg = `بيانات دخول ${c.name || ''} في ${(ST.regInfo || {}).center || 'الحلقة'}:\nالرابط: ${location.origin}\nاسم المستخدم: ${c.user || ''}\nكلمة المرور: ${c.pw || ''}`;
-  return `<div class="center-box"><ol class="stepper"><li class="done"><b>1</b><span>عبّ البيانات</span></li><li class="on"><b>2</b><span>اعتماد الإدارة</span></li><li><b>3</b><span>ادخل للموقع</span></li></ol>
-  <div class="hero-mark">${MARK}<h1>وصل طلبك</h1></div>
+  return `<div class="auth">${authArt((ST.regInfo || {}).center || 'حلقات ارتق')}<div class="auth-form"><div class="inner"><ol class="stepper"><li class="done"><b>1</b><span>عبّ البيانات</span></li><li class="on"><b>2</b><span>اعتماد الإدارة</span></li><li><b>3</b><span>ادخل للموقع</span></li></ol>
+  <div><h1>وصل طلبك</h1><div class="sub">جزاك الله خيرًا.</div></div>
   <div class="card" style="display:grid;gap:10px"><div>طلبك الآن عند الإدارة. بعد الاعتماد تدخل بهذي البيانات:</div>
     <dl class="kv"><dt>اسم المستخدم</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.user || '')}</b></dd><dt>كلمة المرور</dt><dd dir="ltr" style="text-align:right"><b>${esc(c.pw || '')}</b></dd></dl>
     <div class="row"><button class="btn" data-act="copy" data-text="${esc(msg)}">نسخ البيانات</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">أرسلها لنفسك بالواتساب</a></div>
     ${supportBtn()}</div>
-  <button class="btn" data-act="from-reg">صفحة الدخول</button></div>`;
+  <button class="btn" data-act="from-reg">صفحة الدخول</button></div></div></div>`;
 }
 
 const TABS = new Proxy({}, { get: () => u => navSections(u).flatMap(x => x.items).map(i => [i.k, i.label, i.count]) });
