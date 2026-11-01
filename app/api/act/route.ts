@@ -5,7 +5,7 @@ import { getSettings, gradeOf, GRADES, localDate, cleanFieldValue, type Field } 
 import { AYAS, ORD, TOTAL, gOf, validRange } from "@/lib/quran";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/push";
-import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny } from "@/lib/video";
+import { videoCfg, videoOn, videoPublic, roomUrl, roomUrlAny, videoUsage } from "@/lib/video";
 import { waCfg, WA_DEF, waSend, waFrame, queueMsg, cancelMsg, processQueue, fillVars, intlPhone, queueWeekly, queueMonthly } from "@/lib/wa";
 import { SN } from "@/lib/quran";
 import { scopeHalqaIds, scopeSpec, sideOf, sideVal, isSuper, genderWhere, type Side } from "@/lib/scope";
@@ -956,6 +956,7 @@ const A: Record<string, H> = {
       provider: ["none", "jaas", "daily"].includes(d.provider) ? d.provider : "none",
       jaasApp: str(d.jaasApp, 200).trim(), jaasKid: str(d.jaasKid, 300).trim(),
       jaasKey: str(d.jaasKey, 6000).trim() || old.jaasKey, dailyKey: str(d.dailyKey, 300).trim() || old.dailyKey,
+      jaasCap: Math.max(1, Math.min(1e6, Math.round(Number(d.jaasCap)) || old.jaasCap)), dailyCap: Math.max(1, Math.min(1e9, Math.round(Number(d.dailyCap)) || old.dailyCap)),
     };
     if (d.clearKeys) { value.jaasKey = ""; value.dailyKey = ""; }
     if (value.provider === "jaas" && !(value.jaasApp && value.jaasKid && value.jaasKey)) fail("عبّ معرّف التطبيق ومعرّف المفتاح والمفتاح الخاص");
@@ -968,6 +969,10 @@ const A: Record<string, H> = {
     await prisma.setting.upsert({ where: { key: "video" }, create: { key: "video", value }, update: { value } });
     await audit(u, "video.save", null, "غرفة الحصة: " + value.provider);
     return videoPublic(value as any);
+  },
+  async "video.usage"(u) {
+    if (!isFull(u)) fail("للمدير الكامل فقط", 403);
+    return videoUsage(await videoCfg());
   },
   async "video.join"(u, b) {
     const c = await videoCfg(); if (!videoOn(c)) fail("غرفة الحصة غير مفعّلة");

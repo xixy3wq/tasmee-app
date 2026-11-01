@@ -2449,22 +2449,46 @@ function videoSettingsHtml() {
   const c = ST.video; const pv = ST.videoPv || c.provider || 'none';
   const radio = (v, t, d) => `<label class="pv ${pv === v ? 'on' : ''}"><input type="radio" name="provider" value="${v}" ${pv === v ? 'checked' : ''} data-change="video-pv"><b>${t}</b><span>${d}</span></label>`;
   return `<form class="card" data-form="video" style="gap:14px"><div class="sec-head"><h2>غرفة الحصة داخل الموقع</h2><span class="chip ${c.on ? 'ok' : ''}">${c.on ? 'مفعّلة' : 'متوقفة'}</span></div>
+    ${videoUseHtml(c)}
     <div class="pv-grid">${radio('none', 'بدون', 'الحصص تفتح برابط Zoom أو Meet مثل الحين')}${radio('jaas', 'Jitsi (JaaS)', 'مجاني لين 25 مستخدم بالشهر بدون حد دقائق')}${radio('daily', 'Daily', 'مجاني لين 10,000 دقيقة مشارك بالشهر')}</div>
     ${pv !== 'none' ? `<div class="small muted">الخدمة اللي تختارها فوق هي الأساسية. إذا حطيت مفاتيح الخدمتين، الثانية تصير احتياط: إذا تعطلت الأساسية يتحول الموقع لها تلقائيًا، والمعلم يقدر ينقل الحصة لها بزر.</div>` : ''}
     <div ${pv !== 'none' ? '' : 'hidden'} class="pv-box"><b>Jitsi (JaaS) ${pv === 'jaas' ? '<span class="chip acc">الأساسية</span>' : c.jaasOn ? '<span class="chip">احتياط</span>' : '<span class="chip">اختياري</span>'}</b><ol class="steps small"><li>سجّل في <a href="https://jaas.8x8.vc" target="_blank" rel="noopener">jaas.8x8.vc</a> (الخطة المجانية).</li><li>من <b>API Keys</b> اضغط <b>Add API key</b> ثم <b>Generate API key pair</b>، ونزّل الملف اللي ينتهي بـ <span dir="ltr">.pk</span>.</li><li>انسخ <b>AppID</b> و <b>Key ID</b> من الصفحة، وافتح ملف المفتاح وانسخ كل اللي فيه.</li></ol>
       <label class="fld"><span>AppID</span><input id="vd-app" name="jaasApp" dir="ltr" value="${esc(c.jaasApp || '')}" placeholder="vpaas-magic-cookie-xxxxxxxx"></label>
       <label class="fld"><span>Key ID</span><input id="vd-kid" name="jaasKid" dir="ltr" value="${esc(c.jaasKid || '')}" placeholder="vpaas-magic-cookie-xxxx/xxxxxx"></label>
-      <label class="fld"><span>المفتاح الخاص ${c.hasJaasKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><textarea id="vd-key" name="jaasKey" dir="ltr" rows="4" placeholder="${c.hasJaasKey ? 'اتركه فاضي عشان يبقى المحفوظ' : '-----BEGIN PRIVATE KEY-----'}"></textarea></label></div>
+      <label class="fld"><span>المفتاح الخاص ${c.hasJaasKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><textarea id="vd-key" name="jaasKey" dir="ltr" rows="4" placeholder="${c.hasJaasKey ? 'اتركه فاضي عشان يبقى المحفوظ' : '-----BEGIN PRIVATE KEY-----'}"></textarea></label>
+      <label class="fld"><span>حد باقتك (مستخدم بالشهر)</span><input name="jaasCap" type="number" min="1" dir="ltr" list="vd-jcaps" value="${c.jaasCap || 25}"><datalist id="vd-jcaps"><option value="25"><option value="300"><option value="1500"><option value="3000"></datalist><small class="muted">المجانية 25، Basic ‏300، Standard ‏1500، Business ‏3000</small></label></div>
     <div ${pv !== 'none' ? '' : 'hidden'} class="pv-box"><b>Daily ${pv === 'daily' ? '<span class="chip acc">الأساسية</span>' : c.dailyOn ? '<span class="chip">احتياط</span>' : '<span class="chip">اختياري</span>'}</b><ol class="steps small"><li>سجّل في <a href="https://dashboard.daily.co" target="_blank" rel="noopener">dashboard.daily.co</a>.</li><li>من القائمة اضغط <b>Developers</b>، وانسخ <b>API key</b> (اضغط على العين عشان يبان، وانسخه كامل).</li><li>الصقه تحت واضغط حفظ.</li></ol>
-      <label class="fld"><span>API key ${c.hasDailyKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><input id="vd-daily" name="dailyKey" dir="ltr" type="password" autocomplete="off" placeholder="${c.hasDailyKey ? 'اتركه فاضي عشان يبقى المحفوظ' : ''}"></label></div>
+      <label class="fld"><span>API key ${c.hasDailyKey ? '<span class="chip ok">محفوظ</span>' : ''}</span><input id="vd-daily" name="dailyKey" dir="ltr" type="password" autocomplete="off" placeholder="${c.hasDailyKey ? 'اتركه فاضي عشان يبقى المحفوظ' : ''}"></label>
+      <label class="fld"><span>حد الدقائق بالشهر</span><input name="dailyCap" type="number" min="1" dir="ltr" value="${c.dailyCap || 10000}"><small class="muted">المجاني 10,000 دقيقة مشارك. إذا عندك ميزانية، حط عدد الدقائق اللي تبي ما تتعداه</small></label></div>
     <div class="row"><button class="btn pri" type="submit">حفظ</button>${c.on ? '<button type="button" class="btn" data-act="video-test">جرّب الغرفة</button>' : ''}${c.jaasOn && c.dailyOn ? '<button type="button" class="btn" data-act="video-test-alt">جرّب الاحتياط</button>' : ''}</div>
     <div class="small muted">المفاتيح تنحفظ في قاعدة البيانات وما تطلع لأحد. لو تبي ترجع لـ Zoom أو Meet اختر «بدون».</div>
   </form>`;
 }
+// شريط الاستهلاك: كم استخدمتوا هالشهر من حد الباقة
+function videoUseHtml(c) {
+  if (!c.jaasOn && !c.dailyOn) return '';
+  if (!ST.videoUse && !ST.videoUseLoading) { ST.videoUseLoading = true; act('video.usage', {}).then(r => { ST.videoUseLoading = false; ST.videoUse = r || {}; render(); }); }
+  const u = ST.videoUse; if (!u) return `<div class="pv-box"><b>الاستهلاك هالشهر</b><div class="row"><div class="spin"></div></div></div>`;
+  const nf = n => Number(n).toLocaleString('ar-SA');
+  const bar = (t, x, unit, hint) => {
+    if (!x) return '';
+    if (x.err) return `<div class="vu"><div class="row" style="justify-content:space-between"><b>${t}</b></div><div class="small" style="color:var(--bad)">ما قدرنا نجيب الاستهلاك: ${esc(x.err)}</div></div>`;
+    const pct = Math.round(x.used / Math.max(1, x.cap) * 100), left = x.cap - x.used;
+    const col = pct >= 100 ? 'var(--bad)' : pct >= 80 ? 'var(--warn)' : 'var(--ok)';
+    return `<div class="vu"><div class="row" style="justify-content:space-between"><b>${t}</b><span class="num">${nf(x.used)} / ${nf(x.cap)} ${unit}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, pct)}%;background:${col}"></div></div>
+      <div class="small" style="color:${col}">${left > 0 ? `باقي ${nf(left)} ${unit} (${nf(100 - Math.min(100, pct))}٪)` : `تعدّيتوا الحد بـ ${nf(-left)} ${unit}`}${pct >= 80 ? ' ⚠️ ' + hint : ''}</div></div>`;
+  };
+  return `<div class="pv-box" style="gap:12px"><div class="row" style="justify-content:space-between"><b>الاستهلاك هالشهر</b><button type="button" class="btn sm" data-act="video-use-refresh">تحديث</button></div>
+    ${bar('Jitsi (JaaS)', u.jaas, 'مستخدم', 'كل شخص جديد يدخل بعد الحد ينحسب عليك زيادة، ارفع الباقة أو خلّ Daily الأساسية')}
+    ${bar('Daily', u.daily, 'دقيقة', 'بعد الحد تنحسب الدقائق بفلوس، خلّ JaaS الأساسية لين يبدأ شهر جديد')}
+    <div class="small muted">JaaS: عدد الأشخاص اللي دخلوا الغرف من أول الشهر (يحسبه الموقع). Daily: دقائق كل المشاركين من حسابك في Daily. الأرقام تقريبية، والفاتورة الرسمية من لوحة كل خدمة.</div></div>`;
+}
+ACT['video-use-refresh'] = () => { ST.videoUse = null; render(); };
 CHG['video-pv'] = el => { ST.videoPv = el.value; render(); };
 FORMS.video = async (f, d) => {
-  const r = await act('video.save', { data: { provider: d.get('provider'), jaasApp: d.get('jaasApp') || '', jaasKid: d.get('jaasKid') || '', jaasKey: d.get('jaasKey') || '', dailyKey: d.get('dailyKey') || '' } }, 'حُفظت إعدادات الغرفة');
-  if (r) { ST.video = r; ST.videoPv = null; clean(); render(); }
+  const r = await act('video.save', { data: { provider: d.get('provider'), jaasApp: d.get('jaasApp') || '', jaasKid: d.get('jaasKid') || '', jaasKey: d.get('jaasKey') || '', dailyKey: d.get('dailyKey') || '', jaasCap: d.get('jaasCap'), dailyCap: d.get('dailyCap') } }, 'حُفظت إعدادات الغرفة');
+  if (r) { ST.video = r; ST.videoPv = null; ST.videoUse = null; clean(); render(); }
 };
 
 /* ================= الدفعة الرابعة: الرسائل، التقويم، التصويت، السلوك، الإدارة ================= */

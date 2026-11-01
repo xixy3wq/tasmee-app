@@ -1,13 +1,16 @@
 import { SignJWT, importPKCS8 } from "jose";
 import { prisma } from "./db";
+import { localDate } from "./settings";
 // غرفة الحصة داخل الموقع: JaaS (من فريق Jitsi) أو Daily.
 // المفاتيح محفوظة في جدول Setting بالمفتاح "video" وما تطلع للواجهة أبد.
 export type VideoCfg = {
   provider: "none" | "jaas" | "daily";
   jaasApp: string; jaasKid: string; jaasKey: string;
   dailyKey: string;
+  /** حد الباقة لشريط الاستهلاك: مستخدمين بالشهر لـ JaaS، ودقائق مشارك بالشهر لـ Daily */
+  jaasCap: number; dailyCap: number;
 };
-export const VIDEO_DEF: VideoCfg = { provider: "none", jaasApp: "", jaasKid: "", jaasKey: "", dailyKey: "" };
+export const VIDEO_DEF: VideoCfg = { provider: "none", jaasApp: "", jaasKid: "", jaasKey: "", dailyKey: "", jaasCap: 25, dailyCap: 10000 };
 export async function videoCfg(): Promise<VideoCfg> {
   const r = await prisma.setting.findUnique({ where: { key: "video" } });
   return { ...VIDEO_DEF, ...((r?.value as any) || {}) };
@@ -22,7 +25,7 @@ export function videoOrder(c: VideoCfg): ("jaas" | "daily")[] {
 }
 export const videoOn = (c: VideoCfg) => videoOrder(c).length > 0;
 /** النسخة اللي تنرسل للمدير: بدون المفاتيح السرية */
-export const videoPublic = (c: VideoCfg) => ({ provider: c.provider, jaasApp: c.jaasApp, jaasKid: c.jaasKid, hasJaasKey: !!c.jaasKey, hasDailyKey: !!c.dailyKey, on: videoOn(c), jaasOn: jaasOk(c), dailyOn: dailyOk(c), order: videoOrder(c) });
+export const videoPublic = (c: VideoCfg) => ({ provider: c.provider, jaasApp: c.jaasApp, jaasKid: c.jaasKid, hasJaasKey: !!c.jaasKey, hasDailyKey: !!c.dailyKey, jaasCap: c.jaasCap, dailyCap: c.dailyCap, on: videoOn(c), jaasOn: jaasOk(c), dailyOn: dailyOk(c), order: videoOrder(c) });
 
 const roomName = (lessonId: string) => "irtaq-" + lessonId.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
@@ -73,8 +76,44 @@ export async function roomUrlAny(c: VideoCfg, lessonId: string, user: { id: stri
   let order = videoOrder(c); if (alt && order.length > 1) order = [order[1], order[0]];
   let lastErr: any = null;
   for (const p of order) {
-    try { return { url: await roomUrl(c, lessonId, user, moderator, 4, p), provider: p, hasAlt: videoOrder(c).length > 1 }; }
+    try { const url = await roomUrl(c, lessonId, user, moderator, 4, p); await trackUse(p, user.id).catch(() => {}); return { url, provider: p, hasAlt: videoOrder(c).length > 1 }; }
     catch (e) { lastErr = e; console.error("video " + p, e); }
   }
   throw lastErr || new Error("غرفة الحصة غير مفعّلة");
+}
+
+// ---------- شريط الاستهلاك ----------
+// JaaS تحسب كل شخص دخل ولو مرة بالشهر، فنسجّل بأنفسنا مين دخل غرفها هالشهر.
+// Daily تحسب الدقائق، ونجيبها من حسابهم مباشرة.
+const useKey = () => "videoUse:" + localDate().slice(0, 7);
+async function trackUse(p: "jaas" | "daily", userId: string) {
+  if (p !== "jaas") return;
+  const key = useKey(); const row = await prisma.setting.findUnique({ where: { key } });
+  const v: any = { ...((row?.value as any) || {}) }; const ids: string[] = v.jaas || [];
+  if (ids.includes(userId)) return;
+  v.jaas = [...ids, userId];
+  await prisma.setting.upsert({ where: { key }, create: { key, value: v }, update: { value: v } });
+}
+async function dailyMinutes(key: string) {
+  // من أول الشهر بتوقيت المنصة، وكل مشارك بحسبة Daily: الدقيقة الناقصة تنحسب كاملة
+  const off = Number(process.env.APP_TZ_OFFSET_MIN ?? 180);
+  const start = Math.floor((Date.parse(localDate().slice(0, 8) + "01T00:00:00Z") - off * 60000) / 1000);
+  let sec = 0, mins = 0, after = "";
+  for (let i = 0; i < 50; i++) {
+    const r = await fetch(`https://api.daily.co/v1/meetings?timeframe_start=${start}&limit=100${after ? "&starting_after=" + after : ""}`, { headers: { Authorization: "Bearer " + key }, signal: AbortSignal.timeout(12000) });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || j.info || "HTTP " + r.status);
+    const data: any[] = j.data || [];
+    for (const m of data) for (const p of m.participants || []) { const d = Number(p.duration || 0); sec += d; mins += Math.ceil(d / 60); }
+    if (data.length < 100) break;
+    after = data[data.length - 1].id;
+  }
+  return { mins, sec };
+}
+export async function videoUsage(c: VideoCfg) {
+  const key = useKey(); const row = await prisma.setting.findUnique({ where: { key } });
+  const out: any = { month: key.slice(10) };
+  if (jaasOk(c)) out.jaas = { used: (((row?.value as any) || {}).jaas || []).length, cap: c.jaasCap };
+  if (dailyOk(c)) { try { out.daily = { used: (await dailyMinutes(c.dailyKey)).mins, cap: c.dailyCap }; } catch (e: any) { out.daily = { err: String(e?.message || e).slice(0, 120), cap: c.dailyCap }; } }
+  return out;
 }
