@@ -370,7 +370,8 @@ const STU_TOOLS: { spec: ToolSpec; ok: (c: SCtx) => boolean; build: (a: any, c: 
 ];
 
 // إذا قال إنه سوّى شي وهو ما استخدم أداة، نطلب منه مرة ثانية يستخدمها (بدل ما يوهم المستخدم)
-const CLAIM = /(أضفت|ألغيت|عدّلت|عدلت|غيّرت|غيرت|أرسلت|نشرت|حضّرت|نقلت|اعتمدت|تم (ال)?(إضافة|تعديل|تغيير|إرسال|نشر|إلغاء|تسجيل|اعتماد))/;
+// بداية كلمة فقط: «ما تحضّرت» أو «تعدّلت» في جواب استعلام مو ادعاء تنفيذ، وكانت تخليه يرد «ما عندي أداة»
+const CLAIM = /(^|[\s،.:!؟"«(])(أضفت|ألغيت|عدّلت|عدلت|غيّرت|غيرت|أرسلت|نشرت|حضّرت|نقلت|اعتمدت|تم (ال)?(إضافة|تعديل|تغيير|إرسال|نشر|إلغاء|تسجيل|اعتماد))/;
 async function llmActs(system: string, messages: ChatMsg[], specs: ToolSpec[], cfg: any) {
   let out = await callLlm(system, messages, specs, cfg);
   if (specs.length && !(out.calls || []).length && CLAIM.test(out.text || "")) {
@@ -514,23 +515,32 @@ export async function POST(req: Request) {
       return `${st.name} | ${hName(st.halqaId)} | حضور ${p}/${ls.length}${a ? ` غاب ${a}` : ""} | تسميع ${rs.length}${tot > rs.length ? ` (الكل ${tot})` : ""}${last ? ` آخره ${last.date} ${recLine(last)}` : ""}${re ? ` | إعادات ${re}` : ""} | ${mem || "المحفوظ غير مسجل"} | خطة ${plTxt} | آخر دخول ${st.lastSeenAt ? st.lastSeenAt.toISOString().slice(0, 10) : "أبد"}${ph}`;
     });
     const otherStuds = ctx.allStuds.filter((x) => x.status !== "active");
-    const lessonLines = ctx.lessons.filter((l) => l.date >= localDate(-7) && l.date <= localDate(10)).slice(0, 70).map((l) => {
-      const att = (l.att as any) || {}; const n = Object.values(att).length; const ab = Object.entries(att).filter(([, v]) => v === "a").map(([k]) => ctx.studs.find((x) => x.id === k)?.name.split(" ")[0]).filter(Boolean);
-      return `${l.date} ${wd(l.date)} ${l.time} ${hName(l.halqaId)}${l.cancelled ? " (ملغاة)" : ""}${n ? ` — محضّر ${n}${ab.length ? "، غاب: " + ab.join("، ") : ""}` : l.date <= today && !l.cancelled ? " — ما تحضّرت" : ""}`;
-    });
+    // الحضور مفصّل لكل حصة عشان يجاوب «كم حضر اليوم» بدون أداة: حاضر/متأخر/غائب/مستأذن، ومين ما تحضّر، ومين دخل الغرفة
+    const attTxt = (l: any) => {
+      const att = (l.att as any) || {}; const hs = ctx.studs.filter((x) => x.halqaId === l.halqaId); const fn = (id: string) => ctx.studs.find((x) => x.id === id)?.name.split(" ")[0];
+      const parts = ["p", "l", "a", "e"].map((v) => { const ids = Object.keys(att).filter((k) => att[k] === v); return ids.length ? `${ATT_AR[v]} ${ids.length}${v !== "p" && ids.length <= 8 ? " (" + ids.map(fn).filter(Boolean).join("، ") + ")" : ""}` : ""; }).filter(Boolean);
+      const un = hs.filter((x) => !att[x.id]); const inRoom = Object.keys((l.arr as any) || {}).length;
+      if (!parts.length) return l.date <= today && !l.cancelled ? ` — ما تحضّرت (طلابها ${hs.length}${inRoom ? `، دخل الغرفة ${inRoom}` : ""})` : "";
+      return ` — من ${hs.length}: ${parts.join("، ")}${un.length ? `، ما تحضّر ${un.length}${un.length <= 8 ? " (" + un.map((x) => x.name.split(" ")[0]).join("، ") + ")" : ""}` : ""}${inRoom ? `، دخل الغرفة ${inRoom}` : ""}`;
+    };
+    const lessonLines = ctx.lessons.filter((l) => l.date >= localDate(-7) && l.date <= localDate(10)).slice(0, 70).map((l) => `${l.date} ${wd(l.date)} ${l.time} ${hName(l.halqaId)}${l.cancelled ? " (ملغاة)" : ""}${attTxt(l)}`);
+    const todayLs = ctx.lessons.filter((l) => l.date === today && !l.cancelled);
+    const todayTot = (v: string[]) => todayLs.reduce((n, l) => n + Object.values((l.att as any) || {}).filter((x: any) => v.includes(x)).length, 0);
+    const todayLine = todayLs.length ? `حضور اليوم (${today}) بالمجموع: ${todayLs.length} حصة، حاضر ${todayTot(["p"])}، متأخر ${todayTot(["l"])}، غائب ${todayTot(["a"])}، مستأذن ${todayTot(["e"])}، من أصل ${todayLs.reduce((n, l) => n + ctx.studs.filter((x) => x.halqaId === l.halqaId).length, 0)} طالب. التفصيل لكل حلقة في «الحصص».` : `اليوم (${today}) ما فيه حصص.`;
     const roleTxt = u!.role === "admin" ? (u!.perms ? `مشرف إداري (صلاحياته: ${(u!.perms as string[]).filter((x) => PERM_AR[x]).map((x) => PERM_AR[x]).join("، ")}${ctx.sc ? "، على حلقات محددة" : ""})` : "المدير العام") : `معلم${u!.canPlan ? " (يعدّل الخطط)" : ""}`;
     const system = [
       `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بلهجة سعودية مهذبة ومختصرة.`,
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
       `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
-      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتحويل حصص موجودة لحضوري أو عن بعد أو هجين استخدم set_lessons_mode، وللنوع الدائم للحلقة set_halaqat_mode. لإلغاء أو استرجاع حصص فترة cancel_lessons. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة المتابعة (مين غاب، مين يحتاج متابعة، وش وضع طالب، كم حافظ) جاوب من البيانات بالأرقام وباختصار. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
+      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتحويل حصص موجودة لحضوري أو عن بعد أو هجين استخدم set_lessons_mode، وللنوع الدائم للحلقة set_halaqat_mode. لإلغاء أو استرجاع حصص فترة cancel_lessons. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة الاستعلام والمتابعة (كم حضر اليوم أو أي يوم، مين غاب، مين تأخر، مين ما تحضّر، مين يحتاج متابعة، وش وضع طالب، كم حافظ) ما تحتاج أداة: كل البيانات معطاة لك تحت («حضور اليوم» و«الحصص» و«الطلاب»)، فجاوب منها مباشرة بالأرقام وباختصار، ولا تقول أبدًا إنه ما عندك أداة أو بيانات للحضور. «الحضور» = حاضر + متأخر. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
       ctx.view === "f" ? `أنت الحين في قسم البنات (الدار النسائية)، منفصل تمامًا عن البنين.${!(u!.role === "admin" && !Array.isArray(u!.perms)) ? " والمستخدمة من منسوبات القسم: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.halaqat.some((h: any) => h.gender === "f") ? `الحلقات النسائية: تكلّم عن طالباتها بصيغة المؤنث، وأي رسالة لأولياء أمورهن تكون بصيغة المؤنث (ابنتكم، بارك الله فيها).${u!.role === "teacher" && ctx.halaqat.length && ctx.halaqat.every((h: any) => h.gender === "f") ? " والمستخدمة معلمة: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""}${(h as any).gender === "f" ? " · نسائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
       ctx.pending.length ? `طلبات التسجيل المعلّقة: ${ctx.pending.map((p: any) => `${p.name}${p.reqHalqaId ? " (طلب حلقة " + hName(p.reqHalqaId) + ")" : ""}`).join("، ")}` : "",
-      `الحصص (آخر أسبوع والقادمة): ${lessonLines.join("؛ ") || "لا يوجد"}`,
+      todayLine,
+      `الحصص (آخر أسبوع والقادمة) مع حضور كل حصة: ${lessonLines.join("؛ ") || "لا يوجد"}`,
       `الإجازات: ${(s.holidays || []).filter((h) => h.to >= today).map((h) => `${h.name} ${h.from}→${h.to}`).join("؛ ") || "لا يوجد"}`,
       `الاختبارات والمناسبات: ${((s as any).events || []).filter((e: any) => e.date >= today).map((e: any) => `${e.date} ${e.name}`).join("؛ ") || "لا يوجد"}`,
       ctx.polls.length ? `التصويتات المفتوحة: ${ctx.polls.map((p) => `«${p.question}»${p.halqaId ? " (" + hName(p.halqaId) + ")" : ""}`).join("؛ ")}` : "",
