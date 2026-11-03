@@ -248,6 +248,7 @@ const me = () => { const u = ST.meId && S.users[ST.meId]; return u ? { ...u, id:
 const myHalaqat = u => L('halaqat').filter(h => (u.role === 'admin' && (!ST.branch || h.branch === ST.branch)) || (u.role !== 'admin' && (h.teacherId === u.id || h.sub))).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 const halqaName = id => (S.halaqat[id] && S.halaqat[id].name) || '—';
 const studentsOf = hid => L('users').filter(u => u.role === 'student' && u.status === 'active' && u.halqaId === hid).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+const ownHalaqat = u => L('halaqat').filter(h => h.teacherId === u.id);
 const canPlan = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
 const canAutoU = u => u.role === 'admin' || (u.role === 'teacher' && !!u.canPlan);
 const halqaDays = hid => { const h = S.halaqat[hid]; return (h && h.days && h.days.length) ? h.days : SET().days; };
@@ -689,7 +690,7 @@ function studentsV(u) {
   if (ST.halqa) list = list.filter(x => x.halqaId === ST.halqa);
   const q = (ST.q || '').trim(); if (q) list = list.filter(x => (x.name || '').includes(q) || (x.username || '').toLowerCase().includes(q.toLowerCase()));
   list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
-  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row"><button class="btn" data-act="cards">🪪 بطاقات للطباعة</button>${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn" data-act="import">استيراد</button><button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
+  return `<div class="sec-head"><h1>${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</h1><div class="row"><button class="btn" data-act="cards">🪪 بطاقات للطباعة</button>${canPlan(u) && canAutoU(u) ? '<button class="btn" data-act="tpl-apply">تطبيق قالب خطة</button>' : ''}${u.role === 'admin' ? '<button class="btn" data-act="import">استيراد</button><button class="btn pri" data-act="add-student">إضافة طالب</button>' : ownHalaqat(u).length ? '<button class="btn pri" data-act="add-student">إضافة طالب</button>' : ''}</div></div>
   ${nArch || nIn ? `<div class="row">${nArch ? `<button class="btn sm ${ST.arch ? '' : 'pri'}" data-act="arch" data-v="0">الحاليون</button><button class="btn sm ${ST.arch ? 'pri' : ''}" data-act="arch" data-v="1">المؤرشفون (${nArch})</button>` : ''}${nIn ? `<button class="btn sm ${ST.inact ? 'pri' : ''}" data-act="inact">منقطعين أسبوعين (${nIn})</button>` : ''}</div>` : ''}
   <div class="row"><input id="st-q" placeholder="ابحث بالاسم أو اسم المستخدم" value="${esc(ST.q)}" data-input="search" style="flex:1 1 220px">
   ${hs.length > 1 ? `<select id="st-h" data-change="filter-h" style="flex:0 1 200px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${ST.halqa === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}</div>
@@ -1586,7 +1587,7 @@ function issueModal(sid) {
 }
 
 function studentModal(st) {
-  const fields = SET().fields; const hs = L('halaqat'); const isNew = !st;
+  const fields = SET().fields; const u = me(); const tch = u.role !== 'admin'; const hs = tch ? ownHalaqat(u) : L('halaqat'); const isNew = !st;
   openModal(`${dlgHead(isNew ? 'إضافة طالب' : 'تعديل بيانات الطالب')}
   <form data-form="student" data-id="${st ? st.id : ''}">
     <label class="fld"><span>الاسم الكامل</span><input name="name" value="${esc(st ? st.name : '')}" required></label>
@@ -1594,8 +1595,8 @@ function studentModal(st) {
     <label class="fld"><span>${isNew ? 'كلمة المرور' : 'كلمة مرور جديدة (اتركها فاضية)'}</span><input name="password" type="password" ${isNew ? 'required minlength="4"' : ''} autocomplete="new-password"></label></div>
     <div class="fgrid">${fields.map(f => fieldHtml(f, st ? st[f.k] : '', 'sm-', { forceReq: false })).join('')}</div>
     <div class="fgrid"><label class="fld"><span>الحلقة</span><select name="halqaId" required>${hs.map(h => `<option value="${h.id}" ${st && st.halqaId === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select></label>
-    <label class="fld"><span>الحالة</span><select name="status"><option value="active" ${!st || st.status === 'active' ? 'selected' : ''}>نشط</option><option value="disabled" ${st && st.status === 'disabled' ? 'selected' : ''}>موقوف</option><option value="archived" ${st && st.status === 'archived' ? 'selected' : ''}>مؤرشف</option></select></label></div>
-    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${st ? `<button type="button" class="btn danger" data-act="del-user" data-id="${st.id}">حذف الطالب</button>` : ''}</div>
+    ${tch ? '' : `<label class="fld"><span>الحالة</span><select name="status"><option value="active" ${!st || st.status === 'active' ? 'selected' : ''}>نشط</option><option value="disabled" ${st && st.status === 'disabled' ? 'selected' : ''}>موقوف</option><option value="archived" ${st && st.status === 'archived' ? 'selected' : ''}>مؤرشف</option></select></label>`}</div>
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${st && !tch ? `<button type="button" class="btn danger" data-act="del-user" data-id="${st.id}">حذف الطالب</button>` : ''}</div>
   </form>`);
 }
 function teacherModal(t) {
@@ -1810,7 +1811,7 @@ const ACT = {
   'copy-reg': el => copyText(regLink(el.dataset.h)),
   'approve': el => { const id = el.dataset.id; act('user.approve', { id, halqaId: $('#ap-h-' + id).value }, 'تم اعتماد الطالب'); },
   'reject': el => confirmBox('تحذف طلب التسجيل؟', 'حذف الطلب', () => act('user.delete', { id: el.dataset.id }, 'حُذف الطلب')),
-  'add-student': () => { if (!L('halaqat').length) return toast('أنشئ حلقة أولًا'); studentModal(null); },
+  'add-student': () => { if (!(me().role === 'admin' ? L('halaqat') : ownHalaqat(me())).length) return toast('أنشئ حلقة أولًا'); studentModal(null); },
   'edit-student': el => studentModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
   'del-user': el => confirmBox('تحذف هذا الحساب نهائيًا مع سجله؟', 'حذف', async () => { if (await act('user.delete', { id: el.dataset.id }, 'حُذف الحساب')) { if (ST.view === 'student') go('students'); } }),
   'add-teacher': () => teacherModal(null),

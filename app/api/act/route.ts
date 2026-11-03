@@ -235,8 +235,14 @@ const A: Record<string, H> = {
     else fail("طلب غير صحيح");
   },
   async "student.save"(u, b) {
-    needAdmin(u, "students");
     const d = b.data || {}; const id = str(b.id) || undefined;
+    // المعلم يضيف طالب جديد في حلقته بس، والتعديل للمدير
+    if (u.role === "teacher") {
+      if (id) fail("تعديل بيانات الطالب للمدير", 403);
+      const h = await prisma.halqa.findUnique({ where: { id: str(d.halqaId) } });
+      if (!h || h.teacherId !== u.id) fail("هذه الحلقة ليست من حلقاتك", 403);
+      d.status = "active";
+    } else needAdmin(u, "students");
     const username = cleanUsername(d.username); await uniqueUsername(username, id);
     const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
     const halqaId = str(d.halqaId); if (!(await prisma.halqa.findUnique({ where: { id: halqaId } }))) fail("اختر الحلقة");
@@ -258,6 +264,7 @@ const A: Record<string, H> = {
     } else {
       if (!pw) fail("اكتب كلمة المرور");
       await prisma.user.create({ data: { ...data, role: "student", plan: defPlan(), approvedAt: new Date() } });
+      if (u.role === "teacher") await audit(u, "student.add", null, `إضافة الطالب ${name}`);
     }
   },
   async "teacher.save"(u, b) {
