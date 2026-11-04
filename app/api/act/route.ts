@@ -205,14 +205,18 @@ const A: Record<string, H> = {
     await audit(u, "approve", s!.id, `اعتماد ${s!.name}`);
   },
   async "user.delete"(u, b) {
-    needAdmin(u);
     const id = str(b.id);
     if (id === u.id) fail("ما تقدر تحذف حسابك");
     const t = await prisma.user.findUnique({ where: { id } });
+    if (u.role === "teacher") {
+      // المعلم يحذف طلاب حلقاته بس
+      const h = t?.halqaId ? await prisma.halqa.findUnique({ where: { id: t.halqaId } }) : null;
+      if (!t || t.role !== "student" || h?.teacherId !== u.id) fail("هذا الطالب ليس من حلقاتك", 403);
+    } else needAdmin(u);
     if (!t) return;
     if (t.role === "admin" && !isFull(u)) fail("حذف المدراء للمدير الكامل فقط", 403);
     if (t.role === "admin" && !t.perms) fail("ما يمكن حذف مدير كامل من هنا");
-    needAdmin(u, t.role === "teacher" ? "teachers" : t.status === "pending" ? "req" : t.role === "student" ? "students" : undefined);
+    if (u.role !== "teacher") needAdmin(u, t.role === "teacher" ? "teachers" : t.status === "pending" ? "req" : t.role === "student" ? "students" : undefined);
     await needUserSide(u, t);
     await audit(u, "user.delete", id, `حذف ${t.name}`);
     await prisma.$transaction([
@@ -236,12 +240,16 @@ const A: Record<string, H> = {
   },
   async "student.save"(u, b) {
     const d = b.data || {}; const id = str(b.id) || undefined;
-    // المعلم يضيف طالب جديد في حلقته بس، والتعديل للمدير
+    // المعلم يضيف ويعدّل طلاب حلقاته بس، والحالة (إيقاف/أرشفة) للمدير
     if (u.role === "teacher") {
-      if (id) fail("تعديل بيانات الطالب للمدير", 403);
       const h = await prisma.halqa.findUnique({ where: { id: str(d.halqaId) } });
       if (!h || h.teacherId !== u.id) fail("هذه الحلقة ليست من حلقاتك", 403);
-      d.status = "active";
+      if (id) {
+        const ex = await prisma.user.findUnique({ where: { id } });
+        const eh = ex?.halqaId ? await prisma.halqa.findUnique({ where: { id: ex.halqaId } }) : null;
+        if (!ex || ex.role !== "student" || eh?.teacherId !== u.id) fail("هذا الطالب ليس من حلقاتك", 403);
+        d.status = ex!.status;
+      } else d.status = "active";
     } else needAdmin(u, "students");
     const username = cleanUsername(d.username); await uniqueUsername(username, id);
     const name = str(d.name, 120); if (!name) fail("اكتب الاسم");
@@ -266,6 +274,7 @@ const A: Record<string, H> = {
       await prisma.user.create({ data: { ...data, role: "student", plan: defPlan(), approvedAt: new Date() } });
       if (u.role === "teacher") await audit(u, "student.add", null, `إضافة الطالب ${name}`);
     }
+    if (id && u.role === "teacher") await audit(u, "student.edit", id, `تعديل بيانات الطالب ${name}`);
   },
   async "teacher.save"(u, b) {
     needAdmin(u, "teachers");
