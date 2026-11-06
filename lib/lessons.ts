@@ -1,14 +1,17 @@
 import { prisma } from "./db";
-import { getSettings, isHoliday, localDate, weekday } from "./settings";
+import { getSettings, isHoliday, localDate, weekday, type Settings } from "./settings";
 
 type H = { id: string; auto: boolean; days: number[]; time: string };
+/** الجدول الفعلي للحلقة: «الحصص التلقائية لكل الحلقات» من الإعدادات يشغّلها للكل، والحلقة بدون أيام تاخذ أيام الدوام الافتراضية */
+export const autoOf = (h: H, s: Settings) => ({ auto: !!h.auto || !!(s as any).autoAll, days: h.days?.length ? h.days : s.days || [] });
 /**
  * يخلي الحصص التلقائية القادمة مطابقة لجدول الحلقة: الوقت والأيام وتشغيل الجدول الثابت.
  * ما يلمس حصة بدأها المعلم، أو فيها تحضير أو دخول أو تسميع أو معلم احتياط، أو عدّلها أحد يدويًا.
  * create: ينشئ حصص الأسبوع الجاي على الجدول الجديد مباشرة.
  */
-export async function syncAutoLessons(h: H, opts: { create?: boolean } = {}) {
+export async function syncAutoLessons(h0: H, opts: { create?: boolean; s?: Settings } = {}) {
   const today = localDate();
+  const s = opts.s || (await getSettings()); const h = { ...h0, ...autoOf(h0, s) };
   const ls = await prisma.lesson.findMany({ where: { halqaId: h.id, autoKey: { not: null }, date: { gte: today }, custom: false, teacherAt: null } });
   let dropped = 0, fixed = 0;
   if (ls.length) {
@@ -25,7 +28,7 @@ export async function syncAutoLessons(h: H, opts: { create?: boolean } = {}) {
     if (fix.length) { await prisma.lesson.updateMany({ where: { id: { in: fix.map((l) => l.id) } }, data: { time: h.time, reminded: false, lateAlerted: false } }); fixed = fix.length; }
   }
   if (opts.create && h.auto && h.days.length) {
-    const s = await getSettings(); const rows: any[] = [];
+    const rows: any[] = [];
     for (let i = 0; i < 7; i++) { const date = localDate(i); if (h.days.includes(weekday(date)) && !isHoliday(s, date)) rows.push({ halqaId: h.id, date, time: h.time || "", autoKey: h.id + "_" + date }); }
     if (rows.length) await prisma.lesson.createMany({ data: rows, skipDuplicates: true });
   }

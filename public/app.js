@@ -772,7 +772,7 @@ function halaqatV() {
   ${hs.length ? `<div class="grid2">${hs.map(h => { const t = h.teacherId && S.users[h.teacherId]; return `<section class="card" style="display:grid;gap:10px">
     <div class="sec-head"><div><h2>${esc(h.name)}</h2>${h.branch ? `<span class="chip">${esc(h.branch)}</span>` : ''}</div><button class="btn sm" data-act="edit-halqa" data-id="${h.id}">تعديل</button></div>
     <dl class="kv"><dt>المعلم</dt><dd>${t ? esc(t.name) : '<span class="chip warn">غير مسند</span>'}</dd><dt>أيام الدوام</dt><dd>${halqaDays(h.id).map(d => DAYN[d]).join('، ')}</dd><dt>الوقت</dt><dd>${h.time ? fmtTime(h.time) : '—'}</dd>
-    <dt>الجدول</dt><dd>${h.auto ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
+    <dt>الجدول</dt><dd>${h.auto || SET().autoAll ? '<span class="chip ok">ثابت، تنشأ الحصص لحالها</span>' : '<span class="chip">يدوي</span>'}</dd><dt>الرابط</dt><dd>${h.link ? `<span dir="ltr" class="small">${esc(h.link)}</span>` : '—'}</dd><dt>الطلاب</dt><dd class="num">${studentsOf(h.id).length}</dd></dl>
     <div class="row"><button class="btn sm" data-act="copy-reg" data-h="${h.id}">نسخ رابط التسجيل</button><button class="btn sm" data-act="handover" data-h="${h.id}">ملخص التسليم</button><button class="btn ghost sm" data-act="copy" data-text="https://${location.host}/api/ics/${h.id}.ics">رابط التقويم</button></div></section>`; }).join('')}</div>` : '<div class="empty">ما فيه حلقات. أنشئ أول حلقة وحدد معلمها وأيام دوامها.</div>'}`;
 }
 
@@ -829,6 +829,7 @@ function settingsV() {
     </div>
     <div class="set-pane" ${P('days')}>${H('الدوام والحضور', 'الأيام الافتراضية للحلقات وفترات الدراسة')}
     <div class="fld"><span>أيام الدوام الافتراضية</span><div class="days">${DAYN.map((d, i) => `<label><input type="checkbox" id="sg-day-${i}" name="day" value="${i}" ${st.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div></div>
+    <div class="fld"><input type="hidden" name="autoAll-f" value="1"><label class="check"><input type="checkbox" id="sg-autoall" name="autoAll" ${st.autoAll ? 'checked' : ''}> الحصص التلقائية لكل الحلقات</label><span class="hint">حصة كل يوم دوام تنشأ لحالها في كل الحلقات (حتى الجديدة)، والمعلم يفتحها ويحضّر على طول بدون ما ينشئ حصة. الحلقة اللي ما لها أيام تاخذ أيام الدوام الافتراضية.</span></div>
     <label class="fld" style="max-width:320px"><span>تنبيه الغياب المتكرر بعد كم غياب متتالي</span><input id="sg-abs" name="absentAlert" type="number" min="2" max="20" value="${st.absentAlert || 3}"></label>
     ${(() => { const o = { mode: 'prayer', prayer: 'asr', after: 90, time: '17:00', ...(st.teacherOut || {}) }; const PR = { fajr: 'الفجر', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' }; const end = (S.dayEnd || {})._; const pr = S.pray || {};
       return `<div class="fld tout-set"><span>وقت انصراف المعلمين</span>
@@ -1624,7 +1625,7 @@ function halqaModal(h) {
     <div class="fgrid"><label class="fld"><span>نوع الحلقة</span><select name="mode">${Object.entries(MODE_L).map(([k, l]) => `<option value="${k}" ${(h ? h.mode || 'onsite' : 'onsite') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label class="fld"><span>مكانها في الجامع (اختياري)</span><input name="place" value="${esc(h ? h.place || '' : '')}" placeholder="مثال: القبو"></label></div>
     ${branches().length ? `<label class="fld"><span>المجمع</span><select name="branch"><option value="">—</option>${branches().map(b => `<option ${h ? (h.branch === b ? 'selected' : '') : (ST.branch === b ? 'selected' : '')}>${esc(b)}</option>`).join('')}</select></label>` : ''}
     <label class="fld"><span>رابط الحلقة الثابت (للحصص عن بعد: Zoom أو Meet)</span><input name="link" type="url" dir="ltr" value="${esc(h ? h.link : '')}" placeholder="https://"></label>
-    <label class="check"><input type="checkbox" name="auto" ${!h || h.auto ? 'checked' : ''}> جدول ثابت: تنشأ الحصص لحالها حسب أيام الدوام والوقت</label>
+    <label class="check"><input type="checkbox" name="auto" ${!h || h.auto ? 'checked' : ''}> جدول ثابت: تنشأ الحصص لحالها حسب أيام الدوام والوقت</label>${SET().autoAll ? '<span class="hint">«الحصص التلقائية لكل الحلقات» شغّالة من الإعدادات، فحصص هذي الحلقة تنشأ لحالها في كل الأحوال.</span>' : ''}
     <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${h ? `<button type="button" class="btn danger" data-act="del-halqa" data-id="${h.id}">حذف الحلقة</button>` : ''}</div>
   </form>`);
 }
@@ -1910,7 +1911,7 @@ function settingsData(f) {
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page', 'absent', 'bad', 'streak10', 'streak30'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
   const to0 = st.teacherOut || {}; const teacherOut = { mode: d.get('to-mode') || to0.mode || 'prayer', prayer: d.get('to-prayer') || to0.prayer || 'asr', after: d.has('to-after') ? +d.get('to-after') || 0 : (to0.after ?? 90), time: d.get('to-time') || to0.time || '17:00' };
-  return { teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
+  return { teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, autoAll: d.has('autoAll-f') ? !!d.get('autoAll') : !!st.autoAll, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {

@@ -5,7 +5,7 @@ import { videoCfg, videoOn } from "@/lib/video";
 import { scopeHalqaIds, viewSide, sideVal, isSuper, genderWhere } from "@/lib/scope";
 import { aiCfg, aiOn } from "@/lib/ai";
 import { checkLate } from "@/lib/late";
-import { syncAutoLessons } from "@/lib/lessons";
+import { autoOf, syncAutoLessons } from "@/lib/lessons";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getSettings, isHoliday, localDate, weekday, weekStart, type Settings } from "@/lib/settings";
@@ -38,12 +38,13 @@ async function ensureLessons(halaqat: any[], s: Settings) {
   const due = halaqat.filter((h) => now - (g.lastEnsure![h.id] || 0) >= 10 * 60000);
   due.forEach((h) => { g.lastEnsure![h.id] = now; });
   // الحصص الجاية تتبع جدول الحلقة لو تغيّر وقتها أو أيامها
-  await Promise.all(due.map((h) => syncAutoLessons(h).catch(() => null)));
+  await Promise.all(due.map((h) => syncAutoLessons(h, { s }).catch(() => null)));
   for (const h of due) {
-    if (!h.auto || !h.days?.length) continue;
+    const a = autoOf(h, s);
+    if (!a.auto || !a.days.length) continue;
     for (let i = 0; i < 7; i++) {
       const date = localDate(i);
-      if (!h.days.includes(weekday(date)) || isHoliday(s, date)) continue;
+      if (!a.days.includes(weekday(date)) || isHoliday(s, date)) continue;
       rows.push({ halqaId: h.id, date, time: h.time || "", autoKey: h.id + "_" + date });
     }
   }

@@ -51,6 +51,8 @@ export const DEF = {
   points: { present: 2, late: 1, ex: 3, vg: 2, gd: 1, page: 2, absent: 0, bad: 0, streak10: 5, streak30: 15 },
   /// يُحسب الطالب متأخر إذا وصل بعد بداية الحلقة بكم دقيقة
   lateMin: 10,
+  /// الحصص التلقائية لكل الحلقات: تنشأ حصة كل يوم دوام لحالها حتى لو الحلقة ما عليها «جدول ثابت»
+  autoAll: false,
   /// مواقع الجوامع لتسجيل حضور المعلم: { "<المجمع>" أو "_" للأساسي: { lat, lng, radius } }
   places: {} as Record<string, { lat: number; lng: number; radius: number }>,
   /// وقت انصراف المعلمين: بعد أذان صلاة بمدة (prayer)، أو وقت ثابت (time)، أو بدون (off). وبعده ينسجّل خروج المعلم لحاله

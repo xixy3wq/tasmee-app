@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getSettings, isHoliday, localDate, weekday } from "@/lib/settings";
+import { autoOf } from "@/lib/lessons";
 export const dynamic = "force-dynamic";
 // تقويم الحلقة بصيغة ICS للإضافة لتقويم الجوال (يتحدث تلقائيًا)
 const esc = (s: string) => s.replace(/[\;,]/g, (m) => "\\" + m).replace(/\n/g, "\\n");
@@ -13,10 +14,11 @@ export async function GET(_req: Request, { params }: { params: { hid: string } }
   const byDate = new Map(lessons.map((l) => [l.date, l]));
   const events: { date: string; time: string; id: string; note: string; link: string }[] = [];
   lessons.filter((l) => !l.cancelled).forEach((l) => events.push({ date: l.date, time: l.time || h.time, id: l.id, note: l.note, link: l.link || h.link }));
-  if (h.auto && h.days.length && h.time) {
+  const a = autoOf(h, s);
+  if (a.auto && a.days.length && h.time) {
     for (let i = 0; i <= 60; i++) {
       const d = localDate(i);
-      if (byDate.has(d) || !h.days.includes(weekday(d)) || isHoliday(s, d)) continue;
+      if (byDate.has(d) || !a.days.includes(weekday(d)) || isHoliday(s, d)) continue;
       events.push({ date: d, time: h.time, id: "auto-" + hid + "-" + d, note: "", link: h.link });
     }
   }
