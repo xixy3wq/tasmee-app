@@ -8,12 +8,12 @@ const GROUPS = ["core", "ask", "spare"];
 
 async function ownMajlis(userId: string, id: string) {
   const m = await prisma.majlis.findFirst({ where: { id: String(id || ""), userId }, select: { id: true } });
-  if (!m) fail("ما لقيت هذا المجلس", 404);
+  if (!m) fail("لم يُعثر على هذا المجلس", 404);
   return m!;
 }
 async function ownQuestion(userId: string, id: string) {
   const q = await prisma.majlisQ.findFirst({ where: { id: String(id || ""), majlis: { userId } }, select: { id: true } });
-  if (!q) fail("ما لقيت هذا السؤال", 404);
+  if (!q) fail("لم يُعثر على هذا السؤال", 404);
   return q!;
 }
 function metaFields(f: any) {

@@ -75,13 +75,13 @@ export async function callLlm(system: string, history: ChatMsg[], tools: ToolSpe
       catch (e: any) {
         lastErr = e; const st = Number(e.status || 0);
         if (st === 400 && /api key|API_KEY/i.test(e.message)) throw new Error("مفتاح Gemini غير صحيح، تأكد منه في الإعدادات ← المساعد الذكي");
-        if (st === 403) throw new Error("مفتاح Gemini ما له صلاحية، سوّ مفتاح جديد من aistudio.google.com");
+        if (st === 403) throw new Error("مفتاح Gemini ليست له صلاحية، أنشئ مفتاحًا جديدًا من aistudio.google.com");
         if (!(busyErr(st, String(e.message)) || st === 404)) break; // خطأ غير الزحمة: لا تكرر
       }
     }
     if (!c.claude) {
       const m = String(lastErr?.message || "");
-      throw new Error(busyErr(Number(lastErr?.status || 0), m) ? "خدمة الذكاء الاصطناعي مزحومة الحين، جرّب بعد دقيقة" : "تعذّر الرد من Gemini: " + m.slice(0, 160));
+      throw new Error(busyErr(Number(lastErr?.status || 0), m) ? "خدمة الذكاء الاصطناعي مزدحمة الآن، حاول بعد دقيقة" : "تعذّر الرد من Gemini: " + m.slice(0, 160));
     }
   }
   if (c.claude) {
@@ -95,7 +95,7 @@ export async function callLlm(system: string, history: ChatMsg[], tools: ToolSpe
       signal: AbortSignal.timeout(Math.max(5000, deadline - Date.now())),
     });
     const d: any = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(r.status === 529 || r.status === 503 ? "خدمة الذكاء الاصطناعي مزحومة الحين، جرّب بعد دقيقة" : `خطأ من Claude: ${d.error?.message ?? r.status}`);
+    if (!r.ok) throw new Error(r.status === 529 || r.status === 503 ? "خدمة الذكاء الاصطناعي مزدحمة الآن، حاول بعد دقيقة" : `خطأ من Claude: ${d.error?.message ?? r.status}`);
     const cc: any[] = d.content ?? [];
     return { text: cc.filter((x) => x.type === "text").map((x) => x.text).join("").trim(), calls: cc.filter((x) => x.type === "tool_use").map((x) => ({ name: x.name, args: x.input ?? {} })) };
   }

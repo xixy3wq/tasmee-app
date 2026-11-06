@@ -31,7 +31,7 @@ const PERMS = ["req", "students", "teachers", "halaqat", "anns", "reports", "set
 const isFull = (u: Me) => isAdmin(u) && !u.perms;
 const needAdmin = (u: Me, perm?: string) => {
   if (!isAdmin(u)) fail("هذا الإجراء للمدير فقط", 403);
-  if (perm && u.perms && !(u.perms as string[]).includes(perm)) fail("ما عندك صلاحية لهذا القسم", 403);
+  if (perm && u.perms && !(u.perms as string[]).includes(perm)) fail("ليست لديك صلاحية لهذا القسم", 403);
 };
 async function inScope(u: Me, halqaId: string | null | undefined) {
   if (!isAdmin(u)) return true;
@@ -42,13 +42,13 @@ async function needScope(u: Me, halqaId: string | null | undefined) { if (!(awai
 /** قسم الإنشاء: قسم المستخدم، والمدير العام القسم المفتوح عنده (_side) */
 async function sideFor(u: Me, b: any): Promise<Side> { return (await sideOf(u as any)) ?? sideVal(b?._side); }
 /** المشرفين والمعلمين يتعاملون مع قسمهم بس */
-async function needSide(u: Me, s: unknown) { const my = await sideOf(u as any); if (my && my !== sideVal(s)) fail("هذا من القسم الثاني", 403); }
+async function needSide(u: Me, s: unknown) { const my = await sideOf(u as any); if (my && my !== sideVal(s)) fail("هذا من القسم الآخر", 403); }
 /** المعلم يتبع قسم حلقته: لو ما عنده حلقات في القسم الثاني ينتقل له، وإلا ما يصير */
 async function teacherToSide(teacherId: string, g: Side, exceptHalqa?: string) {
   const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t) return;
   if (sideVal(t.side) === g) return;
   const other = await prisma.halqa.count({ where: { teacherId, ...(exceptHalqa ? { NOT: { id: exceptHalqa } } : {}), ...genderWhere(g === "f" ? "m" : "f") } });
-  if (other) fail(g === "f" ? "هذا المعلم في قسم البنين، اختر معلمة من قسم البنات" : "هذي المعلمة في قسم البنات، اختر معلم من قسم البنين");
+  if (other) fail(g === "f" ? "هذا المعلم في قسم البنين، اختر معلمة من قسم البنات" : "هذه المعلمة في قسم البنات، اختر معلمًا من قسم البنين");
   await prisma.user.update({ where: { id: teacherId }, data: { side: g } });
 }
 async function needUserSide(u: Me, t: any) { if (isSuper(u as any)) return; if (t.role === "student") return needScope(u, t.halqaId || t.reqHalqaId); if (isSuper(t)) fail("غير مصرح", 403); await needSide(u, await sideOf(t)); }
@@ -79,7 +79,7 @@ async function studentFor(u: Me, id: string, lesson?: any) {
 async function uniqueUsername(username: string, exceptId?: string) {
   if (!USERNAME_RE.test(username)) fail("اسم المستخدم: حروف إنجليزية أو أرقام، 3 أحرف على الأقل");
   const ex = await prisma.user.findUnique({ where: { username } });
-  if (ex && ex.id !== exceptId) fail("اسم المستخدم مستخدم");
+  if (ex && ex.id !== exceptId) fail("اسم المستخدم مستخدم مسبقًا");
 }
 function cleanInfo(fields: Field[], src: any) {
   const info: Record<string, string> = {};
@@ -100,7 +100,7 @@ async function needCheckin(u: Me, l: any) {
   if ((l.mode || h.mode || "onsite") === "remote") return;
   const s: any = await getSettings(); if (!(s.places || {})[placeKey(h.branch)]) return;
   const tin = await prisma.teacherIn.findUnique({ where: { userId_date: { userId: u.id, date: localDate() } } });
-  if (!tin) fail("سجّل وصولك للجامع أول من زر «وصلت الجامع»", 403);
+  if (!tin) fail("سجّل وصولك إلى الجامع أولًا من زر «وصلت الجامع»", 403);
 }
 // رابط خرائط قوقل → إحداثيات (يفك الروابط المختصرة)
 async function coordsFrom(link: string): Promise<[number, number] | null> {
@@ -130,7 +130,7 @@ async function refundOrder(u: Me, o: any, status: string) {
 async function storeAdmin(u: Me, branch: string, side?: string) {
   needAdmin(u, "store");
   if (side !== undefined) await needSide(u, side);
-  const sp = scopeSpec(u); if (sp && sp.b.length && !sp.b.includes(branch)) fail("هذي الجائزة خارج مجمعك", 403);
+  const sp = scopeSpec(u); if (sp && sp.b.length && !sp.b.includes(branch)) fail("هذه الجائزة خارج مجمعك", 403);
 }
 
 type H = (u: Me, b: any) => Promise<unknown>;
@@ -140,9 +140,9 @@ const A: Record<string, H> = {
     needAdmin(u, "settings");
     const d = b.data || {};
     const days = (Array.isArray(d.days) ? d.days : []).map(Number).filter((x: number) => x >= 0 && x <= 6);
-    if (!days.length) fail("اختر يوم دوام واحد على الأقل");
+    if (!days.length) fail("اختر يوم دوام واحدًا على الأقل");
     const g = { ex: int(d.grade?.ex), vg: int(d.grade?.vg), gd: int(d.grade?.gd), alertsPer: Math.max(1, int(d.grade?.alertsPer, 3)) };
-    if (!(g.ex >= 0 && g.ex <= g.vg && g.vg <= g.gd)) fail("حدود التقدير لازم تكون متصاعدة");
+    if (!(g.ex >= 0 && g.ex <= g.vg && g.vg <= g.gd)) fail("يجب أن تكون حدود التقدير متصاعدة");
     const fields: Field[] = (Array.isArray(d.fields) ? d.fields : []).slice(0, 30).map((f: any) => ({
       k: str(f.k, 40).replace(/[^A-Za-z0-9_]/g, "") || "c_" + Math.random().toString(36).slice(2, 8),
       label: str(f.label, 60) || "حقل", on: !!f.on, req: !!f.req && !!f.on,
@@ -211,7 +211,7 @@ const A: Record<string, H> = {
   },
   async "user.delete"(u, b) {
     const id = str(b.id);
-    if (id === u.id) fail("ما تقدر تحذف حسابك");
+    if (id === u.id) fail("لا يمكنك حذف حسابك");
     const t = await prisma.user.findUnique({ where: { id } });
     if (u.role === "teacher") {
       // المعلم يحذف طلاب حلقاته بس
@@ -220,7 +220,7 @@ const A: Record<string, H> = {
     } else needAdmin(u);
     if (!t) return;
     if (t.role === "admin" && !isFull(u)) fail("حذف المدراء للمدير الكامل فقط", 403);
-    if (t.role === "admin" && !t.perms) fail("ما يمكن حذف مدير كامل من هنا");
+    if (t.role === "admin" && !t.perms) fail("لا يمكن حذف مدير كامل من هنا");
     if (u.role !== "teacher") needAdmin(u, t.role === "teacher" ? "teachers" : t.status === "pending" ? "req" : t.role === "student" ? "students" : undefined);
     await needUserSide(u, t);
     await audit(u, "user.delete", id, `حذف ${t.name}`);
@@ -350,10 +350,10 @@ const A: Record<string, H> = {
     const d = b.data || {}; const id = str(b.id);
     const name = str(d.name, 80); if (!name) fail("اكتب اسم الحلقة");
     const days = (Array.isArray(d.days) ? d.days : []).map(Number).filter((x: number) => x >= 0 && x <= 6);
-    if (!days.length) fail("اختر يوم دوام واحد على الأقل");
+    if (!days.length) fail("اختر يوم دوام واحدًا على الأقل");
     let teacherId: string | null = str(d.teacherId) || null;
     if (teacherId) { const t = await prisma.user.findUnique({ where: { id: teacherId } }); if (!t || t.role !== "teacher") teacherId = null; }
-    const link = str(d.link, 600); if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
+    const link = str(d.link, 600); if (!validLink(link)) fail("يجب أن يبدأ الرابط بـ https://");
     const data = { name, days, teacherId, link, auto: !!d.auto, time: /^\d{2}:\d{2}$/.test(str(d.time)) ? str(d.time) : "", branch: str(d.branch, 60), mode: ["onsite", "remote", "hybrid"].includes(d.mode) ? d.mode : "onsite", place: str(d.place, 60), gender: d.gender === "f" ? "f" : "m" };
     if (id) await needScope(u, id); else if (scopeSpec(u)) fail("إنشاء الحلقات للمدير بدون نطاق محدد", 403);
     // حلقات البنات يضيفها ويغيّرها المدير العام بس
@@ -367,7 +367,7 @@ const A: Record<string, H> = {
     } else h = await prisma.halqa.create({ data });
     // الحصص التلقائية الجاية تتعدل مع الوقت والأيام الجديدة
     const sy = await syncAutoLessons(h, { create: true });
-    await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name + (sy.fixed ? ` (تعدّل وقت ${sy.fixed} حصة جاية)` : ""));
+    await audit(u, "halqa.save", id || null, (id ? "تعديل حلقة " : "إنشاء حلقة ") + name + (sy.fixed ? ` (عُدّل وقت ${sy.fixed} حصة قادمة)` : ""));
     return { fixed: sy.fixed, dropped: sy.dropped };
   },
   // تغيير وقت حلقة أو أكثر مرة وحدة، والحصص الجاية (التلقائية واليدوية اللي على نفس الوقت القديم) تتعدل معها
@@ -386,13 +386,13 @@ const A: Record<string, H> = {
       const free = ls.filter((l) => h.days.includes(new Date(l.date + "T00:00:00Z").getUTCDay()) && !Object.keys((l.att as any) || {}).length).map((l) => l.id);
       if (free.length) { await prisma.lesson.updateMany({ where: { id: { in: free } }, data: { time, reminded: false, lateAlerted: false } }); fixed += free.length; }
     }
-    await audit(u, "halqa.save", null, `تغيير وقت ${n} حلقة إلى ${time} (تعدّلت ${fixed} حصة جاية)`);
+    await audit(u, "halqa.save", null, `تغيير وقت ${n} حلقة إلى ${time} (عُدّلت ${fixed} حصة قادمة)`);
     return { n, fixed };
   },
   // تغيير وقت حصص محددة (مثل حصص اليوم) مرة وحدة، بدون ما يتغير وقت الحلقة الدائم
   async "lessons.time"(u, b) {
     const time = str(b.time); if (!/^\d{2}:\d{2}$/.test(time)) fail("الوقت غير صحيح");
-    const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 200); if (!ids.length) fail("ما فيه حصص");
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 200); if (!ids.length) fail("لا توجد حصص");
     let n = 0;
     for (const id of ids) {
       const l = await lessonFor(u, id);
@@ -416,7 +416,7 @@ const A: Record<string, H> = {
     needAdmin(u, "halaqat");
     const id = str(b.id); await needScope(u, id);
     const n = await prisma.user.count({ where: { halqaId: id, role: "student", status: { not: "pending" } } });
-    if (n) fail(`انقل طلاب الحلقة (${n}) لحلقة ثانية قبل حذفها`);
+    if (n) fail(`انقل طلاب الحلقة (${n}) إلى حلقة أخرى قبل حذفها`);
     await prisma.halqa.delete({ where: { id } });
   },
 
@@ -425,7 +425,7 @@ const A: Record<string, H> = {
     const d = b.data || {}; const id = str(b.id);
     const date = str(d.date), time = str(d.time), link = str(d.link, 600), note = str(d.note, 200);
     if (!validDate(date)) fail("اختر التاريخ");
-    if (!validLink(link)) fail("الرابط لازم يبدأ بـ https://");
+    if (!validLink(link)) fail("يجب أن يبدأ الرابط بـ https://");
     let subId: string | null | undefined = undefined;
     if ("subId" in d) {
       subId = str(d.subId) || null;
@@ -438,7 +438,7 @@ const A: Record<string, H> = {
       await prisma.lesson.update({ where: { id }, data: { date, time, link, note, ...(moved ? { custom: true, reminded: false, lateAlerted: false } : {}), ...(subId !== undefined ? { subId } : {}) } });
       if (subId !== undefined && subId !== l.subId) {
         await audit(u, "lesson.sub", id, subId ? `تكليف معلم احتياط لحصة ${date}` : `إلغاء المعلم الاحتياط لحصة ${date}`);
-        if (subId) await notify([subId], { title: "تكليف بحصة احتياط", body: `عندك حصة احتياط يوم ${date} الساعة ${time}`, url: "/" });
+        if (subId) await notify([subId], { title: "تكليف بحصة احتياط", body: `لديك حصة احتياط يوم ${date} الساعة ${time}`, url: "/" });
       }
       return { id };
     }
@@ -502,7 +502,7 @@ const A: Record<string, H> = {
     const cur = "current" in b ? data.currentId : l.currentId;
     const oldQ = ((l.queue as string[]) || []);
     if (cur && cur !== l.currentId) await notify([cur], { title: "دورك الآن", body: "المعلم ينتظرك للتسميع", url: "/", tag: "q-" + l.id });
-    if (queue[0] && queue[0] !== oldQ[0] && queue[0] !== cur) await notify([queue[0]], { title: "دورك قرب", body: "أنت التالي في طابور التسميع، استعد", url: "/", tag: "q-" + l.id });
+    if (queue[0] && queue[0] !== oldQ[0] && queue[0] !== cur) await notify([queue[0]], { title: "اقترب دورك", body: "أنت التالي في طابور التسميع، استعد", url: "/", tag: "q-" + l.id });
   },
   async "join"(u, b) {
     if (u.role !== "student") return;
@@ -528,7 +528,7 @@ const A: Record<string, H> = {
     const l = await prisma.lesson.findUnique({ where: { id: str(b.lessonId) } });
     if (!l || l.halqaId !== u.halqaId) fail("الحصة غير موجودة", 404);
     const iss: any = { ...((l!.issues as any) || {}) };
-    if (b.clear) delete iss[u.id]; else iss[u.id] = { at: Date.now(), msg: str(b.msg, 200) || "ما أقدر أدخل الحصة" };
+    if (b.clear) delete iss[u.id]; else iss[u.id] = { at: Date.now(), msg: str(b.msg, 200) || "لا أستطيع دخول الحصة" };
     await prisma.lesson.update({ where: { id: l!.id }, data: { issues: iss } });
   },
   async "issue.clear"(u, b) {
@@ -554,7 +554,7 @@ const A: Record<string, H> = {
       if (l0) { lesson = l0; await needCheckin(u, l0); }
     }
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 10);
-    if (!items.length) fail("أضف مقطع واحد على الأقل");
+    if (!items.length) fail("أضف مقطعًا واحدًا على الأقل");
     const settings = await getSettings();
     const date = lesson ? lesson.date : validDate(str(b.date)) ? str(b.date) : localDate();
     const secs = Math.max(0, Math.min(6 * 3600, int(b.secs))) || null;
@@ -629,7 +629,7 @@ const A: Record<string, H> = {
   // ---------- الخطة ----------
   async "plan.save"(u, b) {
     const st = await studentFor(u, str(b.id));
-    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ليست لديك صلاحية إعداد الخطط", 403);
     const mode = b.mode === "auto" ? "auto" : "manual";
     const old = planOf(st);
     const manual: any = {};
@@ -669,7 +669,7 @@ const A: Record<string, H> = {
     await audit(u, "plan", st.id, `${st.name}: ${desc(old)} ← ${desc(plan)}${pz ? ` · موقوفة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : ""}`, { before: old, after: plan });
   },
   async "plan.applyTpl"(u, b) {
-    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ليست لديك صلاحية إعداد الخطط", 403);
     const t = b.tpl || {}; const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).slice(0, 200);
     let done = 0, skipped = 0;
     for (const id of ids) {
@@ -684,7 +684,7 @@ const A: Record<string, H> = {
   },
   async "goal.save"(u, b) {
     const st = await studentFor(u, str(b.id));
-    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية الخطط", 403);
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ليست لديك صلاحية الخطط", 403);
     const g = b.goal;
     const goal = g && AMT(g.pages, 604) > 0 ? { pages: AMT(g.pages, 604), from: validDate(str(g.from)) ? str(g.from) : localDate(), by: validDate(str(g.by)) ? str(g.by) : "", note: str(g.note, 120) } : null;
     await prisma.user.update({ where: { id: st.id }, data: { goal: goal as any } });
@@ -755,10 +755,10 @@ const A: Record<string, H> = {
       autoWeek: !!d.autoWeek, weekDay: Math.min(6, Math.max(0, int(d.weekDay, 4))), weekHour: Math.min(23, Math.max(0, int(d.weekHour, 20))), tplWeek: str(d.tplWeek, 1200) || WA_DEF.tplWeek,
       autoMonth: !!d.autoMonth, monthDay: Math.min(28, Math.max(1, int(d.monthDay, 1))), monthHour: Math.min(23, Math.max(0, int(d.monthHour, 20))), tplMonth: str(d.tplMonth, 1500) || WA_DEF.tplMonth, tplLeft: str(d.tplLeft, 600) || WA_DEF.tplLeft,
     };
-    if (value.url && !/^https:\/\//i.test(value.url)) fail("رابط الإرسال لازم يبدأ بـ https://");
-    const HOW = "اطلع لأول قسم «ربط الواتساب»، في مربع «الربط السريع» اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، وبعدها اضغط حفظ.";
-    if (value.enabled && !value.url) fail("ما تم الربط بعد. " + HOW);
-    if (value.enabled && (!(value.url + value.body).includes("{message}") || !(value.url + value.body).match(/\{phone0?\}/))) fail("رابط الإرسال المكتوب غلط (غالبًا رابط صفحة الشرح). " + HOW);
+    if (value.url && !/^https:\/\//i.test(value.url)) fail("يجب أن يبدأ رابط الإرسال بـ https://");
+    const HOW = "انتقل إلى أول قسم «ربط الواتساب»، وفي مربع «الربط السريع» اكتب رقمك وكلمة مرورك في الواتس الذكي واضغط «اربط»، ثم اضغط حفظ.";
+    if (value.enabled && !value.url) fail("لم يتم الربط بعد. " + HOW);
+    if (value.enabled && (!(value.url + value.body).includes("{message}") || !(value.url + value.body).match(/\{phone0?\}/))) fail("رابط الإرسال المكتوب خاطئ (غالبًا هو رابط صفحة الشرح). " + HOW);
     await prisma.setting.upsert({ where: { key: "wa" }, create: { key: "wa", value }, update: { value } });
     await audit(u, "wa.save", null, `إعدادات الواتساب: ${value.enabled ? "مفعّل" : "متوقف"}`);
   },
@@ -772,7 +772,7 @@ const A: Record<string, H> = {
   async "wa.smartLogin"(u, b) {
     if (!isFull(u)) fail("للمدير الكامل فقط", 403);
     const phone = intlPhone(str(b.phone)); const password = str(b.password, 200);
-    if (!phone || !password) fail("اكتب رقم الجوال وكلمة المرور حق حسابك في الواتس الذكي");
+    if (!phone || !password) fail("اكتب رقم الجوال وكلمة المرور الخاصة بحسابك في الواتس الذكي");
     const post = async (path: string, data: Record<string, string>) => {
       try {
         const r = await fetch("https://server.smart-whats.com" + path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams(data).toString(), signal: AbortSignal.timeout(15000) });
@@ -784,7 +784,7 @@ const A: Record<string, H> = {
     let l = await post("/user/auth/login", { phone, password });
     let jwt = ((l.t + " " + l.hdr).match(JWT) || [])[0];
     if (!jwt && phone.startsWith("966")) { l = await post("/user/auth/login", { phone: "0" + phone.slice(3), password }); jwt = ((l.t + " " + l.hdr).match(JWT) || [])[0]; }
-    if (!jwt) fail("ما قدرت أدخل حسابك في الواتس الذكي. تأكد من الرقم وكلمة المرور. الرد: " + l.status + " " + l.t.slice(0, 200));
+    if (!jwt) fail("تعذّر الدخول إلى حسابك في الواتس الذكي. تأكد من الرقم وكلمة المرور. الرد: " + l.status + " " + l.t.slice(0, 200));
     const d = await post("/user/devices/api/list", { jwt });
     let devices: { id: string; name: string; status: string }[] = [];
     try {
@@ -869,11 +869,11 @@ const A: Record<string, H> = {
     if (u.role !== "student") fail("التصويت للطلاب وأولياء الأمور");
     const p = await prisma.poll.findUnique({ where: { id: str(b.id) } });
     if (!p || (p.halqaId && p.halqaId !== u.halqaId)) fail("التصويت غير موجود", 404);
-    if (p!.closed) fail("التصويت انقفل");
+    if (p!.closed) fail("أُغلق التصويت");
     const n = (p!.options as string[]).length;
     let choice = (Array.isArray(b.choice) ? b.choice : []).map(Number).filter((i: number) => Number.isInteger(i) && i >= 0 && i < n);
     choice = [...new Set(choice)]; if (!p!.multi) choice = choice.slice(0, 1);
-    if (!choice.length) fail("اختر خيار");
+    if (!choice.length) fail("اختر خيارًا");
     await prisma.pollVote.upsert({ where: { pollId_userId: { pollId: p!.id, userId: u.id } }, create: { pollId: p!.id, userId: u.id, choice }, update: { choice, at: new Date() } });
   },
 
@@ -906,7 +906,7 @@ const A: Record<string, H> = {
   async "students.import"(u, b) {
     needAdmin(u, "students");
     const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 500);
-    if (!rows.length) fail("ما فيه صفوف");
+    if (!rows.length) fail("لا توجد صفوف");
     const halaqat = await prisma.halqa.findMany(); const s = await getSettings();
     const sc = await scopeHalqaIds(u);
     const out: any[] = []; const errors: string[] = [];
@@ -980,11 +980,11 @@ const A: Record<string, H> = {
       jaasCap: Math.max(1, Math.min(1e6, Math.round(Number(d.jaasCap)) || old.jaasCap)), dailyCap: Math.max(1, Math.min(1e9, Math.round(Number(d.dailyCap)) || old.dailyCap)),
     };
     if (d.clearKeys) { value.jaasKey = ""; value.dailyKey = ""; }
-    if (value.provider === "jaas" && !(value.jaasApp && value.jaasKid && value.jaasKey)) fail("عبّ معرّف التطبيق ومعرّف المفتاح والمفتاح الخاص");
+    if (value.provider === "jaas" && !(value.jaasApp && value.jaasKid && value.jaasKey)) fail("املأ معرّف التطبيق ومعرّف المفتاح والمفتاح الخاص");
     if (value.provider === "daily" && !value.dailyKey) fail("الصق مفتاح Daily");
     if (value.dailyKey && value.dailyKey !== old.dailyKey) {
       const r = await fetch("https://api.daily.co/v1/rooms?limit=1", { headers: { Authorization: "Bearer " + value.dailyKey }, signal: AbortSignal.timeout(12000) }).catch(() => null);
-      if (!r || r.status === 401 || r.status === 403) fail("مفتاح Daily غير صحيح، تأكد إنك نسخته كامل");
+      if (!r || r.status === 401 || r.status === 403) fail("مفتاح Daily غير صحيح، تأكد أنك نسخته كاملًا");
     }
     if (value.jaasApp && value.jaasKid && value.jaasKey) { try { await roomUrl(value as any, "test", { id: u.id, name: u.name }, true, 1, "jaas"); } catch (e: any) { fail("المفتاح الخاص غير صالح: " + String(e?.message || e).slice(0, 120)); } }
     await prisma.setting.upsert({ where: { key: "video" }, create: { key: "video", value }, update: { value } });
@@ -1026,7 +1026,7 @@ const A: Record<string, H> = {
     const c = await videoCfg(); if (!videoOn(c)) fail("غرفة الفيديو غير مفعّلة. فعّلها من الإعدادات ← غرفة الحصة");
     const room = str(b.room); const my = await sideOf(u as any);
     const ok = room === "admins" ? u.role === "admin" : room === "t-m" || room === "t-f" ? my === null || my === room.slice(2) : false;
-    if (!ok) fail("هذا الاجتماع مو لك", 403);
+    if (!ok) fail("هذا الاجتماع ليس لك", 403);
     const day = localDate().replace(/-/g, ""); const key = "meet:" + room;
     const row = await prisma.setting.findUnique({ where: { key } });
     let st: any = { ...((row?.value as any) || {}) }; if (st.day !== day) st = { day, ppl: {} };
@@ -1041,7 +1041,7 @@ const A: Record<string, H> = {
       const staff = await prisma.user.findMany({ where: { role: { in: room === "admins" ? ["admin"] : ["admin", "teacher"] }, status: "active", NOT: { id: u.id } } });
       const ids: string[] = []; for (const x of staff) { const sd = await sideOf(x as any); if (room === "admins" || sd === null || sd === room.slice(2)) ids.push(x.id); }
       const nm = room === "admins" ? "اجتماع الإدارة" : room === "t-f" ? "اجتماع المعلمات" : "اجتماع المعلمين";
-      await notify(ids, { title: nm + " بدأ", body: `${u.name} يدعوك تدخل الاجتماع الحين`, url: "/#meet", tag: key });
+      await notify(ids, { title: nm + " بدأ", body: `${u.name} يدعوك إلى دخول الاجتماع الآن`, url: "/#meet", tag: key });
     }
     try { return { ...(await roomUrlAny(c, `meet-${room}-${day}`, { id: u.id, name: u.name }, u.role === "admin", !!st.alt)), alt: !!st.alt }; }
     catch (e: any) { fail(String(e?.message || e)); }
@@ -1055,14 +1055,14 @@ const A: Record<string, H> = {
     if (u.role === "student") fail("غير مسموح", 403);
     const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("ربط الواتساب متوقف. فعّله من الإعدادات");
     const phone = intlPhone(str(b.phone)); const text = str(b.text, 3000).trim();
-    if (!phone) fail("رقم غير صالح"); if (!text) fail("الرسالة فاضية");
+    if (!phone) fail("رقم غير صالح"); if (!text) fail("الرسالة فارغة");
     // المعلم يرسل لأولياء أمور طلاب حلقاته فقط، والمدير لأي طالب
     const where: any = { role: "student" };
     if (u.role === "teacher") { const hs = await prisma.halqa.findMany({ where: { teacherId: u.id }, select: { id: true } }); where.halqaId = { in: hs.map((h) => h.id) }; }
     else { const sc = await scopeHalqaIds(u); if (sc) where.halqaId = { in: sc }; }
     const studs = await prisma.user.findMany({ where, select: { id: true, info: true } });
     const st = studs.find((x) => [(x.info as any)?.parentPhone, (x.info as any)?.phone].some((v) => v && intlPhone(String(v)) === phone));
-    if (!st) fail("هذا الرقم مو لأحد طلابك", 403);
+    if (!st) fail("هذا الرقم ليس لأحد طلابك", 403);
     const r = await waSend(cfg, phone, waFrame(text, (await getSettings()).center));
     await prisma.outMsg.create({ data: { key: "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), kind: "manual", userId: st!.id, toPhone: phone, text, sendAfter: new Date(Date.now() + 2 * 60000), status: r.ok ? "sent" : "pending", sentAt: r.ok ? new Date() : null, tries: 1, resp: r.resp } });
     return { ok: r.ok, resp: r.resp };
@@ -1072,9 +1072,9 @@ const A: Record<string, H> = {
     const hid = str(b.halqaId);
     if (hid) {
       const h = await prisma.halqa.findUnique({ where: { id: hid } }); if (!h) fail("الحلقة غير موجودة", 404);
-      if (u.role !== "admin" && h!.teacherId !== u.id) fail("ما عندك صلاحية على هذه الحلقة", 403);
+      if (u.role !== "admin" && h!.teacherId !== u.id) fail("ليست لديك صلاحية على هذه الحلقة", 403);
     } else if (!isFull(u)) fail("للمدير الكامل فقط", 403);
-    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أول من الإعدادات");
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أولًا من الإعدادات");
     const n = await queueWeekly(hid || undefined);
     await audit(u, "wa.week", null, `إرسال التقرير الأسبوعي (${n} رسالة)`);
     return { n };
@@ -1130,7 +1130,7 @@ const A: Record<string, H> = {
     if (u.role === "student") fail("غير مسموح", 403);
     const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("ربط الواتساب متوقف. فعّله من صفحة «رسائل الواتساب»");
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 300);
-    if (!items.length) fail("اختر طالب واحد على الأقل");
+    if (!items.length) fail("اختر طالبًا واحدًا على الأقل");
     const t0 = Date.now(); let sent = 0, queued = 0, skipped = 0;
     for (const it of items) {
       const st = await studentFor(u, str(it.studentId));
@@ -1155,7 +1155,7 @@ const A: Record<string, H> = {
     if (d.delayMin !== undefined) cur.delayMin = Math.min(240, Math.max(0, int(d.delayMin, 10)));
     if (d.weekDay !== undefined) cur.weekDay = Math.min(6, Math.max(0, int(d.weekDay, 4)));
     if (d.weekHour !== undefined) cur.weekHour = Math.min(23, Math.max(0, int(d.weekHour, 20)));
-    if (typeof d.enabled === "boolean") { if (d.enabled && !cur.url) fail("اربط الواتساب أول من صفحة «رسائل الواتساب»"); cur.enabled = d.enabled; }
+    if (typeof d.enabled === "boolean") { if (d.enabled && !cur.url) fail("اربط الواتساب أولًا من صفحة «رسائل الواتساب»"); cur.enabled = d.enabled; }
     await prisma.setting.upsert({ where: { key: "wa" }, create: { key: "wa", value: cur }, update: { value: cur } });
     await audit(u, "wa.save", null, "تعديل الرسائل التلقائية");
   },
@@ -1167,7 +1167,7 @@ const A: Record<string, H> = {
   // إيقاف الخطة مؤقتًا أو إرجاعها (بدون ما تتغير مقاديرها)
   async "plan.pause"(u, b) {
     const st = await studentFor(u, str(b.id));
-    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ما عندك صلاحية إعداد الخطط", 403);
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ليست لديك صلاحية إعداد الخطط", 403);
     const p: any = planOf(st);
     const pz = b.paused && validDate(str(b.paused.from)) ? { from: str(b.paused.from), to: validDate(str(b.paused.to)) ? str(b.paused.to) : "", reason: str(b.paused.reason, 100) } : null;
     p.paused = pz;
@@ -1181,7 +1181,7 @@ const A: Record<string, H> = {
     if (u.role !== "teacher") fail("تسجيل الخروج للمعلمين");
     const today = localDate();
     const t = await prisma.teacherIn.findUnique({ where: { userId_date: { userId: u.id, date: today } } });
-    if (!t) fail("ما سجّلت وصولك اليوم");
+    if (!t) fail("لم تسجّل وصولك اليوم");
     if (b.undo) {
       if (t!.outAt && !t!.outAuto && Date.now() - +t!.outAt < 30 * 60000) await prisma.teacherIn.update({ where: { id: t!.id }, data: { outAt: null, outDist: null, outEarly: null } });
       return { ok: true };
@@ -1217,11 +1217,11 @@ const A: Record<string, H> = {
     const lat = Number(b.lat), lng = Number(b.lng), acc = Math.max(0, Math.round(Number(b.acc) || 0));
     let dist: number | null = null, branch = keys[0] || placeKey(hs[0]?.branch);
     if (keys.length) {
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) fail("ما وصلنا موقعك. اسمح للموقع يوصل لموقعك من إعدادات الجوال وجرّب مرة ثانية");
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) fail("لم نتمكن من تحديد موقعك. اسمح للموقع بالوصول إلى موقعك من إعدادات الجوال وحاول مرة أخرى");
       let best: { k: string; d: number; r: number } | null = null;
       for (const k of keys) { const p = places[k]; const d = distM(lat, lng, p.lat, p.lng); if (!best || d - p.radius < best.d - best.r) best = { k, d, r: p.radius }; }
       dist = best!.d; branch = best!.k;
-      if (best!.d > best!.r + Math.min(acc, 80)) fail(acc > 150 ? `موقع الجوال الحين تقريبي (±${acc} م) فطلع بعيد عن الجامع ${best!.d} م. شغّل الواي فاي أو اطلع قرب الباب وجرّب مرة ثانية` : `أنت بعيد عن الجامع بحوالي ${best!.d} م. سجّل وصولك وأنت داخل الجامع`);
+      if (best!.d > best!.r + Math.min(acc, 80)) fail(acc > 150 ? `موقع الجوال الآن تقريبي (±${acc} م) فظهر بعيدًا عن الجامع ${best!.d} م. شغّل الواي فاي أو اقترب من الباب وحاول مرة أخرى` : `أنت بعيد عن الجامع بحوالي ${best!.d} م. سجّل وصولك وأنت داخل الجامع`);
     }
     const tin = await prisma.teacherIn.create({ data: { userId: u.id, date: today, lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, dist, acc, branch: branch === "_" ? "" : branch, noLoc: !keys.length } });
     await prisma.lesson.updateMany({ where: { date: today, teacherAt: null, OR: [{ halqaId: { in: own.map((h) => h.id) } }, { subId: u.id }] }, data: { teacherAt: tin.at, teacherBy: u.id } });
@@ -1232,7 +1232,7 @@ const A: Record<string, H> = {
   async "lesson.arrive"(u, b) {
     const l = await lessonFor(u, str(b.id)); await needCheckin(u, l);
     const uid = str(b.uid); const st = await prisma.user.findUnique({ where: { id: uid } });
-    if (!st || st.halqaId !== l.halqaId) fail("الطالب مو في هذي الحلقة");
+    if (!st || st.halqaId !== l.halqaId) fail("الطالب ليس في هذه الحلقة");
     const arr: Record<string, number> = { ...((l.arr as any) || {}) };
     if (b.undo) { delete arr[uid]; await prisma.lesson.update({ where: { id: l.id }, data: { arr } }); await A["lesson.att"](u, { id: l.id, map: { [uid]: null } }); return { v: null }; }
     const now = Date.now(); arr[uid] = arr[uid] || now;
@@ -1247,7 +1247,7 @@ const A: Record<string, H> = {
   async "lesson.out"(u, b) {
     const l = await lessonFor(u, str(b.id)); await needCheckin(u, l);
     const uid = str(b.uid); const st = await prisma.user.findUnique({ where: { id: uid } });
-    if (!st || st.halqaId !== l.halqaId) fail("الطالب مو في هذي الحلقة");
+    if (!st || st.halqaId !== l.halqaId) fail("الطالب ليس في هذه الحلقة");
     const left: Record<string, any> = { ...((l.left as any) || {}) };
     if (b.undo) { delete left[uid]; await prisma.lesson.update({ where: { id: l.id }, data: { left } }); await cancelMsg(`left-${l.id}-${uid}`); return { ok: true }; }
     const at = Date.now(); const reason = str(b.reason, 100);
@@ -1260,7 +1260,7 @@ const A: Record<string, H> = {
       const text = fillVars(cfg.tplLeft || WA_DEF.tplLeft, { student: st!.name, halqa: h?.name || "", date: fmtD(l.date) }).replace(/\{الوقت\}/g, hm).replace(/\{السبب\}/g, reason ? "، والسبب: " + reason : "");
       await queueMsg(`left-${l.id}-${uid}`, "left", phone, text, 0, { userId: uid, lessonId: l.id, fem: (h as any)?.gender === "f" });
     }
-    await audit(u, "lesson.out", uid, `انصراف ${st!.name} بدري${reason ? ": " + reason : ""}`);
+    await audit(u, "lesson.out", uid, `انصراف ${st!.name} مبكرًا${reason ? ": " + reason : ""}`);
     return { ok: true };
   },
   // إنهاء الحلقة: ملخص يوصل للمدير
@@ -1278,7 +1278,7 @@ const A: Record<string, H> = {
     const admins = await prisma.user.findMany({ where: { role: "admin", status: "active" } });
     const ids: string[] = [];
     for (const a of admins) { const sc = await scopeHalqaIds(a as any); if (!sc || sc.includes(l.halqaId)) ids.push(a.id); }
-    await notify(ids, { title: `انتهت ${h?.name || "الحلقة"}`, body: `حضر ${sum.p + sum.l} من ${sum.total}${sum.a ? `، غاب ${sum.a}` : ""}، سمّع ${sum.rec}${sum.notRec.length ? `، ما سمّع ${sum.notRec.length}` : ""}`, url: "/", tag: "close-" + l.id }).catch(() => {});
+    await notify(ids, { title: `انتهت ${h?.name || "الحلقة"}`, body: `حضر ${sum.p + sum.l} من ${sum.total}${sum.a ? `، غاب ${sum.a}` : ""}، سمّع ${sum.rec}${sum.notRec.length ? `، لم يُسمِّع ${sum.notRec.length}` : ""}`, url: "/", tag: "close-" + l.id }).catch(() => {});
     await audit(u, "lesson.close", l.id, `إنهاء ${h?.name || "الحلقة"} ${l.date}: حضر ${sum.p + sum.l}/${sum.total}، سمّع ${sum.rec}`);
     return sum;
   },
@@ -1339,7 +1339,7 @@ const A: Record<string, H> = {
     const mode = b.mode === undefined || b.mode === null ? undefined : ["onsite", "remote", "hybrid", ""].includes(b.mode) ? String(b.mode) : fail("نوع الحصة غير صحيح");
     const time = b.time ? (/^\d{2}:\d{2}$/.test(str(b.time)) ? str(b.time) : fail("الوقت غير صحيح")) : undefined;
     const cancel = b.cancel === undefined || b.cancel === null ? undefined : !!b.cancel;
-    if (mode === undefined && !time && cancel === undefined) fail("وش التعديل؟");
+    if (mode === undefined && !time && cancel === undefined) fail("ما التعديل المطلوب؟");
     let n = 0;
     for (const id of ids) {
       const l = await lessonFor(u, id); const data: any = {};
@@ -1362,7 +1362,7 @@ const A: Record<string, H> = {
     if (b.clear) delete places[key];
     else {
       let lat = Number(b.lat), lng = Number(b.lng);
-      if (str(b.link, 1500)) { const c = await coordsFrom(str(b.link, 1500).trim()); if (!c) fail("ما قدرت أطلع الموقع من الرابط. افتح الجامع في خرائط قوقل، اضغط مشاركة وانسخ الرابط، أو اكتب الإحداثيات مثل 24.7136, 46.6753"); [lat, lng] = c!; }
+      if (str(b.link, 1500)) { const c = await coordsFrom(str(b.link, 1500).trim()); if (!c) fail("تعذّر استخراج الموقع من الرابط. افتح الجامع في خرائط جوجل، واضغط مشاركة وانسخ الرابط، أو اكتب الإحداثيات مثل 24.7136, 46.6753"); [lat, lng] = c!; }
       if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || (lat === 0 && lng === 0)) fail("الموقع غير صحيح");
       places[key] = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, radius: Math.min(1000, Math.max(50, int(b.radius, (places[key] || {}).radius || 150))) };
     }
@@ -1374,7 +1374,7 @@ const A: Record<string, H> = {
     if (!isFull(u)) fail("للمدير العام فقط", 403);
     const name = str(b.name, 60).trim(); if (!name) fail("اكتب اسم المجمع");
     const cur: any = await getSettings(); const list: string[] = cur.branches || [];
-    if (list.includes(name)) fail("المجمع موجود");
+    if (list.includes(name)) fail("المجمع موجود مسبقًا");
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches: [...list, name] } }, update: { value: { ...cur, branches: [...list, name] } } });
     if (b.moveAll) await prisma.halqa.updateMany({ where: { branch: "" }, data: { branch: name } });
     await audit(u, "settings", null, "إضافة مجمع: " + name);
@@ -1383,7 +1383,7 @@ const A: Record<string, H> = {
     if (!isFull(u)) fail("للمدير العام فقط", 403);
     const from = str(b.from, 60), to = str(b.to, 60).trim(); if (!to) fail("اكتب الاسم الجديد");
     const cur: any = await getSettings(); const list: string[] = cur.branches || [];
-    if (!list.includes(from)) fail("المجمع غير موجود"); if (from !== to && list.includes(to)) fail("فيه مجمع بنفس الاسم");
+    if (!list.includes(from)) fail("المجمع غير موجود"); if (from !== to && list.includes(to)) fail("يوجد مجمع بالاسم نفسه");
     const places = { ...(cur.places || {}) }; if (places[from]) { places[to] = places[from]; delete places[from]; }
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches: list.map((x) => (x === from ? to : x)), places } }, update: { value: { ...cur, branches: list.map((x) => (x === from ? to : x)), places } } });
     await prisma.halqa.updateMany({ where: { branch: from }, data: { branch: to } });
@@ -1394,7 +1394,7 @@ const A: Record<string, H> = {
   async "branch.delete"(u, b) {
     if (!isFull(u)) fail("للمدير العام فقط", 403);
     const name = str(b.name, 60); const n = await prisma.halqa.count({ where: { branch: name } });
-    if (n) fail(`انقل حلقات المجمع (${n}) لمجمع ثاني قبل حذفه`);
+    if (n) fail(`انقل حلقات المجمع (${n}) إلى مجمع آخر قبل حذفه`);
     const cur: any = await getSettings(); const places = { ...(cur.places || {}) }; delete places[name];
     const branches = (cur.branches || []).filter((x: string) => x !== name);
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value: { ...cur, branches, places } }, update: { value: { ...cur, branches, places } } });
@@ -1406,7 +1406,7 @@ const A: Record<string, H> = {
     if (u.role === "student") fail("غير مصرح", 403);
     const amount = Math.round(Number(b.amount)); if (!amount || Math.abs(amount) > 1000) fail("اكتب عدد النقاط");
     const reason = str(b.reason, 120).trim(); if (!reason) fail("اكتب السبب");
-    const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(String).filter(Boolean).slice(0, 300); if (!ids.length) fail("اختر طالب");
+    const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(String).filter(Boolean).slice(0, 300); if (!ids.length) fail("اختر طالبًا");
     for (const id of ids) { const st = await studentFor(u, id); await prisma.pointTx.create({ data: { userId: st.id, amount, kind: "manual", reason, byId: u.id, byName: u.name } }); }
     if (ids.length === 1) await notify(ids, { title: amount > 0 ? `+${amount} نقطة` : `${amount} نقطة`, body: reason, url: "/", tag: "pts" }).catch(() => {});
     await audit(u, "points", ids.length === 1 ? ids[0] : null, `${amount > 0 ? "+" : ""}${amount} نقطة لـ ${ids.length} طالب: ${reason}`);
@@ -1430,7 +1430,7 @@ const A: Record<string, H> = {
     if (kind === "item" && !data.price) fail("حدد سعر الجائزة بالنقاط");
     if (kind === "auction" && !data.endsAt) fail("حدد متى ينتهي المزاد");
     if (kind === "group" && !data.target) fail("حدد هدف النقاط للحلقة");
-    if (data.salePrice != null && data.salePrice >= data.price) fail("سعر العرض لازم أقل من السعر الأصلي");
+    if (data.salePrice != null && data.salePrice >= data.price) fail("يجب أن يكون سعر العرض أقل من السعر الأصلي");
     if (data.halqaId) await needScope(u, data.halqaId);
     const r = id ? await prisma.reward.update({ where: { id }, data }) : await prisma.reward.create({ data });
     await audit(u, "store", r.id, (id ? "تعديل جائزة: " : "إضافة جائزة: ") + name);
@@ -1451,20 +1451,20 @@ const A: Record<string, H> = {
   },
   async "order.create"(u, b) {
     const r = await prisma.reward.findUnique({ where: { id: str(b.rewardId) } });
-    if (!r || !r.active || r.closed || r.kind !== "item") fail("الجائزة مو متاحة");
+    if (!r || !r.active || r.closed || r.kind !== "item") fail("الجائزة غير متاحة");
     const st: any = u.role === "student" ? u : await studentFor(u, str(b.uid));
-    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("الجائزة لمجمع ثاني"); }
-    if (sideVal(r!.side) !== ((await sideOf(st)) ?? "m")) fail("الجائزة مو متاحة");
-    if (r!.stock != null && r!.stock <= 0) fail("خلصت الكمية");
+    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("الجائزة لمجمع آخر"); }
+    if (sideVal(r!.side) !== ((await sideOf(st)) ?? "m")) fail("الجائزة غير متاحة");
+    if (r!.stock != null && r!.stock <= 0) fail("نفدت الكمية");
     const price = salePrice(r);
     const bal = await balanceOf({ id: st.id, halqaId: st.halqaId }, await getSettings(), localDate());
-    if (bal.bal < price) fail(`رصيد ${u.role === "student" ? "ك" : st.name + " "}${bal.bal} نقطة، والجائزة بـ ${price}`);
-    if (r!.stock != null) { const dec = await prisma.reward.updateMany({ where: { id: r!.id, stock: { gt: 0 } }, data: { stock: { decrement: 1 } } }); if (!dec.count) fail("خلصت الكمية"); }
+    if (bal.bal < price) fail(`رصيد ${u.role === "student" ? "ك" : st.name + " "}${bal.bal} نقطة، وسعر الجائزة ${price}`);
+    if (r!.stock != null) { const dec = await prisma.reward.updateMany({ where: { id: r!.id, stock: { gt: 0 } }, data: { stock: { decrement: 1 } } }); if (!dec.count) fail("نفدت الكمية"); }
     const code = String(crypto.randomInt(1000, 10000));
     const o = await prisma.rewardOrder.create({ data: { rewardId: r!.id, userId: st.id, price, code, byId: u.id, byName: u.name } });
     await prisma.pointTx.create({ data: { userId: st.id, amount: -price, kind: "spend", reason: "جائزة: " + r!.name, byId: u.id, byName: u.name, ref: o.id } });
     if (u.role === "student") { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if (h?.teacherId) await notify([h.teacherId], { title: "طلب جائزة", body: `${st.name}: ${r!.name}`, url: "/", tag: "ord" }).catch(() => {}); }
-    else await notify([st.id], { title: "انطلبت لك جائزة 🎁", body: `${r!.name} · رمز الاستلام ${code}`, url: "/", tag: "ord" }).catch(() => {});
+    else await notify([st.id], { title: "طُلبت لك جائزة 🎁", body: `${r!.name} · رمز الاستلام ${code}`, url: "/", tag: "ord" }).catch(() => {});
     if (st.wish === r!.id) await prisma.user.update({ where: { id: st.id }, data: { wish: null } });
     return { id: o.id, code };
   },
@@ -1472,8 +1472,8 @@ const A: Record<string, H> = {
     if (u.role === "student") fail("غير مصرح", 403);
     const o = await prisma.rewardOrder.findUnique({ where: { id: str(b.id) } }); if (!o || o.status !== "pending") fail("الطلب غير موجود أو انتهى");
     await studentFor(u, o!.userId);
-    if (b.status === "rejected") { await refundOrder(u, o, "rejected"); await notify([o!.userId], { title: "انرفض طلب الجائزة", body: "رجعت نقاطك", url: "/", tag: "ord" }).catch(() => {}); return; }
-    if (b.code !== undefined && str(b.code) !== o!.code) fail("رمز الاستلام غلط");
+    if (b.status === "rejected") { await refundOrder(u, o, "rejected"); await notify([o!.userId], { title: "رُفض طلب الجائزة", body: "أُعيدت نقاطك", url: "/", tag: "ord" }).catch(() => {}); return; }
+    if (b.code !== undefined && str(b.code) !== o!.code) fail("رمز الاستلام خاطئ");
     await prisma.rewardOrder.update({ where: { id: o!.id }, data: { status: "delivered", doneAt: new Date(), doneBy: u.id } });
   },
   async "order.cancel"(u, b) {
@@ -1488,25 +1488,25 @@ const A: Record<string, H> = {
   },
   async "bid.place"(u, b) {
     const r = await prisma.reward.findUnique({ where: { id: str(b.rewardId) } });
-    if (!r || r.kind !== "auction" || !r.active || r.closed || !r.endsAt || +r.endsAt < Date.now()) fail("المزاد انتهى أو مو متاح");
+    if (!r || r.kind !== "auction" || !r.active || r.closed || !r.endsAt || +r.endsAt < Date.now()) fail("المزاد منتهٍ أو غير متاح");
     const st: any = u.role === "student" ? u : await studentFor(u, str(b.uid));
-    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("المزاد لمجمع ثاني"); }
-    if (sideVal(r!.side) !== ((await sideOf(st)) ?? "m")) fail("المزاد مو متاح");
+    if (r!.branch) { const h = st.halqaId ? await prisma.halqa.findUnique({ where: { id: st.halqaId } }) : null; if ((h?.branch || "") !== r!.branch) fail("المزاد لمجمع آخر"); }
+    if (sideVal(r!.side) !== ((await sideOf(st)) ?? "m")) fail("المزاد غير متاح");
     const amount = Math.round(Number(b.amount));
     const top = await prisma.bid.findFirst({ where: { rewardId: r!.id }, orderBy: { amount: "desc" } });
     const min = Math.max(r!.price || 1, top ? top.amount + 1 : 1);
     if (!(amount >= min)) fail(`أقل مزايدة ${min} نقطة`);
     const bal = await balanceOf({ id: st.id, halqaId: st.halqaId }, await getSettings(), localDate());
-    if (bal.bal < amount) fail(`الرصيد ${bal.bal} نقطة بس`);
+    if (bal.bal < amount) fail(`الرصيد ${bal.bal} نقطة فقط`);
     await prisma.bid.upsert({ where: { rewardId_userId: { rewardId: r!.id, userId: st.id } }, create: { rewardId: r!.id, userId: st.id, amount }, update: { amount, at: new Date() } });
-    if (top && top.userId !== st.id) await notify([top.userId], { title: "أحد زايد عليك", body: `${r!.name}: صار ${amount} نقطة`, url: "/", tag: "auc-" + r!.id }).catch(() => {});
+    if (top && top.userId !== st.id) await notify([top.userId], { title: "هناك من زايد عليك", body: `${r!.name}: أصبح ${amount} نقطة`, url: "/", tag: "auc-" + r!.id }).catch(() => {});
     return { amount };
   },
   async "wa.monthNow"(u, b) {
     const hid = str(b.halqaId);
-    if (hid) { const h = await prisma.halqa.findUnique({ where: { id: hid } }); if (!h) fail("الحلقة غير موجودة", 404); if (u.role !== "admin" && h!.teacherId !== u.id) fail("ما عندك صلاحية على هذه الحلقة", 403); if (u.role === "admin") await needScope(u, hid); }
+    if (hid) { const h = await prisma.halqa.findUnique({ where: { id: hid } }); if (!h) fail("الحلقة غير موجودة", 404); if (u.role !== "admin" && h!.teacherId !== u.id) fail("ليست لديك صلاحية على هذه الحلقة", 403); if (u.role === "admin") await needScope(u, hid); }
     else if (!isFull(u)) fail("للمدير الكامل فقط", 403);
-    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أول");
+    const cfg = await waCfg(); if (!cfg.enabled || !cfg.url) fail("فعّل ربط الواتساب أولًا");
     const n = await queueMonthly(hid || undefined);
     await audit(u, "wa.month", null, `إرسال التقرير الشهري (${n} رسالة)`);
     return { n };
@@ -1543,7 +1543,7 @@ const A: Record<string, H> = {
 export async function POST(req: Request) {
   return handle(async () => {
     const u = await currentUser();
-    if (!u) fail("انتهت الجلسة، سجّل دخولك مرة ثانية", 401);
+    if (!u) fail("انتهت الجلسة، سجّل دخولك مرة أخرى", 401);
     const b = await req.json().catch(() => ({}));
     const h = A[String(b.t)];
     if (!h) fail("إجراء غير معروف");

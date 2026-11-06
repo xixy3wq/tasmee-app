@@ -41,8 +41,8 @@ function one(list: any[], name: unknown, what = "الاسم"): any {
   const ex = list.filter((x) => norm(x.name) === n); if (ex.length === 1) return ex[0];
   const pa = (ex.length ? ex : list.filter((x) => { const a = norm(x.name); return a.startsWith(n) || a.includes(n) || n.includes(a); }));
   if (pa.length === 1) return pa[0];
-  if (!pa.length) throw new Error(`ما لقيت «${name}»`);
-  throw new Error(`فيه أكثر من واحد باسم «${name}»: ${pa.slice(0, 4).map((x) => x.name).join("، ")} — اكتب الاسم كامل`);
+  if (!pa.length) throw new Error(`لم أجد «${name}»`);
+  throw new Error(`يوجد أكثر من واحد باسم «${name}»: ${pa.slice(0, 4).map((x) => x.name).join("، ")} — اكتب الاسم كاملًا`);
 }
 function many(list: any[], names: unknown): any[] {
   const arr = Array.isArray(names) ? names.map(String) : typeof names === "string" ? [names] : [];
@@ -57,14 +57,14 @@ function surahOf(v: unknown): number {
   const names = SN.map((x) => norm(x));
   let i = names.indexOf(n); if (i < 0) i = names.findIndex((x) => x.replace(/^ال/, "") === n.replace(/^ال/, ""));
   if (i < 0) i = names.findIndex((x) => x.includes(n) || n.includes(x));
-  if (i < 0) throw new Error(`ما عرفت السورة «${v}»`);
+  if (i < 0) throw new Error(`لم أتعرّف على السورة «${v}»`);
   return i + 1;
 }
-const dayIdx = (v: unknown) => { const n0 = Number(v); if (Number.isInteger(n0) && n0 >= 0 && n0 <= 6) return n0; const n = norm(v).replace(/^يوم\s+/, ""); const i = DAYS.findIndex((d) => norm(d) === n || norm(d).replace(/^ال/, "") === n.replace(/^ال/, "")); if (i < 0) throw new Error(`ما عرفت اليوم «${v}»`); return i; };
+const dayIdx = (v: unknown) => { const n0 = Number(v); if (Number.isInteger(n0) && n0 >= 0 && n0 <= 6) return n0; const n = norm(v).replace(/^يوم\s+/, ""); const i = DAYS.findIndex((d) => norm(d) === n || norm(d).replace(/^ال/, "") === n.replace(/^ال/, "")); if (i < 0) throw new Error(`لم أتعرّف على اليوم «${v}»`); return i; };
 async function freeUsername(prefix: string) { for (let i = 0; i < 20; i++) { const c = prefix + rnd(10000, 99999); if (!(await prisma.user.findUnique({ where: { username: c } }))) return c; } return prefix + Date.now().toString().slice(-7); }
 async function checkUsername(v: unknown, prefix: string) {
   if (!v) return freeUsername(prefix);
-  const un = cleanUsername(v); if (!USERNAME_RE.test(un)) throw new Error("اسم الدخول لازم حروف إنجليزية أو أرقام (3 على الأقل)");
+  const un = cleanUsername(v); if (!USERNAME_RE.test(un)) throw new Error("يجب أن يتكون اسم الدخول من حروف إنجليزية أو أرقام (3 على الأقل)");
   if (await prisma.user.findUnique({ where: { username: un } })) throw new Error(`اسم الدخول ${un} مستخدم`);
   return un;
 }
@@ -119,7 +119,7 @@ const halqaOf = (c: Ctx, name: unknown, hint: { date?: string; cancelled?: boole
 };
 const lessonOf = (c: Ctx, h: any, date: string, wantCancelled = false) => {
   const l = c.lessons.find((x) => x.halqaId === h.id && x.date === date && !!x.cancelled === wantCancelled);
-  if (!l) throw new Error(wantCancelled ? `ما فيه حصة ملغاة لـ${h.name} يوم ${date}` : `ما فيه حصة لـ${h.name} يوم ${wd(date)} ${date}. أضفها أول`);
+  if (!l) throw new Error(wantCancelled ? `لا توجد حصة ملغاة لـ${h.name} يوم ${date}` : `لا توجد حصة لـ${h.name} يوم ${wd(date)} ${date}. أضفها أولًا`);
   return l;
 };
 const planOf = (st: any) => { const p: any = st.plan || {}; return { mode: p.mode || "manual", manual: p.manual || {}, auto: p.auto || {}, near: p.near || 0, paused: p.paused || null }; };
@@ -172,17 +172,17 @@ const STAFF_TOOLS: Tool[] = [
     build: (a, c) => { const h = halqaOf(c, a.halqa, { date: a.date }); const l = lessonOf(c, h, a.date); return { summary: `✖ إلغاء حصة ${h.name}: ${wd(a.date)} ${a.date}${a.note ? " — " + a.note : ""}`, t: "lesson.cancel", payload: { id: l.id, v: true, note: str(a.note, 200) } }; } },
   { ok: staff, spec: T("restore_lesson", "إرجاع حصة ملغاة", P({ halqa: S("اسم الحلقة"), date: S("YYYY-MM-DD") }, ["date"])),
     build: (a, c) => { const h = halqaOf(c, a.halqa, { date: a.date, cancelled: true }); const l = lessonOf(c, h, a.date, true); return { summary: `↺ إرجاع حصة ${h.name}: ${wd(a.date)} ${a.date}`, t: "lesson.cancel", payload: { id: l.id, v: false } }; } },
-  { ok: staff, spec: T("take_attendance", "تحضير الطلاب في حصة: حاضر/متأخر/غائب/مستأذن. others = حالة باقي طلاب الحلقة اللي ما انذكروا", P({ halqa: S("اسم الحلقة"), date: S("YYYY-MM-DD، الافتراضي اليوم"), present: SA("الحاضرين، أو [\"الكل\"]"), late: SA("المتأخرين"), absent: SA("الغائبين"), excused: SA("المستأذنين"), others: { type: "string", enum: ["present", "absent", "none"], description: "حالة الباقين" } })),
+  { ok: staff, spec: T("take_attendance", "تحضير الطلاب في حصة: حاضر/متأخر/غائب/مستأذن. others = حالة بقية طلاب الحلقة الذين لم يُذكروا", P({ halqa: S("اسم الحلقة"), date: S("YYYY-MM-DD، الافتراضي اليوم"), present: SA("الحاضرين، أو [\"الكل\"]"), late: SA("المتأخرين"), absent: SA("الغائبين"), excused: SA("المستأذنين"), others: { type: "string", enum: ["present", "absent", "none"], description: "حالة الباقين" } })),
     build: (a, c) => {
       const date = isDay(a.date) ? a.date : localDate(); const h = halqaOf(c, a.halqa, { date, names: [a.present, a.absent, a.late, a.excused].map((x) => (Array.isArray(x) ? x : x ? [x] : [])) }); const l = lessonOf(c, h, date);
       const hs = c.studs.filter((x) => x.halqaId === h.id); const map: Record<string, string> = {};
       const put = (names: unknown, v: string) => { if (names && (!Array.isArray(names) || names.length)) for (const x of many(hs, names)) map[x.id] = v; };
       put(a.present, "p"); put(a.late, "l"); put(a.absent, "a"); put(a.excused, "e");
       if (a.others === "present" || a.others === "absent") for (const x of hs) if (!map[x.id]) map[x.id] = a.others === "present" ? "p" : "a";
-      if (!Object.keys(map).length) throw new Error("حدد مين حاضر ومين غائب");
+      if (!Object.keys(map).length) throw new Error("حدد مَن الحاضر ومَن الغائب");
       const grp = (v: string) => hs.filter((x) => map[x.id] === v);
       const parts = ["p", "l", "a", "e"].map((v) => { const g = grp(v); return g.length ? `${ATT_AR[v]} ${g.length}${v !== "p" && g.length <= 6 ? " (" + g.map((x) => x.name.split(" ")[0]).join("، ") + ")" : ""}` : ""; }).filter(Boolean);
-      return { summary: `✅ تحضير ${h.name} — ${wd(date)} ${date}: ${parts.join(" · ")}${c.waOn && grp("a").length ? " · بتروح رسالة غياب لأولياء الأمور تلقائيًا" : ""}`, t: "lesson.att", payload: { id: l.id, map } };
+      return { summary: `✅ تحضير ${h.name} — ${wd(date)} ${date}: ${parts.join(" · ")}${c.waOn && grp("a").length ? " · ستُرسَل رسالة غياب لأولياء الأمور تلقائيًا" : ""}`, t: "lesson.att", payload: { id: l.id, map } };
     } },
   // التسميع
   { ok: staff, spec: T("record_recitation", "تسجيل تسميع طالب (حفظ/مراجعة/تثبيت). التقدير إما grade جاهز أو عدد الأخطاء والتنبيهات", P({
@@ -208,16 +208,16 @@ const STAFF_TOOLS: Tool[] = [
     build: (a, c) => {
       const st = one(c.studs, a.student, "الطالب"); const sn = a.surah ? surahOf(a.surah) : 0;
       const r = c.recs.find((x) => x.userId === st.id && (!isDay(a.date) || x.date === a.date) && (!sn || x.surah === sn));
-      if (!r) throw new Error("ما لقيت هالتسميع");
+      if (!r) throw new Error("لم أجد هذا التسميع");
       const quick = GRADES.includes(a.grade) ? a.grade : a.mistakes !== undefined || a.alerts !== undefined ? "" : r.quick ? r.grade : "";
       const data: any = { type: a.type || r.type, surah: r.surah, from: Number(a.from) || r.fromA, to: Number(a.to) || r.toA, note: a.note !== undefined ? str(a.note, 300) : r.note, date: r.date, ...(quick ? { quickGrade: quick } : { mistakes: a.mistakes !== undefined ? Number(a.mistakes) : r.mistakes, alerts: a.alerts !== undefined ? Number(a.alerts) : r.alerts }) };
       return { summary: `✎ تعديل تسميع ${st.name} (${r.date} ${SN[r.surah - 1]}): ${quick || (data.mistakes + " أخطاء")} · ${data.from}-${data.to}`, t: "rec.update", payload: { id: r.id, data } };
     } },
   // الخطط والأهداف
   { ok: planner, spec: T("set_plan_amounts", "تحديد مقادير الخطة التلقائية لطالب أو أكثر (بالأوجه: 0.25 ربع، 0.5 نصف)", P({ students: SA("أسماء الطلاب أو [\"الكل\"]"), new_pages: N("الحفظ"), review_pages: N("المراجعة"), tath_pages: N("التثبيت") }, ["students"])),
-    build: (a, c) => { const ss = many(c.studs, a.students); const t = { name: "من المساعد", newAmt: Number(a.new_pages) || 0, revAmt: Number(a.review_pages) || 0, tathAmt: Number(a.tath_pages) || 0 }; const man = ss.filter((x) => planOf(x).mode !== "auto"); return { summary: `🗓 خطة تلقائية لـ ${ss.length === 1 ? ss[0].name : ss.length + " طلاب"}: حفظ ${fmtPg(t.newAmt)} · مراجعة ${fmtPg(t.revAmt)} · تثبيت ${fmtPg(t.tathAmt)} وجه${man.length ? ` (تنبيه: ${man.length} خطتهم الحين يدوية وبتتحول تلقائية)` : ""}`, t: "plan.applyTpl", payload: { tpl: t, ids: ss.map((x) => x.id) } }; } },
+    build: (a, c) => { const ss = many(c.studs, a.students); const t = { name: "من المساعد", newAmt: Number(a.new_pages) || 0, revAmt: Number(a.review_pages) || 0, tathAmt: Number(a.tath_pages) || 0 }; const man = ss.filter((x) => planOf(x).mode !== "auto"); return { summary: `🗓 خطة تلقائية لـ ${ss.length === 1 ? ss[0].name : ss.length + " طلاب"}: حفظ ${fmtPg(t.newAmt)} · مراجعة ${fmtPg(t.revAmt)} · تثبيت ${fmtPg(t.tathAmt)} وجه${man.length ? ` (تنبيه: ${man.length} خطتهم الآن يدوية وستتحول إلى تلقائية)` : ""}`, t: "plan.applyTpl", payload: { tpl: t, ids: ss.map((x) => x.id) } }; } },
   { ok: planner, spec: T("set_manual_plan", "تحديد المطلوب من طالب يدويًا (مقطع الحفظ و/أو المراجعة و/أو التثبيت)", P({ student: S("اسم الطالب"),
-      new: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة (إذا يمتد)"), to: N("إلى آية") }), review: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة"), to: N("إلى آية") }), tath: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة"), to: N("إلى آية") }) }, ["student"])),
+      new: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة (إن امتد)"), to: N("إلى آية") }), review: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة"), to: N("إلى آية") }), tath: P({ surah: S("السورة"), from: N("من آية"), to_surah: S("إلى سورة"), to: N("إلى آية") }) }, ["student"])),
     build: (a, c) => {
       const st = one(c.studs, a.student, "الطالب"); const old = planOf(st); const manual: any = { ...old.manual }; const parts: string[] = [];
       for (const k of ["new", "review", "tath"]) { const m = a[k]; if (!m || !m.surah) continue; const s = surahOf(m.surah), ts = m.to_surah ? surahOf(m.to_surah) : s; const v = { surah: s, from: Number(m.from) || 1, toSurah: ts, to: Number(m.to) || AYAS[ts - 1] }; manual[k] = v; parts.push(`${TYPE[k]}: ${seg(v)}`); }
@@ -231,17 +231,17 @@ const STAFF_TOOLS: Tool[] = [
   // التواصل
   { ok: (u) => u.role === "teacher" || perm("anns")(u), spec: T("post_announcement", "نشر إعلان للطلاب وأولياء الأمور", P({ title: S("العنوان"), body: S("النص"), halqa: S("اسم الحلقة، أو فارغ لكل الحلقات (للمدير)") }, ["title"])),
     build: (a, c, u) => { const h = a.halqa ? halqaOf(c, a.halqa) : (isAdm(u) ? null : halqaOf(c, "")); return { summary: `📣 إعلان ${h ? "لـ" + h.name : "لكل الحلقات"}: ${a.title}${a.body ? " — " + String(a.body).slice(0, 140) : ""}`, t: "ann.save", payload: { title: str(a.title, 120), body: str(a.body, 2000), halqaId: h ? h.id : "" } }; } },
-  { ok: staff, spec: T("create_poll", "تصويت للطلاب وأولياء الأمور", P({ question: S("السؤال"), options: SA("الخيارات"), halqa: S("اسم الحلقة، أو فارغ للكل (للمدير)"), multi: B("يقدر يختار أكثر من خيار") }, ["question", "options"])),
-    build: (a, c, u) => { const h = a.halqa ? halqaOf(c, a.halqa) : (isAdm(u) && !c.sc ? null : halqaOf(c, "")); const opts = (Array.isArray(a.options) ? a.options : []).map(String).filter(Boolean); if (opts.length < 2) throw new Error("يحتاج خيارين"); return { summary: `🗳 تصويت ${h ? "لـ" + h.name : "لكل الحلقات"}: ${a.question} (${opts.join(" / ")})`, t: "poll.save", payload: { question: a.question, options: opts, halqaId: h ? h.id : "", multi: !!a.multi } }; } },
+  { ok: staff, spec: T("create_poll", "تصويت للطلاب وأولياء الأمور", P({ question: S("السؤال"), options: SA("الخيارات"), halqa: S("اسم الحلقة، أو فارغ للكل (للمدير)"), multi: B("يمكن اختيار أكثر من خيار") }, ["question", "options"])),
+    build: (a, c, u) => { const h = a.halqa ? halqaOf(c, a.halqa) : (isAdm(u) && !c.sc ? null : halqaOf(c, "")); const opts = (Array.isArray(a.options) ? a.options : []).map(String).filter(Boolean); if (opts.length < 2) throw new Error("يلزم خياران على الأقل"); return { summary: `🗳 تصويت ${h ? "لـ" + h.name : "لكل الحلقات"}: ${a.question} (${opts.join(" / ")})`, t: "poll.save", payload: { question: a.question, options: opts, halqaId: h ? h.id : "", multi: !!a.multi } }; } },
   { ok: staff, spec: T("close_poll", "قفل تصويت مفتوح", P({ question: S("سؤال التصويت أو جزء منه") }, ["question"])),
     build: (a, c) => { const p = one(c.polls.map((x) => ({ ...x, name: x.question })), a.question, "التصويت"); return { summary: `🔒 قفل التصويت: ${p.question}`, t: "poll.close", payload: { id: p.id } }; } },
   { ok: staff, spec: T("message_students", "رسالة داخل الموقع لطلاب وأولياء أمورهم (تظهر في صفحة الرسائل)", P({ students: SA("الأسماء أو [\"الكل\"]"), text: S("نص الرسالة") }, ["students", "text"])),
     build: (a, c) => { const ss = many(c.studs, a.students); return { summary: `✉ رسالة داخل الموقع لـ ${ss.length === 1 ? ss[0].name : ss.length + " طلاب"}: ${String(a.text).slice(0, 140)}`, t: "dm.bulk", payload: { studentIds: ss.map((x) => x.id), text: a.text } }; } },
-  { ok: staff, spec: T("whatsapp_parents", "رسالة واتساب لأولياء أمور طلاب من رقم الحلقة المربوط. تقدر تكتب {الطالب} و{الحلقة} و{التاريخ} وتنعبّى لكل واحد", P({ students: SA("الأسماء أو [\"الكل\"]"), text: S("نص الرسالة") }, ["students", "text"])),
+  { ok: staff, spec: T("whatsapp_parents", "رسالة واتساب لأولياء أمور طلاب من رقم الحلقة المربوط. يمكنك كتابة {الطالب} و{الحلقة} و{التاريخ} وتُملأ لكل واحد", P({ students: SA("الأسماء أو [\"الكل\"]"), text: S("نص الرسالة") }, ["students", "text"])),
     build: (a, c) => {
       if (!c.waOn) throw new Error("ربط الواتساب متوقف، فعّله من صفحة «رسائل الواتساب»");
       const ss = many(c.studs, a.students); const ok = ss.filter((x) => ((x.info as any) || {}).parentPhone); const no = ss.length - ok.length;
-      if (!ok.length) throw new Error("ما فيه أرقام أولياء أمور للطلاب المختارين");
+      if (!ok.length) throw new Error("لا توجد أرقام أولياء أمور للطلاب المختارين");
       const hn = (id: string | null) => c.halaqat.find((h) => h.id === id)?.name || "";
       const items = ok.map((x) => ({ studentId: x.id, text: fillVars(str(a.text, 3000), { student: x.name, halqa: hn(x.halqaId), date: localDate() }) }));
       return { summary: `🟢 واتساب لأولياء أمور ${ok.length === 1 ? ok[0].name : ok.length + " طلاب"}${no ? ` (${no} بدون رقم)` : ""}: ${items[0].text.slice(0, 160)}`, t: "wa.bulk", payload: { items } };
@@ -250,29 +250,29 @@ const STAFF_TOOLS: Tool[] = [
     build: (a, c, u) => { if (!c.waOn) throw new Error("ربط الواتساب متوقف"); const h = a.halqa || !full(u) ? halqaOf(c, a.halqa) : null; return { summary: `📊 التقرير الأسبوعي بالواتساب ${h ? "لأولياء أمور " + h.name : "لكل الحلقات"}`, t: "wa.weekNow", payload: { halqaId: h ? h.id : "" } }; } },
   { ok: staff, spec: T("teachers_room_message", "رسالة في غرفة المعلمين", P({ text: S("النص") }, ["text"])),
     build: (a) => ({ summary: `💬 غرفة المعلمين: ${String(a.text).slice(0, 160)}`, t: "msg.send", payload: { text: str(a.text, 1000) } }) },
-  { ok: staff, spec: T("add_behavior", "تسجيل ملاحظة سلوك لطالب", P({ student: S("اسم الطالب"), kind: { type: "string", enum: ["good", "bad"] }, text: S("الملاحظة"), visible: B("يشوفها ولي الأمر") }, ["student", "text"])),
+  { ok: staff, spec: T("add_behavior", "تسجيل ملاحظة سلوك لطالب", P({ student: S("اسم الطالب"), kind: { type: "string", enum: ["good", "bad"] }, text: S("الملاحظة"), visible: B("يراها ولي الأمر") }, ["student", "text"])),
     build: (a, c) => { const st = one(c.studs, a.student, "الطالب"); return { summary: `${a.kind === "bad" ? "⚠ تنبيه" : "⭐ ملاحظة إيجابية"} لـ${st.name}: ${a.text}${a.visible === false ? " (للمعلمين فقط)" : ""}`, t: "behav.add", payload: { userId: st.id, kind: a.kind === "bad" ? "bad" : "good", text: a.text, visible: a.visible !== false } }; } },
 
   // الإدارة
   { ok: perm("req"), spec: T("approve_request", "اعتماد طلب تسجيل طالب جديد وتحديد حلقته", P({ student: S("اسم صاحب الطلب أو [\"الكل\"] لاعتماد الكل على حلقاتهم المطلوبة"), halqa: S("الحلقة (اختياري إذا اختارها الطالب)") }, ["student"])),
-    build: (a, c) => { const list = ALL_RE.test(String(a.student || "").trim()) ? c.pending : [one(c.pending, a.student, "الطلب")]; if (!list.length) throw new Error("ما فيه طلبات"); return list.map((p: any) => { const h = a.halqa ? halqaOf(c, a.halqa) : c.halaqat.find((x) => x.id === p.reqHalqaId); if (!h) throw new Error(`حدد حلقة ${p.name}`); return { summary: `✔ اعتماد ${p.name} في ${h.name}`, t: "user.approve", payload: { id: p.id, halqaId: h.id } }; }); } },
-  { ok: perm("students"), spec: T("add_student", "إضافة طالب جديد مباشرة (بدون طلب تسجيل)", P({ name: S("الاسم"), halqa: S("الحلقة"), username: S("اسم الدخول بالإنجليزي (اختياري، ينولد تلقائي)"), password: S("كلمة المرور (اختياري، تنولد تلقائي)"), parent_name: S("اسم ولي الأمر"), parent_phone: S("جوال ولي الأمر") }, ["name", "halqa"])),
+    build: (a, c) => { const list = ALL_RE.test(String(a.student || "").trim()) ? c.pending : [one(c.pending, a.student, "الطلب")]; if (!list.length) throw new Error("لا توجد طلبات"); return list.map((p: any) => { const h = a.halqa ? halqaOf(c, a.halqa) : c.halaqat.find((x) => x.id === p.reqHalqaId); if (!h) throw new Error(`حدد حلقة ${p.name}`); return { summary: `✔ اعتماد ${p.name} في ${h.name}`, t: "user.approve", payload: { id: p.id, halqaId: h.id } }; }); } },
+  { ok: perm("students"), spec: T("add_student", "إضافة طالب جديد مباشرة (بدون طلب تسجيل)", P({ name: S("الاسم"), halqa: S("الحلقة"), username: S("اسم الدخول بالإنجليزية (اختياري، يُولَّد تلقائيًا)"), password: S("كلمة المرور (اختياري، تُولَّد تلقائيًا)"), parent_name: S("اسم ولي الأمر"), parent_phone: S("جوال ولي الأمر") }, ["name", "halqa"])),
     build: async (a, c) => { const h = halqaOf(c, a.halqa); const un = await checkUsername(a.username, "s"); const pw = str(a.password, 60).length >= 4 ? str(a.password, 60) : rnd(100000, 999999); const info: any = {}; if (a.parent_name) info.parentName = str(a.parent_name, 120); if (a.parent_phone) info.parentPhone = str(a.parent_phone, 30); return { summary: `👤 طالب جديد: ${a.name} في ${h.name} · اسم الدخول: ${un} · كلمة المرور: ${pw}${info.parentPhone ? " · ولي الأمر " + info.parentPhone : ""}`, t: "student.save", payload: { data: { name: str(a.name, 120), username: un, password: pw, halqaId: h.id, status: "active", info } } }; } },
-  { ok: perm("students"), spec: T("edit_student", "تعديل بيانات طالب: الاسم، الحلقة (نقل)، الحالة (نشط/موقوف/مؤرشف)، ولي الأمر، كلمة المرور", P({ student: S("اسم الطالب الحالي"), name: S("الاسم الجديد"), halqa: S("نقله لحلقة"), status: { type: "string", enum: ["active", "disabled", "archived"] }, parent_name: S("اسم ولي الأمر"), parent_phone: S("جوال ولي الأمر"), password: S("كلمة مرور جديدة") }, ["student"])),
+  { ok: perm("students"), spec: T("edit_student", "تعديل بيانات طالب: الاسم، الحلقة (نقل)، الحالة (نشط/موقوف/مؤرشف)، ولي الأمر، كلمة المرور", P({ student: S("اسم الطالب الحالي"), name: S("الاسم الجديد"), halqa: S("نقله إلى حلقة"), status: { type: "string", enum: ["active", "disabled", "archived"] }, parent_name: S("اسم ولي الأمر"), parent_phone: S("جوال ولي الأمر"), password: S("كلمة مرور جديدة") }, ["student"])),
     build: (a, c) => {
       const st = one(c.allStuds, a.student, "الطالب"); const h = a.halqa ? halqaOf(c, a.halqa) : null; const info: any = { ...((st.info as any) || {}) };
       if (a.parent_name !== undefined) info.parentName = str(a.parent_name, 120); if (a.parent_phone !== undefined) info.parentPhone = str(a.parent_phone, 30);
       const ch = [a.name && "الاسم: " + a.name, h && "الحلقة: " + h.name, a.status && "الحالة: " + ({ active: "نشط", disabled: "موقوف", archived: "مؤرشف" } as any)[a.status], a.parent_phone !== undefined && "جوال ولي الأمر: " + a.parent_phone, a.parent_name !== undefined && "ولي الأمر: " + a.parent_name, a.password && "كلمة مرور جديدة: " + a.password].filter(Boolean);
-      if (!ch.length) throw new Error("وش التعديل المطلوب؟");
+      if (!ch.length) throw new Error("ما التعديل المطلوب؟");
       return { summary: `✎ تعديل ${st.name}: ${ch.join(" · ")}`, t: "student.save", payload: { id: st.id, data: { name: str(a.name, 120) || st.name, username: st.username, halqaId: h ? h.id : st.halqaId, status: a.status || st.status, info, ...(a.password ? { password: str(a.password, 60) } : {}) } } };
     } },
-  { ok: perm("students"), spec: T("move_students", "نقل طالب أو أكثر لحلقة ثانية", P({ students: SA("الأسماء"), halqa: S("الحلقة الجديدة") }, ["students", "halqa"])),
-    build: (a, c) => { const h = halqaOf(c, a.halqa); const ss = many(c.studs, a.students).filter((x) => x.halqaId !== h.id); if (!ss.length) throw new Error("الطلاب أصلًا في هالحلقة"); return { summary: `⇄ نقل ${ss.length === 1 ? ss[0].name : ss.length + " طلاب"} إلى ${h.name}`, t: "students.assign", payload: { map: Object.fromEntries(ss.map((x) => [x.id, h.id])) } }; } },
-  { ok: perm("teachers"), spec: T("add_teacher", "إضافة معلم", P({ name: S("الاسم"), username: S("اسم الدخول بالإنجليزي (اختياري)"), password: S("كلمة المرور (اختياري)"), phone: S("الجوال"), can_plan: B("يقدر يعدّل الخطط"), can_auto: B("يقدر يشغّل الحصص التلقائية") }, ["name"])),
+  { ok: perm("students"), spec: T("move_students", "نقل طالب أو أكثر إلى حلقة أخرى", P({ students: SA("الأسماء"), halqa: S("الحلقة الجديدة") }, ["students", "halqa"])),
+    build: (a, c) => { const h = halqaOf(c, a.halqa); const ss = many(c.studs, a.students).filter((x) => x.halqaId !== h.id); if (!ss.length) throw new Error("الطلاب موجودون أصلًا في هذه الحلقة"); return { summary: `⇄ نقل ${ss.length === 1 ? ss[0].name : ss.length + " طلاب"} إلى ${h.name}`, t: "students.assign", payload: { map: Object.fromEntries(ss.map((x) => [x.id, h.id])) } }; } },
+  { ok: perm("teachers"), spec: T("add_teacher", "إضافة معلم", P({ name: S("الاسم"), username: S("اسم الدخول بالإنجليزية (اختياري)"), password: S("كلمة المرور (اختياري)"), phone: S("الجوال"), can_plan: B("يستطيع تعديل الخطط"), can_auto: B("يستطيع تشغيل الحصص التلقائية") }, ["name"])),
     build: async (a) => { const un = await checkUsername(a.username, "t"); const pw = str(a.password, 60).length >= 4 ? str(a.password, 60) : rnd(100000, 999999); return { summary: `👤 معلم جديد: ${a.name} · اسم الدخول: ${un} · كلمة المرور: ${pw}${a.can_plan ? " · يعدّل الخطط" : ""}`, t: "teacher.save", payload: { data: { name: str(a.name, 120), username: un, password: pw, phone: str(a.phone, 30), canPlan: !!a.can_plan, canAuto: !!a.can_auto } } }; } },
   { ok: perm("teachers"), spec: T("edit_teacher", "تعديل معلم: الاسم، الجوال، صلاحية الخطط، الحالة (نشط/موقوف)، كلمة المرور", P({ teacher: S("اسم المعلم"), name: S("الاسم الجديد"), phone: S("الجوال"), can_plan: B("يعدّل الخطط"), can_auto: B("الحصص التلقائية"), status: { type: "string", enum: ["active", "disabled"] }, password: S("كلمة مرور جديدة") }, ["teacher"])),
-    build: (a, c) => { const t = one(c.teachers, a.teacher, "المعلم"); const inf: any = t.info || {}; const data = { name: str(a.name, 120) || t.name, username: t.username, phone: a.phone !== undefined ? str(a.phone, 30) : inf.phone || "", canPlan: a.can_plan !== undefined ? !!a.can_plan : t.canPlan, canAuto: a.can_auto !== undefined ? !!a.can_auto : t.canAuto, status: a.status || t.status, ...(a.password ? { password: str(a.password, 60) } : {}) }; const ch = [a.name && "الاسم: " + a.name, a.phone !== undefined && "الجوال: " + a.phone, a.can_plan !== undefined && (a.can_plan ? "يعدّل الخطط" : "بدون تعديل الخطط"), a.can_auto !== undefined && (a.can_auto ? "الحصص التلقائية" : "بدون الحصص التلقائية"), a.status && (a.status === "active" ? "تفعيل" : "إيقاف"), a.password && "كلمة مرور جديدة: " + a.password].filter(Boolean); if (!ch.length) throw new Error("وش التعديل المطلوب؟"); return { summary: `✎ تعديل المعلم ${t.name}: ${ch.join(" · ")}`, t: "teacher.save", payload: { id: t.id, data } }; } },
-  { ok: perm("halaqat"), spec: T("add_halqa", "إنشاء حلقة جديدة", P({ name: S("اسم الحلقة"), days: SA("أيام الحلقة بالعربي"), time: S("الوقت HH:MM"), teacher: S("اسم المعلم"), link: S("رابط الحصة"), branch: S("الفرع أو المسجد"), auto: B("تنشأ حصصها تلقائيًا") }, ["name", "days"])),
+    build: (a, c) => { const t = one(c.teachers, a.teacher, "المعلم"); const inf: any = t.info || {}; const data = { name: str(a.name, 120) || t.name, username: t.username, phone: a.phone !== undefined ? str(a.phone, 30) : inf.phone || "", canPlan: a.can_plan !== undefined ? !!a.can_plan : t.canPlan, canAuto: a.can_auto !== undefined ? !!a.can_auto : t.canAuto, status: a.status || t.status, ...(a.password ? { password: str(a.password, 60) } : {}) }; const ch = [a.name && "الاسم: " + a.name, a.phone !== undefined && "الجوال: " + a.phone, a.can_plan !== undefined && (a.can_plan ? "يعدّل الخطط" : "بدون تعديل الخطط"), a.can_auto !== undefined && (a.can_auto ? "الحصص التلقائية" : "بدون الحصص التلقائية"), a.status && (a.status === "active" ? "تفعيل" : "إيقاف"), a.password && "كلمة مرور جديدة: " + a.password].filter(Boolean); if (!ch.length) throw new Error("ما التعديل المطلوب؟"); return { summary: `✎ تعديل المعلم ${t.name}: ${ch.join(" · ")}`, t: "teacher.save", payload: { id: t.id, data } }; } },
+  { ok: perm("halaqat"), spec: T("add_halqa", "إنشاء حلقة جديدة", P({ name: S("اسم الحلقة"), days: SA("أيام الحلقة بالعربية"), time: S("الوقت HH:MM"), teacher: S("اسم المعلم"), link: S("رابط الحصة"), branch: S("الفرع أو المسجد"), auto: B("تُنشأ حصصها تلقائيًا") }, ["name", "days"])),
     build: (a, c) => { const days = (Array.isArray(a.days) ? a.days : []).map(dayIdx); if (!days.length) throw new Error("حدد الأيام"); const t = a.teacher ? one(c.teachers, a.teacher, "المعلم") : null; const time = isTime(a.time) ? hhmm(a.time) : ""; return { summary: `🟢 حلقة جديدة «${a.name}» · ${days.map((d: number) => DAYS[d]).join("، ")}${time ? " " + time : ""}${t ? " · المعلم " + t.name : ""}${a.auto ? " · حصص تلقائية" : ""}`, t: "halqa.save", payload: { data: { name: str(a.name, 80), days, time, teacherId: t ? t.id : "", link: str(a.link, 600), branch: str(a.branch, 60), auto: !!a.auto } } }; } },
   { ok: perm("halaqat"), spec: T("edit_halqa", "تعديل حلقة: الاسم، الأيام، الوقت، المعلم، الرابط، الفرع، الحصص التلقائية", P({ halqa: S("اسم الحلقة الحالي"), name: S("الاسم الجديد"), days: SA("الأيام"), time: S("HH:MM"), teacher: S("اسم المعلم أو «بدون»"), link: S("الرابط"), branch: S("الفرع"), auto: B("حصص تلقائية") }, ["halqa"])),
     build: (a, c) => {
@@ -280,47 +280,47 @@ const STAFF_TOOLS: Tool[] = [
       if (a.teacher !== undefined) { if (/^(بدون|لا|none)$/i.test(norm(a.teacher))) { teacherId = ""; tTxt = "بدون معلم"; } else { const t = one(c.teachers, a.teacher, "المعلم"); teacherId = t.id; tTxt = "المعلم " + t.name; } }
       const days = Array.isArray(a.days) && a.days.length ? a.days.map(dayIdx) : h.days;
       const data = { name: str(a.name, 80) || h.name, days, time: isTime(a.time) ? hhmm(a.time) : h.time, teacherId, link: a.link !== undefined ? str(a.link, 600) : h.link, branch: a.branch !== undefined ? str(a.branch, 60) : (h as any).branch || "", auto: a.auto !== undefined ? !!a.auto : h.auto };
-      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + t12(data.time) + (data.time !== h.time ? " (والحصص الجاية تتعدل معها)" : ""), tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
-      if (!ch.length) throw new Error("وش التعديل المطلوب؟");
+      const ch = [a.name && "الاسم: " + a.name, Array.isArray(a.days) && a.days.length && "الأيام: " + days.map((d: number) => DAYS[d]).join("، "), isTime(a.time) && "الوقت: " + t12(data.time) + (data.time !== h.time ? " (والحصص القادمة تُعدَّل معها)" : ""), tTxt, a.link !== undefined && "الرابط", a.branch !== undefined && "الفرع: " + a.branch, a.auto !== undefined && (a.auto ? "حصص تلقائية" : "بدون حصص تلقائية")].filter(Boolean);
+      if (!ch.length) throw new Error("ما التعديل المطلوب؟");
       return { summary: `✎ تعديل ${h.name}: ${ch.join(" · ")}`, t: "halqa.save", payload: { id: h.id, data } };
     } },
-  { ok: staff, spec: T("set_lessons_time", "تغيير وقت حصص يوم معيّن أو فترة (مثل حصص اليوم أو بكرة أو هالأسبوع) لكل الحلقات أو حلقات محددة، بدون ما يتغير وقت الحلقة الدائم", P({ date: S("اليوم YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري للفترة)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"] (الافتراضي الكل)"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["time"])),
+  { ok: staff, spec: T("set_lessons_time", "تغيير وقت حصص يوم معيّن أو فترة (مثل حصص اليوم أو الغد أو هذا الأسبوع) لكل الحلقات أو حلقات محددة، دون أن يتغير وقت الحلقة الدائم", P({ date: S("اليوم YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري للفترة)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"] (الافتراضي الكل)"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["time"])),
     build: (a, c) => {
       if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time);
       const from = isDay(a.date) ? a.date : localDate(), to = isDay(a.to_date) && a.to_date >= from ? a.to_date : from;
       const hs = Array.isArray(a.halaqat) && a.halaqat.length ? many(c.halaqat, a.halaqat) : c.halaqat; const hset = new Set(hs.map((h) => h.id));
       const ls = c.lessons.filter((l) => hset.has(l.halqaId) && l.date >= from && l.date <= to && !l.cancelled);
-      if (!ls.length) throw new Error(`ما فيه حصص ${from === to ? "يوم " + wd(from) + " " + from : "من " + from + " إلى " + to}`);
+      if (!ls.length) throw new Error(`لا توجد حصص ${from === to ? "يوم " + wd(from) + " " + from : "من " + from + " إلى " + to}`);
       const hn = (id: string) => c.halaqat.find((h) => h.id === id)?.name || "";
       return { summary: `🕒 ${from === to ? (from === localDate() ? "حصص اليوم" : "حصص " + wd(from) + " " + from) : `الحصص من ${from} إلى ${to}`} (${ls.length}: ${[...new Set(ls.map((l) => hn(l.halqaId)))].join("، ")}) تبدأ ${t12(time)}`, t: "lessons.time", payload: { ids: ls.map((l) => l.id), time } };
     } },
-  { ok: staff, spec: T("set_lessons_mode", "تغيير نوع حصص يوم أو فترة بعد ما انشأت: حضوري أو عن بعد أو هجين (مثل: حصص بكرة عن بعد بسبب المطر)، لكل الحلقات أو حلقات محددة. default يرجعها لنوع حلقتها الأساسي", P({ date: S("اليوم YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري للفترة)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"] (الافتراضي الكل)"), mode: { type: "string", enum: ["onsite", "remote", "hybrid", "default"], description: "onsite حضوري، remote عن بعد، hybrid هجين، default حسب الحلقة" } }, ["mode"])),
+  { ok: staff, spec: T("set_lessons_mode", "تغيير نوع حصص يوم أو فترة بعد إنشائها: حضوري أو عن بعد أو هجين (مثل: حصص الغد عن بعد بسبب المطر)، لكل الحلقات أو حلقات محددة. default يعيدها إلى نوع حلقتها الأساسي", P({ date: S("اليوم YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري للفترة)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"] (الافتراضي الكل)"), mode: { type: "string", enum: ["onsite", "remote", "hybrid", "default"], description: "onsite حضوري، remote عن بعد، hybrid هجين، default حسب الحلقة" } }, ["mode"])),
     build: (a, c) => {
       const ML: any = { onsite: "حضوري", remote: "عن بعد", hybrid: "هجين", default: "حسب نوع الحلقة" }; if (!ML[a.mode]) throw new Error("حدد النوع: حضوري أو عن بعد أو هجين");
       const from = isDay(a.date) ? a.date : localDate(), to = isDay(a.to_date) && a.to_date >= from ? a.to_date : from;
       const hs = Array.isArray(a.halaqat) && a.halaqat.length ? many(c.halaqat, a.halaqat) : c.halaqat; const hset = new Set(hs.map((h) => h.id));
       const ls = c.lessons.filter((l) => hset.has(l.halqaId) && l.date >= from && l.date <= to && !l.cancelled);
-      if (!ls.length) throw new Error(`ما فيه حصص ${from === to ? "يوم " + wd(from) + " " + from : "من " + from + " إلى " + to}`);
+      if (!ls.length) throw new Error(`لا توجد حصص ${from === to ? "يوم " + wd(from) + " " + from : "من " + from + " إلى " + to}`);
       const hn = (id: string) => c.halaqat.find((h) => h.id === id)?.name || "";
-      return { summary: `🏫 ${from === to ? (from === localDate() ? "حصص اليوم" : "حصص " + wd(from) + " " + from) : `الحصص من ${from} إلى ${to}`} (${ls.length}: ${[...new Set(ls.map((l) => hn(l.halqaId)))].join("، ")}) تصير ${ML[a.mode]}`, t: "lessons.bulk", payload: { ids: ls.map((l) => l.id), mode: a.mode === "default" ? "" : a.mode } };
+      return { summary: `🏫 ${from === to ? (from === localDate() ? "حصص اليوم" : "حصص " + wd(from) + " " + from) : `الحصص من ${from} إلى ${to}`} (${ls.length}: ${[...new Set(ls.map((l) => hn(l.halqaId)))].join("، ")}) تصبح ${ML[a.mode]}`, t: "lessons.bulk", payload: { ids: ls.map((l) => l.id), mode: a.mode === "default" ? "" : a.mode } };
     } },
   { ok: staff, spec: T("cancel_lessons", "إلغاء أو استرجاع حصص يوم أو فترة لكل الحلقات أو حلقات محددة", P({ date: S("YYYY-MM-DD، الافتراضي اليوم"), to_date: S("إلى تاريخ (اختياري)"), halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), restore: { type: "boolean", description: "true لاسترجاع حصص ملغاة" }, note: S("السبب") }, [])),
     build: (a, c) => {
       const from = isDay(a.date) ? a.date : localDate(), to = isDay(a.to_date) && a.to_date >= from ? a.to_date : from; const back = !!a.restore;
       const hs = Array.isArray(a.halaqat) && a.halaqat.length ? many(c.halaqat, a.halaqat) : c.halaqat; const hset = new Set(hs.map((h) => h.id));
       const ls = c.lessons.filter((l) => hset.has(l.halqaId) && l.date >= from && l.date <= to && l.cancelled === back);
-      if (!ls.length) throw new Error(back ? "ما فيه حصص ملغاة بهالفترة" : "ما فيه حصص بهالفترة");
+      if (!ls.length) throw new Error(back ? "لا توجد حصص ملغاة في هذه الفترة" : "لا توجد حصص في هذه الفترة");
       return { summary: `${back ? "↩ استرجاع" : "✕ إلغاء"} ${ls.length} حصة ${from === to ? wd(from) + " " + from : `من ${from} إلى ${to}`}${a.note ? " — " + a.note : ""}`, t: "lessons.bulk", payload: { ids: ls.map((l) => l.id), cancel: !back, note: a.note || "" } };
     } },
   { ok: perm("halaqat"), spec: T("set_halaqat_mode", "تغيير النوع الدائم لحلقة أو أكثر (أو كل الحلقات): حضوري أو عن بعد أو هجين", P({ halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), mode: { type: "string", enum: ["onsite", "remote", "hybrid"] } }, ["halaqat", "mode"])),
-    build: (a, c) => { const ML: any = { onsite: "حضوري", remote: "عن بعد", hybrid: "هجين" }; if (!ML[a.mode]) throw new Error("حدد النوع"); const hs = many(c.halaqat, a.halaqat); return { summary: `🏫 ${hs.length === c.halaqat.length && hs.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} تصير ${ML[a.mode]}`, t: "halqa.mode", payload: { ids: hs.map((h) => h.id), mode: a.mode } }; } },
-  { ok: perm("halaqat"), spec: T("set_halaqat_time", "تغيير وقت بداية حلقة أو أكثر (أو كل الحلقات)، وكل الحصص الجاية تتعدل معها مباشرة", P({ halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["halaqat", "time"])),
-    build: (a, c) => { if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time); const hs = many(c.halaqat, a.halaqat); const ch = hs.filter((h) => h.time !== time); return { summary: `🕒 وقت ${ch.length === c.halaqat.length && ch.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} يصير ${t12(time)}، والحصص الجاية تتعدل معها`, t: "halqa.time", payload: { ids: hs.map((h) => h.id), time } }; } },
+    build: (a, c) => { const ML: any = { onsite: "حضوري", remote: "عن بعد", hybrid: "هجين" }; if (!ML[a.mode]) throw new Error("حدد النوع"); const hs = many(c.halaqat, a.halaqat); return { summary: `🏫 ${hs.length === c.halaqat.length && hs.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} تصبح ${ML[a.mode]}`, t: "halqa.mode", payload: { ids: hs.map((h) => h.id), mode: a.mode } }; } },
+  { ok: perm("halaqat"), spec: T("set_halaqat_time", "تغيير وقت بداية حلقة أو أكثر (أو كل الحلقات)، وتُعدَّل كل الحصص القادمة معها مباشرة", P({ halaqat: SA("أسماء الحلقات أو [\"الكل\"]"), time: S("الوقت الجديد HH:MM بنظام 24 ساعة") }, ["halaqat", "time"])),
+    build: (a, c) => { if (!isTime(a.time)) throw new Error("حدد الوقت"); const time = hhmm(a.time); const hs = many(c.halaqat, a.halaqat); const ch = hs.filter((h) => h.time !== time); return { summary: `🕒 وقت ${ch.length === c.halaqat.length && ch.length > 1 ? "كل الحلقات" : hs.map((h) => h.name).join("، ")} يصبح ${t12(time)}، والحصص القادمة تُعدَّل معها`, t: "halqa.time", payload: { ids: hs.map((h) => h.id), time } }; } },
   { ok: perm("settings"), spec: T("add_event", "إضافة اختبار أو مناسبة في تقويم الطلاب", P({ name: S("الاسم"), date: S("YYYY-MM-DD ميلادي"), kind: { type: "string", enum: ["exam", "event"] } }, ["name", "date"])),
     build: (a) => { if (!isDay(a.date)) throw new Error("تاريخ غير صالح"); return { summary: `🗓 ${a.kind === "exam" ? "اختبار" : "مناسبة"}: «${a.name}» — ${wd(a.date)} ${a.date} (${hj(a.date)})`, t: "events.add", payload: { name: a.name, date: a.date, kind: a.kind === "exam" ? "exam" : "event" } }; } },
-  { ok: perm("settings"), spec: T("add_holiday", "إضافة إجازة (ما تنعقد فيها حصص)", P({ name: S("الاسم"), from: S("YYYY-MM-DD"), to: S("YYYY-MM-DD") }, ["name", "from"])),
+  { ok: perm("settings"), spec: T("add_holiday", "إضافة إجازة (لا تنعقد فيها حصص)", P({ name: S("الاسم"), from: S("YYYY-MM-DD"), to: S("YYYY-MM-DD") }, ["name", "from"])),
     build: (a) => { if (!isDay(a.from)) throw new Error("تاريخ غير صالح"); const to = isDay(a.to) ? a.to : a.from; return { summary: `🏖 إجازة: «${a.name}» من ${a.from} (${hj(a.from)})${to !== a.from ? ` إلى ${to}` : ""}`, t: "holidays.add", payload: { name: a.name, from: a.from, to } }; } },
-  { ok: perm("settings"), spec: T("update_settings", "تعديل إعدادات عامة: اسم الموقع، أيام الدوام، تنبيه الغياب، وقت التسميع، لوحة الشرف، سلّم التقدير، جهة التواصل", P({ center: S("اسم الحلقات"), work_days: SA("أيام الدوام الافتراضية"), absent_alert: N("تنبيه بعد كم غياب متتالي"), rec_minutes: N("دقائق التسميع لكل طالب، 0 بدون"), board: { type: "string", enum: ["show", "top3", "hide"], description: "لوحة الشرف" }, excellent_max: N("ممتاز إذا الأخطاء حتى"), very_good_max: N("جيد جدًا حتى"), good_max: N("جيد حتى"), support_name: S("جهة التواصل"), support_phone: S("رقم التواصل") })),
+  { ok: perm("settings"), spec: T("update_settings", "تعديل إعدادات عامة: اسم الموقع، أيام الدوام، تنبيه الغياب، وقت التسميع، لوحة الشرف، سلّم التقدير، جهة التواصل", P({ center: S("اسم الحلقات"), work_days: SA("أيام الدوام الافتراضية"), absent_alert: N("عدد مرات الغياب المتتالي قبل التنبيه"), rec_minutes: N("دقائق التسميع لكل طالب، 0 لعدم التحديد"), board: { type: "string", enum: ["show", "top3", "hide"], description: "لوحة الشرف" }, excellent_max: N("ممتاز إذا كانت الأخطاء حتى"), very_good_max: N("جيد جدًا حتى"), good_max: N("جيد حتى"), support_name: S("جهة التواصل"), support_phone: S("رقم التواصل") })),
     build: (a, c) => {
       const cur: any = c.settings; const d: any = { ...cur, grade: { ...cur.grade }, tpl: cur.tpl }; const ch: string[] = [];
       if (a.center) { d.center = str(a.center, 80); ch.push("الاسم: " + d.center); }
@@ -332,16 +332,16 @@ const STAFF_TOOLS: Tool[] = [
       if ([a.excellent_max, a.very_good_max, a.good_max].some((x) => x !== undefined)) ch.push(`التقدير: ممتاز ≤${d.grade.ex} · جيد جدًا ≤${d.grade.vg} · جيد ≤${d.grade.gd}`);
       if (a.support_name !== undefined) { d.supportName = str(a.support_name, 60); ch.push("جهة التواصل: " + d.supportName); }
       if (a.support_phone !== undefined) { d.supportPhone = str(a.support_phone, 20); ch.push("رقم التواصل: " + d.supportPhone); }
-      if (!ch.length) throw new Error("وش الإعداد المطلوب؟");
+      if (!ch.length) throw new Error("ما الإعداد المطلوب؟");
       return { summary: `⚙ الإعدادات: ${ch.join(" · ")}`, t: "settings.save", payload: { data: d } };
     } },
-  { ok: (u) => perm("students")(u) || perm("teachers")(u), spec: T("reset_password", "كلمة مرور مؤقتة جديدة لطالب أو معلم نسي كلمته", P({ person: S("اسم الطالب أو المعلم") }, ["person"])),
-    build: (a, c) => { const p = one([...c.allStuds, ...c.teachers], a.person, "الاسم"); return { summary: `🔑 كلمة مرور مؤقتة لـ${p.name} (تطلع لك بعد التنفيذ)`, t: "user.resetpw", payload: { id: p.id } }; } },
-  { ok: full, spec: T("add_supervisor", "إضافة مشرف إداري بصلاحيات محددة", P({ name: S("الاسم"), username: S("اسم الدخول بالإنجليزي"), password: S("كلمة المرور (6 على الأقل، اختياري)"), perms: { type: "array", items: { type: "string", enum: Object.keys(PERM_AR) }, description: "الأقسام" }, halaqat: SA("يقتصر على هالحلقات (اختياري)") }, ["name", "perms"])),
+  { ok: (u) => perm("students")(u) || perm("teachers")(u), spec: T("reset_password", "كلمة مرور مؤقتة جديدة لطالب أو معلم نسي كلمة مروره", P({ person: S("اسم الطالب أو المعلم") }, ["person"])),
+    build: (a, c) => { const p = one([...c.allStuds, ...c.teachers], a.person, "الاسم"); return { summary: `🔑 كلمة مرور مؤقتة لـ${p.name} (تظهر لك بعد التنفيذ)`, t: "user.resetpw", payload: { id: p.id } }; } },
+  { ok: full, spec: T("add_supervisor", "إضافة مشرف إداري بصلاحيات محددة", P({ name: S("الاسم"), username: S("اسم الدخول بالإنجليزية"), password: S("كلمة المرور (6 على الأقل، اختياري)"), perms: { type: "array", items: { type: "string", enum: Object.keys(PERM_AR) }, description: "الأقسام" }, halaqat: SA("يقتصر على هذه الحلقات (اختياري)") }, ["name", "perms"])),
     build: async (a, c) => { const un = await checkUsername(a.username, "m"); const pw = str(a.password, 60).length >= 6 ? str(a.password, 60) : rnd(10000000, 99999999); const ps = (Array.isArray(a.perms) ? a.perms : []).filter((x: string) => PERM_AR[x]); if (!ps.length) throw new Error("حدد الصلاحيات"); const hs = Array.isArray(a.halaqat) && a.halaqat.length ? many(c.halaqat, a.halaqat) : []; return { summary: `🛡 مشرف جديد: ${a.name} · ${ps.map((x: string) => PERM_AR[x]).join("، ")}${hs.length ? " · حلقات: " + hs.map((h) => h.name).join("، ") : ""} · اسم الدخول: ${un} · كلمة المرور: ${pw}`, t: "admin.save", payload: { data: { name: str(a.name, 120), username: un, password: pw, perms: [...ps, ...hs.map((h) => "h:" + h.id)], status: "active" } } }; } },
-  { ok: full, spec: T("whatsapp_auto", "تشغيل أو إيقاف رسائل الواتساب التلقائية لأولياء الأمور", P({ absent: B("عند الغياب"), late: B("عند التأخر"), present: B("عند الحضور"), recitation: B("نتيجة التسميع"), weekly: B("التقرير الأسبوعي"), delay_minutes: N("يرسل بعد كم دقيقة") })),
-    build: (a, c) => { const m: any = { absent: "autoAbsent", late: "autoLate", present: "autoPresent", recitation: "autoRec", weekly: "autoWeek" }; const ar: any = { absent: "الغياب", late: "التأخر", present: "الحضور", recitation: "التسميع", weekly: "التقرير الأسبوعي" }; const d: any = {}; const ch: string[] = []; for (const k of Object.keys(m)) if (typeof a[k] === "boolean") { d[m[k]] = a[k]; ch.push(`${ar[k]}: ${a[k] ? "تشغيل" : "إيقاف"}`); } if (a.delay_minutes !== undefined) { d.delayMin = Number(a.delay_minutes); ch.push("المهلة " + d.delayMin + " د"); } if (!ch.length) throw new Error("وش تبي تشغل أو توقف؟"); return { summary: `🟢 الرسائل التلقائية: ${ch.join(" · ")}${c.waOn ? "" : " (الربط نفسه متوقف)"}`, t: "wa.auto", payload: { data: d } }; } },
-  { ok: full, spec: T("retry_failed_whatsapp", "إعادة إرسال كل رسائل الواتساب اللي فشلت", P({})),
+  { ok: full, spec: T("whatsapp_auto", "تشغيل أو إيقاف رسائل الواتساب التلقائية لأولياء الأمور", P({ absent: B("عند الغياب"), late: B("عند التأخر"), present: B("عند الحضور"), recitation: B("نتيجة التسميع"), weekly: B("التقرير الأسبوعي"), delay_minutes: N("يُرسَل بعد كم دقيقة") })),
+    build: (a, c) => { const m: any = { absent: "autoAbsent", late: "autoLate", present: "autoPresent", recitation: "autoRec", weekly: "autoWeek" }; const ar: any = { absent: "الغياب", late: "التأخر", present: "الحضور", recitation: "التسميع", weekly: "التقرير الأسبوعي" }; const d: any = {}; const ch: string[] = []; for (const k of Object.keys(m)) if (typeof a[k] === "boolean") { d[m[k]] = a[k]; ch.push(`${ar[k]}: ${a[k] ? "تشغيل" : "إيقاف"}`); } if (a.delay_minutes !== undefined) { d.delayMin = Number(a.delay_minutes); ch.push("المهلة " + d.delayMin + " د"); } if (!ch.length) throw new Error("ما الذي تريد تشغيله أو إيقافه؟"); return { summary: `🟢 الرسائل التلقائية: ${ch.join(" · ")}${c.waOn ? "" : " (الربط نفسه متوقف)"}`, t: "wa.auto", payload: { data: d } }; } },
+  { ok: full, spec: T("retry_failed_whatsapp", "إعادة إرسال كل رسائل الواتساب التي فشلت", P({})),
     build: () => ({ summary: "↻ إعادة إرسال رسائل الواتساب الفاشلة", t: "wa.retryFailed", payload: {} }) },
 ];
 
@@ -353,12 +353,12 @@ const STU_TOOLS: { spec: ToolSpec; ok: (c: SCtx) => boolean; build: (a: any, c: 
   { ok: (c) => c.hasTeacher, spec: T("parent_note", "ملاحظة من ولي الأمر للمعلم مرتبطة بيوم (مثل استئذان أو غياب متوقع)", P({ date: S("اليوم المقصود YYYY-MM-DD"), text: S("الملاحظة") }, ["text"])),
     build: (a) => { const d = isDay(a.date) ? a.date : localDate(); return { summary: `📝 ملاحظة ولي الأمر ليوم ${wd(d)} ${d}: ${String(a.text).slice(0, 200)}`, t: "dm.send", payload: { kind: "note", date: d, text: str(a.text, 1000) } }; } },
   { ok: (c) => c.polls.length > 0, spec: T("vote_poll", "التصويت في تصويت مفتوح", P({ question: S("سؤال التصويت أو جزء منه"), choices: SA("الخيار أو الخيارات المختارة بنصها") }, ["choices"])),
-    build: (a, c) => { const p: any = c.polls.length === 1 && !a.question ? c.polls[0] : one(c.polls.map((x) => ({ ...x, name: x.question })), a.question, "التصويت"); const opts = p.options as string[]; const idx = (Array.isArray(a.choices) ? a.choices : [a.choices]).map((ch: any) => { const n = norm(ch); const i = opts.findIndex((o) => norm(o) === n || norm(o).includes(n) || n.includes(norm(o))); if (i < 0) throw new Error(`ما لقيت الخيار «${ch}»`); return i; }); return { summary: `🗳 تصويت «${p.question}»: ${idx.map((i: number) => opts[i]).join("، ")}`, t: "poll.vote", payload: { id: p.id, choice: idx } }; } },
+    build: (a, c) => { const p: any = c.polls.length === 1 && !a.question ? c.polls[0] : one(c.polls.map((x) => ({ ...x, name: x.question })), a.question, "التصويت"); const opts = p.options as string[]; const idx = (Array.isArray(a.choices) ? a.choices : [a.choices]).map((ch: any) => { const n = norm(ch); const i = opts.findIndex((o) => norm(o) === n || norm(o).includes(n) || n.includes(norm(o))); if (i < 0) throw new Error(`لم أجد الخيار «${ch}»`); return i; }); return { summary: `🗳 تصويت «${p.question}»: ${idx.map((i: number) => opts[i]).join("، ")}`, t: "poll.vote", payload: { id: p.id, choice: idx } }; } },
   { ok: (c) => !!c.lessonToday, spec: T("ready_for_recitation", "دخول طابور التسميع في حصة اليوم (أنا جاهز) أو الخروج منه", P({ ready: B("true جاهز، false خروج") })),
     build: (a, c) => ({ summary: a.ready === false ? "↩ الخروج من طابور التسميع" : "🙋 أنا جاهز للتسميع (دخول الطابور)", t: "queue.ready", payload: { lessonId: c.lessonToday.id, v: a.ready !== false } }) },
   { ok: (c) => !!c.lessonToday, spec: T("report_issue", "إبلاغ المعلم بمشكلة في دخول حصة اليوم", P({ msg: S("وصف المشكلة") })),
-    build: (a, c) => ({ summary: `⚠ بلاغ للمعلم: ${str(a.msg, 200) || "ما أقدر أدخل الحصة"}`, t: "issue", payload: { lessonId: c.lessonToday.id, msg: str(a.msg, 200) } }) },
-  { ok: () => true, spec: T("log_wird", "تسجيل مهام اليوم والورد: المهام اللي خلصها وعدد أوجه التلاوة", P({ done: SA("المهام اللي خلصها بنصها أو [\"الكل\"]"), read_pages: N("أوجه التلاوة اليوم"), note: S("ملاحظة") })),
+    build: (a, c) => ({ summary: `⚠ بلاغ للمعلم: ${str(a.msg, 200) || "لا أستطيع دخول الحصة"}`, t: "issue", payload: { lessonId: c.lessonToday.id, msg: str(a.msg, 200) } }) },
+  { ok: () => true, spec: T("log_wird", "تسجيل مهام اليوم والورد: المهام التي أنجزها وعدد أوجه التلاوة", P({ done: SA("المهام التي أنجزها بنصها أو [\"الكل\"]"), read_pages: N("أوجه التلاوة اليوم"), note: S("ملاحظة") })),
     build: (a, c) => {
       const prev = new Set(((c.wird?.items as any[]) || []).filter((x) => x.done).map((x) => x.k)); const all = Array.isArray(a.done) && a.done.some((x: string) => ALL_RE.test(String(x).trim()));
       const want = (Array.isArray(a.done) ? a.done : []).map(norm);
@@ -376,8 +376,8 @@ async function llmActs(system: string, messages: ChatMsg[], specs: ToolSpec[], c
   let out = await callLlm(system, messages, specs, cfg);
   if (specs.length && !(out.calls || []).length && CLAIM.test(out.text || "")) {
     try {
-      const again = await callLlm(system, [...messages, { role: "assistant", text: out.text }, { role: "user", text: "ما استخدمت أي أداة، فما تنفذ شي. استخدم الأداة المناسبة الحين لطلبي، وإذا ما فيه أداة تناسبه قل ذلك بصراحة." }], specs, cfg);
-      if ((again.calls || []).length) out = again; else if (/ما (أقدر|اقدر|عندي|فيه أداة)|ما يمديني|غير متاح/.test(again.text || "")) out = { ...out, text: again.text };
+      const again = await callLlm(system, [...messages, { role: "assistant", text: out.text }, { role: "user", text: "لم تستخدم أي أداة، فلن يُنفَّذ شيء. استخدم الأداة المناسبة الآن لطلبي، وإن لم توجد أداة تناسبه فقل ذلك بصراحة." }], specs, cfg);
+      if ((again.calls || []).length) out = again; else if (/ما (أقدر|اقدر|عندي|فيه أداة)|ما يمديني|غير متاح|لا (أستطيع|أقدر|يمكنني|تتوفر|توجد أداة)|ليس(ت)? (لدي|بإمكاني)/.test(again.text || "")) out = { ...out, text: again.text };
     } catch {}
   }
   return out;
@@ -387,8 +387,8 @@ function runTools(calls: { name: string; args: any }[], find: (n: string) => ((a
     const actions: Act[] = [];
     for (const c of calls) {
       const fn = find(c.name);
-      try { if (!fn) throw new Error("هذا الإجراء مو من صلاحياتك"); const r = await fn(c.args || {}); actions.push(...(Array.isArray(r) ? r : [r])); }
-      catch (e: any) { actions.push({ summary: `⚠ ما قدرت أجهز الطلب`, t: "", payload: null, error: String(e?.message || e) }); }
+      try { if (!fn) throw new Error("هذا الإجراء ليس من صلاحياتك"); const r = await fn(c.args || {}); actions.push(...(Array.isArray(r) ? r : [r])); }
+      catch (e: any) { actions.push({ summary: `⚠ تعذّر تجهيز الطلب`, t: "", payload: null, error: String(e?.message || e) }); }
     }
     return actions;
   })();
@@ -402,7 +402,7 @@ async function studentChat(u: U, b: any) {
   // حد يومي لكل طالب عشان ما تخلص الباقة المجانية
   const today = localDate(); const lim = Math.min(200, Math.max(1, Number(raw.studentLimit) || 25)); const qk = "aiq:" + today;
   const qrow = await prisma.setting.findUnique({ where: { key: qk } }); const used: Record<string, number> = { ...((qrow?.value as any) || {}) };
-  if ((used[u.id] || 0) >= lim) fail(`وصلت حد اليوم (${lim} سؤال). ارجع بكرة إن شاء الله`);
+  if ((used[u.id] || 0) >= lim) fail(`وصلت إلى الحد اليومي (${lim} سؤال). عُد غدًا إن شاء الله`);
   const messages: ChatMsg[] = (Array.isArray(b.messages) ? b.messages : []).slice(-10).map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", text: str(m.text, 2000) })).filter((m: ChatMsg) => m.text);
   if (!messages.length || messages[messages.length - 1].role !== "user") fail("اكتب سؤالك");
   const s = await getSettings();
@@ -423,17 +423,17 @@ async function studentChat(u: U, b: any) {
   const sc: SCtx = { u, lessonToday: lessons.find((l: any) => l.date === today && !l.cancelled) || null, polls, tasks: (Array.isArray(b.tasks) ? b.tasks : []).map((x: any) => str(x, 120)).filter(Boolean).slice(0, 12), wird, hasTeacher: !!h };
   const tools = STU_TOOLS.filter((t) => t.ok(sc));
   const system = [
-    `أنت «مساعد ارتق»: مساعد لطيف للطالب وولي أمره في موقع «${s.center}» لحلقات تسميع القرآن عن بعد. ترد بلهجة سعودية بسيطة ومختصرة تناسب الطلاب.`,
+    `أنت «مساعد ارتق»: مساعد لطيف للطالب وولي أمره في موقع «${s.center}» لحلقات تسميع القرآن عن بعد. ترد بعربية فصحى بسيطة ومختصرة تناسب الطلاب.`,
     `${(h as any)?.gender === "f" ? "الطالبة" : "الطالب"}: ${u.name}. الحلقة: ${h?.name || "—"}${teacher ? ` (${(h as any)?.gender === "f" ? "المعلمة" : "المعلم"}: ${teacher.name})` : ""}. أيام الحلقة: ${h ? h.days.map((d: number) => DAYS[d]).join("، ") + " " + h.time : "—"}. اليوم ${today} = ${hj(today)} (${wd(today)}).`,
-    "قواعد: جاوب عن بيانات هذا الطالب فقط من المعطى. ساعده في طرق الحفظ والمراجعة والتثبيت وتنظيم الوقت بنصائح عملية. لأسئلة المعاني اعطِ معنى عام مختصر مما هو معروف في التفاسير، وانصحه يسأل معلمه للتفصيل، ولا تفتِ في الأحكام. لا تكتب نص آيات من ذاكرتك (قد تخطئ)؛ اذكر اسم السورة ورقم الآية وانصحه يرجع للمصحف. لا تخترع أرقاماً غير موجودة.",
-    `تقدر تسوي عنه كل شي يقدر يسويه في الموقع باستخدام الأدوات (${tools.map((t) => t.spec.description.split(" (")[0]).join("، ")}). إذا طلب شي منها استخدم الأداة مباشرة، وهو يأكد بزر قبل التنفيذ. ما تقدر تحذف شي ولا تغيّر كلمة المرور.`,
-    (h as any)?.gender === "f" ? "مهم: هذي طالبة في حلقة نسائية. خاطبها بصيغة المؤنث دائمًا (أحسنتِ، تقدرين، عليكِ، سمّعتِ)، وقل «المعلمة» بدل «المعلم»، وكن لطيفًا ومشجعًا بأسلوب يناسب البنات." : "",
+    "قواعد: أجب عن بيانات هذا الطالب فقط من المعطى. ساعده في طرق الحفظ والمراجعة والتثبيت وتنظيم الوقت بنصائح عملية. لأسئلة المعاني أعطِ معنى عامًا مختصرًا مما هو معروف في التفاسير، وانصحه بأن يسأل معلمه للتفصيل، ولا تفتِ في الأحكام. لا تكتب نص آيات من ذاكرتك (قد تخطئ)؛ اذكر اسم السورة ورقم الآية وانصحه بالرجوع إلى المصحف. لا تخترع أرقامًا غير موجودة.",
+    `يمكنك أن تنفّذ عنه كل ما يستطيع فعله في الموقع باستخدام الأدوات (${tools.map((t) => t.spec.description.split(" (")[0]).join("، ")}). إذا طلب شيئًا منها فاستخدم الأداة مباشرة، وهو يؤكد بزر قبل التنفيذ. لا يمكنك حذف أي شيء ولا تغيير كلمة المرور.`,
+    (h as any)?.gender === "f" ? "مهم: هذه طالبة في حلقة نسائية. خاطبها بصيغة المؤنث دائمًا (أحسنتِ، تستطيعين، عليكِ، سمّعتِ)، وقل «المعلمة» بدل «المعلم»، وكن لطيفًا ومشجعًا بأسلوب يناسب البنات." : "",
     due ? `المطلوب منه في خطته الحالية: ${due}` : "",
     sc.tasks.length ? `مهام اليوم (لأداة الورد): ${sc.tasks.join("؛ ")}${wird ? ` — المسجّل اليوم: ${((wird.items as any[]) || []).filter((x) => x.done).length} منجزة، تلاوة ${wird.read || 0} وجه` : ""}` : "",
     memInfo(u) ? memInfo(u) + "." : "",
-    `الحضور آخر 30 يوم: ${pres} من ${past.length}${abs ? ` (غاب ${abs})` : ""}.`,
-    `الحصص القادمة: ${next.join("؛ ") || "لا يوجد"}.${sc.lessonToday ? " عنده حصة اليوم." : ""}`,
-    `آخر تسميعاته: ${recs.map((r) => `${r.date} ${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}${r.mistakes ? ` (${r.mistakes} أخطاء)` : ""}${r.note ? ` — ملاحظة: ${r.note}` : ""}`).join("؛ ") || "ما فيه"}.`,
+    `الحضور آخر 30 يومًا: ${pres} من ${past.length}${abs ? ` (غاب ${abs})` : ""}.`,
+    `الحصص القادمة: ${next.join("؛ ") || "لا يوجد"}.${sc.lessonToday ? " لديه حصة اليوم." : ""}`,
+    `آخر تسميعاته: ${recs.map((r) => `${r.date} ${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}${r.mistakes ? ` (${r.mistakes} أخطاء)` : ""}${r.note ? ` — ملاحظة: ${r.note}` : ""}`).join("؛ ") || "لا يوجد"}.`,
     behav.length ? `ملاحظات المعلم: ${behav.map((x) => x.text).join("؛ ")}.` : "",
     polls.length ? `التصويتات المفتوحة: ${polls.map((p: any) => `«${p.question}» (${(p.options as string[]).join(" / ")})${votes.some((v) => v.pollId === p.id) ? " — صوّت" : ""}`).join("؛ ")}.` : "",
     `الإجازات القادمة: ${(s.holidays || []).filter((x) => x.to >= today).map((x) => `${x.name} ${x.from}→${x.to}`).join("؛ ") || "لا يوجد"}. الاختبارات والمناسبات: ${((s as any).events || []).filter((e: any) => e.date >= today).map((e: any) => `${e.date} ${e.name}`).join("؛ ") || "لا يوجد"}.`,
@@ -444,7 +444,7 @@ async function studentChat(u: U, b: any) {
   used[u.id] = (used[u.id] || 0) + 1;
   await prisma.setting.upsert({ where: { key: qk }, create: { key: qk, value: used }, update: { value: used } }).catch(() => {});
   const actions = await runTools(out.calls || [], (n) => { const t = tools.find((x) => x.spec.name === n); return t ? (a: any) => t.build(a, sc) : null; });
-  return { text: out.text || (actions.length ? "جهزت لك التالي، راجعه واضغط «تنفيذ»:" : "…"), actions, left: lim - used[u.id] };
+  return { text: out.text || (actions.length ? "جهّزت لك ما يلي، راجعه واضغط «تنفيذ»:" : "…"), actions, left: lim - used[u.id] };
 }
 
 export async function POST(req: Request) {
@@ -469,7 +469,7 @@ export async function POST(req: Request) {
       }
       // التجربة ترسل الأدوات كلها كمان، عشان لو فيه مشكلة بتعريفها تطلع هنا
       const out = await callLlm("رد بكلمة واحدة بدون أدوات.", [{ role: "user", text: "قل: تمام" }], STAFF_TOOLS.map((x) => x.spec)).catch((e) => fail(String(e.message), 422));
-      return { reply: (out as any).text || "تمام" };
+      return { reply: (out as any).text || "حسنًا" };
     }
     if (u!.role === "student") {
       if (t !== "chat") fail("غير مصرح", 403);
@@ -488,7 +488,7 @@ export async function POST(req: Request) {
       const notes = rs.map((r) => r.note).filter(Boolean).slice(0, 3);
       const fem = (await prisma.halqa.findUnique({ where: { id: st!.halqaId || "" }, select: { gender: true } }).catch(() => null))?.gender === "f";
       const facts = [`${fem ? "الطالبة (حلقة نسائية، اكتب الرسالة بصيغة المؤنث: ابنتكم)" : "الطالب"}: ${st!.name}`, `الحضور آخر أسبوعين: ${pres} من ${ls.length}${abs ? ` (غاب ${abs})` : ""}`,
-        `التسميع: ${rs.length ? rs.slice(0, 8).map((r) => `${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}`).join("، ") : "ما سمّع"}`,
+        `التسميع: ${rs.length ? rs.slice(0, 8).map((r) => `${TYPE[r.type] || ""} ${SN[r.surah - 1]} ${r.fromA}-${r.toA}: ${r.grade}`).join("، ") : "لم يُسمِّع"}`,
         notes.length ? `ملاحظات المعلم: ${notes.join(" / ")}` : "", b.extra ? `إضافة من المعلم: ${str(b.extra, 300)}` : ""].filter(Boolean).join("\n");
       const tone = b.tone === "praise" ? "ثناء وتشجيع" : b.tone === "concern" ? "قلق بلطف وطلب تعاون" : "اطمئنان";
       const cfg = await aiCfg(); if (!aiOn(cfg)) fail("المساعد غير مفعّل");
@@ -512,7 +512,7 @@ export async function POST(req: Request) {
       const pl = planOf(st); const plTxt = pl.paused ? "موقوفة" : pl.mode === "auto" ? `تلقائية ح${fmtPg(+pl.auto.newAmt || 0)}/م${fmtPg(+pl.auto.revAmt || 0)}/ت${fmtPg(+pl.auto.tathAmt || 0)}` : Object.keys(pl.manual).length ? "يدوية " + Object.entries(pl.manual).map(([k, v]: any) => TYPE[k] + " " + seg(v)).join("، ") : "بدون";
       const ph = ((st.info as any) || {}).parentPhone ? "" : " | بدون رقم ولي أمر";
       const mem = memInfo(st); const tot = ctx.recTotal[st.id] || 0;
-      return `${st.name} | ${hName(st.halqaId)} | حضور ${p}/${ls.length}${a ? ` غاب ${a}` : ""} | تسميع ${rs.length}${tot > rs.length ? ` (الكل ${tot})` : ""}${last ? ` آخره ${last.date} ${recLine(last)}` : ""}${re ? ` | إعادات ${re}` : ""} | ${mem || "المحفوظ غير مسجل"} | خطة ${plTxt} | آخر دخول ${st.lastSeenAt ? st.lastSeenAt.toISOString().slice(0, 10) : "أبد"}${ph}`;
+      return `${st.name} | ${hName(st.halqaId)} | حضور ${p}/${ls.length}${a ? ` غاب ${a}` : ""} | تسميع ${rs.length}${tot > rs.length ? ` (الكل ${tot})` : ""}${last ? ` آخره ${last.date} ${recLine(last)}` : ""}${re ? ` | إعادات ${re}` : ""} | ${mem || "المحفوظ غير مسجل"} | خطة ${plTxt} | آخر دخول ${st.lastSeenAt ? st.lastSeenAt.toISOString().slice(0, 10) : "أبدًا"}${ph}`;
     });
     const otherStuds = ctx.allStuds.filter((x) => x.status !== "active");
     // الحضور مفصّل لكل حصة عشان يجاوب «كم حضر اليوم» بدون أداة: حاضر/متأخر/غائب/مستأذن، ومين ما تحضّر، ومين دخل الغرفة
@@ -520,22 +520,22 @@ export async function POST(req: Request) {
       const att = (l.att as any) || {}; const hs = ctx.studs.filter((x) => x.halqaId === l.halqaId); const fn = (id: string) => ctx.studs.find((x) => x.id === id)?.name.split(" ")[0];
       const parts = ["p", "l", "a", "e"].map((v) => { const ids = Object.keys(att).filter((k) => att[k] === v); return ids.length ? `${ATT_AR[v]} ${ids.length}${v !== "p" && ids.length <= 8 ? " (" + ids.map(fn).filter(Boolean).join("، ") + ")" : ""}` : ""; }).filter(Boolean);
       const un = hs.filter((x) => !att[x.id]); const inRoom = Object.keys((l.arr as any) || {}).length;
-      if (!parts.length) return l.date <= today && !l.cancelled ? ` — ما تحضّرت (طلابها ${hs.length}${inRoom ? `، دخل الغرفة ${inRoom}` : ""})` : "";
-      return ` — من ${hs.length}: ${parts.join("، ")}${un.length ? `، ما تحضّر ${un.length}${un.length <= 8 ? " (" + un.map((x) => x.name.split(" ")[0]).join("، ") + ")" : ""}` : ""}${inRoom ? `، دخل الغرفة ${inRoom}` : ""}`;
+      if (!parts.length) return l.date <= today && !l.cancelled ? ` — لم تُحضَّر (طلابها ${hs.length}${inRoom ? `، دخل الغرفة ${inRoom}` : ""})` : "";
+      return ` — من ${hs.length}: ${parts.join("، ")}${un.length ? `، لم يُحضَّر ${un.length}${un.length <= 8 ? " (" + un.map((x) => x.name.split(" ")[0]).join("، ") + ")" : ""}` : ""}${inRoom ? `، دخل الغرفة ${inRoom}` : ""}`;
     };
     const lessonLines = ctx.lessons.filter((l) => l.date >= localDate(-7) && l.date <= localDate(10)).slice(0, 70).map((l) => `${l.date} ${wd(l.date)} ${l.time} ${hName(l.halqaId)}${l.cancelled ? " (ملغاة)" : ""}${attTxt(l)}`);
     const todayLs = ctx.lessons.filter((l) => l.date === today && !l.cancelled);
     const todayTot = (v: string[]) => todayLs.reduce((n, l) => n + Object.values((l.att as any) || {}).filter((x: any) => v.includes(x)).length, 0);
-    const todayLine = todayLs.length ? `حضور اليوم (${today}) بالمجموع: ${todayLs.length} حصة، حاضر ${todayTot(["p"])}، متأخر ${todayTot(["l"])}، غائب ${todayTot(["a"])}، مستأذن ${todayTot(["e"])}، من أصل ${todayLs.reduce((n, l) => n + ctx.studs.filter((x) => x.halqaId === l.halqaId).length, 0)} طالب. التفصيل لكل حلقة في «الحصص».` : `اليوم (${today}) ما فيه حصص.`;
+    const todayLine = todayLs.length ? `حضور اليوم (${today}) بالمجموع: ${todayLs.length} حصة، حاضر ${todayTot(["p"])}، متأخر ${todayTot(["l"])}، غائب ${todayTot(["a"])}، مستأذن ${todayTot(["e"])}، من أصل ${todayLs.reduce((n, l) => n + ctx.studs.filter((x) => x.halqaId === l.halqaId).length, 0)} طالب. التفصيل لكل حلقة في «الحصص».` : `اليوم (${today}) لا توجد حصص.`;
     const roleTxt = u!.role === "admin" ? (u!.perms ? `مشرف إداري (صلاحياته: ${(u!.perms as string[]).filter((x) => PERM_AR[x]).map((x) => PERM_AR[x]).join("، ")}${ctx.sc ? "، على حلقات محددة" : ""})` : "المدير العام") : `معلم${u!.canPlan ? " (يعدّل الخطط)" : ""}`;
     const system = [
-      `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بلهجة سعودية مهذبة ومختصرة.`,
+      `أنت «مساعد ارتق»: مساعد ذكي داخل موقع «${s.center}» لحلقات تسميع القرآن عن بعد (حفظ ومراجعة وتثبيت). تتكلم بعربية فصحى مهذبة ومختصرة.`,
       `المستخدم: ${u!.name} — ${roleTxt}. اليوم ${today} ميلادي = ${hj(today)} (${wd(today)}).`,
-      `صلاحياتك: تقدر تسوي عن المستخدم كل شي يقدر يسويه هو في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذف قل له إن الحذف يسويه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
-      "قواعد: إذا طلب إجراء استخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أنفذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقول «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، بكرة، هالأسبوع) استخدم set_lessons_time. لتحويل حصص موجودة لحضوري أو عن بعد أو هجين استخدم set_lessons_mode، وللنوع الدائم للحلقة set_halaqat_mode. لإلغاء أو استرجاع حصص فترة cancel_lessons. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها الجاية تتعدل معها). لحصة وحدة edit_lesson. تقدر تستخدم أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، بكرة، الخميس الجاي…) لميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة الاستعلام والمتابعة (كم حضر اليوم أو أي يوم، مين غاب، مين تأخر، مين ما تحضّر، مين يحتاج متابعة، وش وضع طالب، كم حافظ) ما تحتاج أداة: كل البيانات معطاة لك تحت («حضور اليوم» و«الحصص» و«الطلاب»)، فجاوب منها مباشرة بالأرقام وباختصار، ولا تقول أبدًا إنه ما عندك أداة أو بيانات للحضور. «الحضور» = حاضر + متأخر. لا تخترع طلاباً أو أرقاماً. إذا الطلب ناقص معلومة ضرورية اسأل سؤالاً واحداً.",
-      ctx.view === "f" ? `أنت الحين في قسم البنات (الدار النسائية)، منفصل تمامًا عن البنين.${!(u!.role === "admin" && !Array.isArray(u!.perms)) ? " والمستخدمة من منسوبات القسم: خاطبها بصيغة المؤنث." : ""}` : "",
+      `صلاحياتك: يمكنك أن تنفّذ عن المستخدم كل ما يستطيع فعله في الموقع باستخدام الأدوات، ما عدا الحذف. إذا طلب حذفًا فقل له إن الحذف يُجريه بنفسه من الصفحة، ولا تستخدم أداة بديلة. الأدوات المتاحة له: ${tools.map((x) => x.spec.name).join("، ")}.`,
+      "قواعد: إذا طلب إجراءً فاستخدم الأداة مباشرة (لا تكتفِ بالكلام ولا تسأل «أأنفّذ؟»)، فهو يراجع البطاقة ويضغط «تنفيذ». لا تقل «أضفت» أو «عدّلت» أو «تم» أبدًا إلا إذا استخدمت الأداة فعلًا. لتغيير وقت حصص يوم أو فترة (اليوم، غدًا، هذا الأسبوع) استخدم set_lessons_time. لتحويل حصص موجودة لحضوري أو عن بعد أو هجين استخدم set_lessons_mode، وللنوع الدائم للحلقة set_halaqat_mode. لإلغاء أو استرجاع حصص فترة cancel_lessons. لتغيير الوقت الدائم للحلقات استخدم set_halaqat_time (وحصصها القادمة تُعدَّل معها). لحصة واحدة edit_lesson. يمكنك استخدام أكثر من أداة في رد واحد. حوّل التواريخ الهجرية والأيام النسبية (اليوم، غدًا، الخميس القادم…) إلى الميلادي YYYY-MM-DD بدقة من التقويم المعطى. استخدم أسماء الطلاب والحلقات كما هي في القوائم. لأسئلة الاستعلام والمتابعة (كم حضر اليوم أو في أي يوم، مَن غاب، مَن تأخر، مَن لم يُحضَّر، مَن يحتاج إلى متابعة، ما وضع طالب، كم يحفظ) لا تحتاج إلى أداة: كل البيانات معطاة لك أدناه («حضور اليوم» و«الحصص» و«الطلاب»)، فأجب منها مباشرة بالأرقام وباختصار، ولا تقل أبدًا إنه ليست لديك أداة أو بيانات للحضور. «الحضور» = حاضر + متأخر. لا تخترع طلابًا أو أرقامًا. إذا كان الطلب ينقصه معلومة ضرورية فاسأل سؤالًا واحدًا.",
+      ctx.view === "f" ? `أنت الآن في قسم البنات (الدار النسائية)، منفصل تمامًا عن البنين.${!(u!.role === "admin" && !Array.isArray(u!.perms)) ? " والمستخدمة من منسوبات القسم: خاطبها بصيغة المؤنث." : ""}` : "",
       ctx.halaqat.some((h: any) => h.gender === "f") ? `الحلقات النسائية: تكلّم عن طالباتها بصيغة المؤنث، وأي رسالة لأولياء أمورهن تكون بصيغة المؤنث (ابنتكم، بارك الله فيها).${u!.role === "teacher" && ctx.halaqat.length && ctx.halaqat.every((h: any) => h.gender === "f") ? " والمستخدمة معلمة: خاطبها بصيغة المؤنث." : ""}` : "",
-      ctx.waOn ? "ربط الواتساب شغال: الرسائل لأولياء الأمور تطلع من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب ما تنرسل من الموقع).",
+      ctx.waOn ? "ربط الواتساب مفعّل: الرسائل لأولياء الأمور تُرسَل من رقم الحلقة." : "ربط الواتساب متوقف حاليًا (رسائل الواتساب لا تُرسَل من الموقع).",
       `الحلقات: ${ctx.halaqat.map((h) => `${h.name} (${h.days.map((d) => DAYS[d]).join("، ")} ${h.time}${isAdm(u) ? " · المعلم: " + (ctx.teachers.find((t: any) => t.id === h.teacherId)?.name || "بدون") : ""}${(h as any).branch ? " · " + (h as any).branch : ""}${h.auto ? " · تلقائية" : ""}${(h as any).gender === "f" ? " · نسائية" : ""})`).join("؛ ") || "لا يوجد"}`,
       isAdm(u) && ctx.teachers.length ? `المعلمون: ${ctx.teachers.map((t: any) => `${t.name}${t.status === "disabled" ? " (موقوف)" : ""}${t.canPlan ? " (يعدّل الخطط)" : ""}`).join("، ")}` : "",
       ctx.pending.length ? `طلبات التسجيل المعلّقة: ${ctx.pending.map((p: any) => `${p.name}${p.reqHalqaId ? " (طلب حلقة " + hName(p.reqHalqaId) + ")" : ""}`).join("، ")}` : "",
@@ -544,13 +544,13 @@ export async function POST(req: Request) {
       `الإجازات: ${(s.holidays || []).filter((h) => h.to >= today).map((h) => `${h.name} ${h.from}→${h.to}`).join("؛ ") || "لا يوجد"}`,
       `الاختبارات والمناسبات: ${((s as any).events || []).filter((e: any) => e.date >= today).map((e: any) => `${e.date} ${e.name}`).join("؛ ") || "لا يوجد"}`,
       ctx.polls.length ? `التصويتات المفتوحة: ${ctx.polls.map((p) => `«${p.question}»${p.halqaId ? " (" + hName(p.halqaId) + ")" : ""}`).join("؛ ")}` : "",
-      `الطلاب النشطين (${ctx.studs.length}) — الاسم | الحلقة | الحضور آخر 30 يوم | التسميع آخر 30 يوم | المحفوظ (الحفظ السابق + الجديد) | الخطة | آخر دخول:\n${studLines.join("\n") || "لا يوجد"}`,
-      otherStuds.length ? `طلاب موقوفين أو مؤرشفين: ${otherStuds.map((x) => `${x.name} (${x.status === "archived" ? "مؤرشف" : "موقوف"})`).join("، ")}` : "",
+      `الطلاب النشطون (${ctx.studs.length}) — الاسم | الحلقة | الحضور آخر 30 يومًا | التسميع آخر 30 يوم | المحفوظ (الحفظ السابق + الجديد) | الخطة | آخر دخول:\n${studLines.join("\n") || "لا يوجد"}`,
+      otherStuds.length ? `طلاب موقوفون أو مؤرشفون: ${otherStuds.map((x) => `${x.name} (${x.status === "archived" ? "مؤرشف" : "موقوف"})`).join("، ")}` : "",
       `التقويم للأيام الـ 21 القادمة (ميلادي، اليوم، هجري): ${calTxt(21)}`,
     ].filter(Boolean).join("\n\n");
     let out: any;
     try { out = await llmActs(system, messages, tools.map((x) => x.spec), cfg); } catch (e: any) { fail(String(e.message), 503); }
     const actions = await runTools(out.calls || [], (n) => { const x = tools.find((y) => y.spec.name === n); return x ? (a: any) => x.build(a, ctx, u) : null; });
-    return { text: out.text || (actions.length ? "جهزت لك التالي، راجعه واضغط «تنفيذ»:" : "…"), actions };
+    return { text: out.text || (actions.length ? "جهّزت لك ما يلي، راجعه واضغط «تنفيذ»:" : "…"), actions };
   });
 }

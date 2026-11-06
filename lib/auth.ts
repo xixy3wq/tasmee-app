@@ -20,7 +20,7 @@ export function handle(fn: () => Promise<unknown>) {
     (e) => {
       if (e instanceof ApiError) return NextResponse.json({ error: e.message }, { status: e.status });
       console.error(e);
-      return NextResponse.json({ error: "حدث خطأ في الخادم، حاول مرة ثانية" }, { status: 500 });
+      return NextResponse.json({ error: "حدث خطأ في الخادم، حاول مرة أخرى" }, { status: 500 });
     }
   );
 }

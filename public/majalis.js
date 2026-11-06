@@ -5,7 +5,7 @@
   var GROUPS = [
     { key: 'core', label: 'الأساسية', note: 'بالترتيب' },
     { key: 'ask', label: 'طلب في آخر اللقاء', note: '' },
-    { key: 'spare', label: 'احتياط لو بقي وقت', note: '' }
+    { key: 'spare', label: 'احتياط إن بقي وقت', note: '' }
   ];
   var GLABEL = { core: 'الأساسية', ask: 'طلب في آخر اللقاء', spare: 'احتياط' };
   var DIG = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -27,7 +27,7 @@
         }
         return j;
       });
-    }, function () { throw new ApiErr(0, 'ما فيه اتصال'); });
+    }, function () { throw new ApiErr(0, 'لا يوجد اتصال'); });
   }
   function act(op, payload) { var b = payload || {}; b.op = op; return api('/api/majalis/act', b); }
 
@@ -118,7 +118,7 @@
   function flushAll() { Object.keys(WQ).forEach(function (k) { var w = WQ[k]; if (w.timer || (w.failed && w.fn && !w.inflight)) run(k); }); }
   window.addEventListener('online', flushAll);
 
-  var STATUS = { connecting: 'جاري التجهيز', saved: 'محفوظ', saving: 'جاري الحفظ', fail: 'ما انحفظ، أعيد المحاولة' };
+  var STATUS = { connecting: 'جاري التجهيز', saved: 'محفوظ', saving: 'جاري الحفظ', fail: 'لم يُحفظ، جارٍ إعادة المحاولة' };
   function refreshStatus() {
     var el = document.getElementById('status');
     if (!el) return;
@@ -144,7 +144,7 @@
       route();
     }, function (e) {
       if (e.status === 401) return; // showLogin already rendered
-      app.innerHTML = '<div class="wrap"><p class="boot">' + esc(e.status === 503 ? e.message : 'ما قدرت أوصل للموقع. تأكد من الاتصال وحدّث الصفحة.') + '</p></div>';
+      app.innerHTML = '<div class="wrap"><p class="boot">' + esc(e.status === 503 ? e.message : 'تعذّر الوصول إلى الموقع. تأكد من الاتصال وحدّث الصفحة.') + '</p></div>';
     });
   }
 
@@ -168,7 +168,7 @@
     leaveSession(); view = 'denied'; me = null;
     app.innerHTML = '<div class="login wrap"><div class="login-card"><div class="eyebrow">دفترك مع أهل العلم</div><h1>مجالس المشايخ</h1>' +
       '<p class="lede">' + esc(msg || 'هذا القسم لحساب المدير فقط') + '</p>' +
-      '<div class="btns"><button class="btn primary" id="relog" type="button">الدخول بحساب ثاني</button><a class="btn ghost" href="/" style="text-decoration:none;display:inline-flex;align-items:center">حلقات ارتق</a></div></div></div>';
+      '<div class="btns"><button class="btn primary" id="relog" type="button">الدخول بحساب آخر</button><a class="btn ghost" href="/" style="text-decoration:none;display:inline-flex;align-items:center">حلقات ارتق</a></div></div></div>';
     document.getElementById('relog').addEventListener('click', function () { fetch('/api/logout', { method: 'POST' }).then(function () { view = null; showLogin(); }); });
   }
   function renderAuth(setup) {
@@ -176,7 +176,7 @@
       '<div class="login wrap"><form class="login-card" id="loginForm" autocomplete="on">' +
       '<div class="eyebrow">دفترك مع أهل العلم</div><h1>مجالس المشايخ</h1>' +
       (!setup ? '<p class="lede">ادخل بحساب المدير في حلقات ارتق.</p>' : '') +
-      (setup ? '<p class="lede">أول مرة تفتح الموقع. سوّ حسابك، ومجلس الشيخ مساعد الطيار بيكون جاهز فيه.</p>' +
+      (setup ? '<p class="lede">هذه أول مرة تفتح فيها الموقع. أنشئ حسابك، وسيكون مجلس الشيخ مساعد الطيار جاهزًا فيه.</p>' +
         '<div class="field"><label for="lg-n">اسمك</label><input class="input" id="lg-n" autocomplete="name"></div>' : '') +
       '<div class="field"><label for="lg-u">اسم المستخدم</label><input class="input" id="lg-u" name="username" autocomplete="username" autocapitalize="none" dir="ltr" required' + (setup ? ' placeholder="حروف إنجليزية صغيرة"' : '') + '></div>' +
       '<div class="field"><label for="lg-p">كلمة المرور</label><input class="input" id="lg-p" name="password" type="password" autocomplete="' + (setup ? 'new-password' : 'current-password') + '" dir="ltr" required' + (setup ? ' placeholder="٨ أحرف أو أكثر"' : '') + '></div>' +
@@ -197,7 +197,7 @@
             err.textContent = x.j.error || 'تعذّر الدخول'; return;
           }
           view = null; boot();
-        }, function () { btn.disabled = false; err.textContent = 'ما فيه اتصال، جرّب مرة ثانية.'; });
+        }, function () { btn.disabled = false; err.textContent = 'لا يوجد اتصال، حاول مرة أخرى.'; });
     });
   }
 
@@ -210,14 +210,14 @@
       '<header class="home-top wrap"><div class="home-head"><div class="eyebrow">دفترك مع أهل العلم</div>' +
       '<div class="who"><span>' + esc(me && me.name) + '</span><button class="linkish" id="logout" type="button">خروج</button></div></div>' +
       '<h1>دفتر مجالس المشايخ</h1>' +
-      '<p class="lede">سجّل كل مجلس: التحضير، والأسئلة، وأجوبة الشيخ، والفوائد. وتقدر تضيف أسئلة وتعدّلها وأنت في الجلسة.</p></header>' +
+      '<p class="lede">سجّل كل مجلس: التحضير، والأسئلة، وأجوبة الشيخ، والفوائد. ويمكنك إضافة الأسئلة وتعديلها أثناء الجلسة.</p></header>' +
       '<main class="home-main wrap">' +
       '<div class="btns"><button class="btn primary" id="newBtn" type="button">جلسة جديدة</button></div>' +
       '<form class="new-form" id="newForm" hidden autocomplete="off">' +
       '<div class="new-grid">' +
       '<div class="field"><label for="nf-sheikh">اسم الشيخ</label><input class="input" id="nf-sheikh" required placeholder="مثال: الشيخ عبدالله"></div>' +
       '<div class="field"><label for="nf-date">التاريخ</label><input class="input" id="nf-date" type="date"></div>' +
-      '<div class="field wide"><label for="nf-topic">موضوع الجلسة</label><input class="input" id="nf-topic" placeholder="وش الموضوع اللي تبي تركز عليه؟"></div>' +
+      '<div class="field wide"><label for="nf-topic">موضوع الجلسة</label><input class="input" id="nf-topic" placeholder="ما الموضوع الذي تريد التركيز عليه؟"></div>' +
       '</div><p class="login-err" id="nf-err" role="alert"></p><div class="btns"><button class="btn primary" type="submit">إنشاء الجلسة</button><button class="btn ghost" type="button" id="nfCancel">إلغاء</button></div></form>' +
       '<div class="list" id="list"></div></main>';
     var form = document.getElementById('newForm');
@@ -235,7 +235,7 @@
       act('createMajlis', { id: newId(), fields: { sheikh: sheikh, topic: document.getElementById('nf-topic').value.trim(), date: document.getElementById('nf-date').value || '' } })
         .then(function (j) { location.hash = 's-' + j.id; }, function (err) {
           btn.disabled = false; btn.textContent = 'إنشاء الجلسة';
-          document.getElementById('nf-err').textContent = err.status === 0 ? 'ما انحفظت الجلسة. تأكد من الاتصال وجرّب مرة ثانية.' : err.message;
+          document.getElementById('nf-err').textContent = err.status === 0 ? 'لم تُحفظ الجلسة. تأكد من الاتصال وحاول مرة أخرى.' : err.message;
         });
     });
     renderList();
@@ -246,7 +246,7 @@
     var el = document.getElementById('list');
     if (!el) return;
     if (!listLoaded) { el.innerHTML = '<p class="empty">جاري تحميل جلساتك</p>'; return; }
-    if (!list.length) { el.innerHTML = '<p class="empty">ما فيه جلسات بعد. اضغط «جلسة جديدة» وسجّل أول مجلس.</p>'; return; }
+    if (!list.length) { el.innerHTML = '<p class="empty">لا توجد جلسات بعد. اضغط «جلسة جديدة» وسجّل أول مجلس.</p>'; return; }
     var items = list.slice().sort(function (A, B) {
       var ka = str(A.date), kb = str(B.date);
       if (ka !== kb) return ka < kb ? 1 : -1;
@@ -289,11 +289,11 @@
       '<main class="s-main wrap">' +
       '<p class="empty" id="loading">جاري تحميل الجلسة</p>' +
       '<div id="sessionBody" hidden style="display:grid;gap:52px">' +
-      richSection('sec-prep', 'التحضير والافتتاح', 'opening', 'اكتب هنا كيف بتفتتح الجلسة وأي شيء تبي تتذكره قبلها.') +
+      richSection('sec-prep', 'التحضير والافتتاح', 'opening', 'اكتب هنا كيف ستفتتح الجلسة وأي شيء تريد تذكّره قبلها.') +
       '<section class="sec" id="sec-q" aria-labelledby="h-q"><div class="sec-head"><h2 id="h-q">الأسئلة</h2></div>' +
-      '<p class="lede">علّم على السؤال بعد ما تسأله، واكتب خلاصة جوابه تحته. وإذا طرأ لك سؤال أثناء الجلسة، أضفه من تحت.</p>' +
+      '<p class="lede">علّم على السؤال بعد أن تسأله، واكتب خلاصة جوابه تحته. وإذا طرأ لك سؤال أثناء الجلسة، فأضفه من الأسفل.</p>' +
       '<div class="q-tools"><span class="progress" id="progress"></span><div class="btns">' +
-      '<button class="btn" id="wakeBtn" type="button" aria-pressed="false" hidden>إبقاء الشاشة شغالة</button></div></div>' +
+      '<button class="btn" id="wakeBtn" type="button" aria-pressed="false" hidden>إبقاء الشاشة مضاءة</button></div></div>' +
       '<div class="groups" id="groups"></div>' +
       '<form class="add-q" id="addQ" autocomplete="off"><span class="lbl">سؤال جديد</span>' +
       '<textarea class="note" id="aq-text" placeholder="اكتب السؤال" style="min-height:72px"></textarea>' +
@@ -303,7 +303,7 @@
       '</section>' +
       '<section class="sec" id="sec-notes" aria-labelledby="h-notes"><h2 id="h-notes">ملاحظات عامة</h2><div class="notes-grid">' +
       '<div class="field"><label for="m-books">كتب وآثار ذكرها الشيخ</label><textarea class="note" id="m-books" data-f="books" placeholder="اكتب أسماء الكتب والآثار كما ذكرها"></textarea></div>' +
-      '<div class="field"><label for="m-general">فوائد وأفكار للتطبيق</label><textarea class="note" id="m-general" data-f="general" placeholder="أي فائدة أو فكرة تبي تطبقها مع طلابك"></textarea></div>' +
+      '<div class="field"><label for="m-general">فوائد وأفكار للتطبيق</label><textarea class="note" id="m-general" data-f="general" placeholder="أي فائدة أو فكرة تريد تطبيقها مع طلابك"></textarea></div>' +
       '</div><div class="btns"><button class="btn primary" id="copyAll" type="button">نسخ الجلسة كاملة</button><button class="btn" id="copyQ" type="button">نسخ الأسئلة فقط</button></div>' +
       '<textarea id="copyBox" readonly hidden aria-label="النص للنسخ"></textarea></section>' +
       richSection('sec-brief', 'عن الشيخ', 'briefing', 'اكتب هنا ما تعرفه عن الشيخ وأسلوبه.') +
@@ -321,7 +321,7 @@
     }, function (err) {
       if (!cur || cur.sid !== sid || !first) return;
       var l = document.getElementById('loading');
-      if (l) l.textContent = err.status === 404 ? 'ما لقيت هذه الجلسة. ارجع لكل الجلسات.' : 'ما قدرت أحمّل الجلسة. تأكد من الاتصال وحدّث الصفحة.';
+      if (l) l.textContent = err.status === 404 ? 'لم أجد هذه الجلسة. ارجع إلى كل الجلسات.' : 'تعذّر تحميل الجلسة. تأكد من الاتصال وحدّث الصفحة.';
     });
   }
 
@@ -402,7 +402,7 @@
     ['opening', 'briefing'].forEach(function (f) {
       var v = document.getElementById('rv-' + f);
       if (!cur.richEdit[f]) {
-        v.innerHTML = cur.meta[f] ? md(cur.meta[f]) : '<p class="rich-empty">' + (f === 'opening' ? 'ما فيه تحضير بعد. اضغط «تعديل» واكتب افتتاحك.' : 'ما فيه معلومات عن الشيخ بعد. اضغط «تعديل» وأضفها.') + '</p>';
+        v.innerHTML = cur.meta[f] ? md(cur.meta[f]) : '<p class="rich-empty">' + (f === 'opening' ? 'لا يوجد تحضير بعد. اضغط «تعديل» واكتب افتتاحك.' : 'لا توجد معلومات عن الشيخ بعد. اضغط «تعديل» وأضفها.') + '</p>';
       }
     });
     document.title = cur.meta.sheikh ? 'مجلس ' + cur.meta.sheikh : 'مجالس المشايخ';
@@ -439,7 +439,7 @@
       '<div class="q-view"><p class="q-text"></p><p class="q-why" hidden></p></div>' +
       '<div class="q-edit" hidden>' +
       '<div class="field"><label for="qe-t-' + id + '">نص السؤال</label><textarea class="note qe-t" id="qe-t-' + id + '" style="min-height:80px"></textarea></div>' +
-      '<div class="field"><label for="qe-w-' + id + '">ملاحظة لك (اختياري)</label><input class="input qe-w" id="qe-w-' + id + '" placeholder="ليش هذا السؤال مهم مع هذا الشيخ"></div>' +
+      '<div class="field"><label for="qe-w-' + id + '">ملاحظة لك (اختياري)</label><input class="input qe-w" id="qe-w-' + id + '" placeholder="لماذا هذا السؤال مهم مع هذا الشيخ"></div>' +
       '<div class="field"><label for="qe-g-' + id + '">القسم</label><select class="input qe-g" id="qe-g-' + id + '">' +
       GROUPS.map(function (g) { return '<option value="' + g.key + '">' + g.label + '</option>'; }).join('') + '</select></div>' +
       '<div class="btns"><button class="btn primary" type="button" data-act="save">حفظ</button><button class="btn ghost" type="button" data-act="cancel">إلغاء</button></div></div>' +
@@ -473,12 +473,12 @@
         paintQ(id, n, i === 0, i === ids.length - 1);
       });
       while (ol.children.length > ids.length) ol.removeChild(ol.children[ids.length]);
-      if (g.key === 'core' && ids.length === 0) ol.innerHTML = '<li class="empty">ما فيه أسئلة بعد. أضف أول سؤال من تحت.</li>';
+      if (g.key === 'core' && ids.length === 0) ol.innerHTML = '<li class="empty">لا توجد أسئلة بعد. أضف أول سؤال من الأسفل.</li>';
     });
     Object.keys(cur.els).forEach(function (id) { if (!cur.qs[id]) { var el = cur.els[id]; if (el.parentNode) el.parentNode.removeChild(el); delete cur.els[id]; } });
     var core = by.core, done = core.filter(function (id) { return cur.qs[id].asked; }).length;
     document.getElementById('progress').textContent = n === 0 ? '' :
-      (done === 0 ? 'ما سألت شيئًا بعد' : 'سألت ' + ar(done) + ' من ' + ar(core.length) + ' أسئلة أساسية');
+      (done === 0 ? 'لم تسأل شيئًا بعد' : 'سألت ' + ar(done) + ' من ' + ar(core.length) + ' أسئلة أساسية');
   }
 
   function paintQ(id, num, first, last) {
@@ -668,7 +668,7 @@
     del.addEventListener('click', function () {
       if (!cur) return;
       if (!del.classList.contains('arm')) {
-        del.classList.add('arm'); del.textContent = 'اضغط مرة ثانية لحذف الجلسة وكل أسئلتها';
+        del.classList.add('arm'); del.textContent = 'اضغط مرة أخرى لحذف الجلسة وكل أسئلتها';
         setTimeout(function () { del.classList.remove('arm'); del.textContent = 'حذف الجلسة'; }, 4000);
         return;
       }
@@ -678,7 +678,7 @@
         Object.keys(drafts).forEach(function (k) { if (drafts[k] && drafts[k].sid === sid) delete drafts[k]; }); saveDrafts();
         list = list.filter(function (s) { return s.id !== sid; });
         location.hash = '';
-      }, function () { del.disabled = false; del.classList.remove('arm'); del.textContent = 'ما انحذفت، جرّب مرة ثانية'; });
+      }, function () { del.disabled = false; del.classList.remove('arm'); del.textContent = 'لم تُحذف، حاول مرة أخرى'; });
     });
 
     var wakeBtn = document.getElementById('wakeBtn');
@@ -696,7 +696,7 @@
     var b = document.getElementById('wakeBtn'); if (!b) return;
     var on = !!wake.lock;
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    b.textContent = on ? 'الشاشة بتبقى شغالة' : 'إبقاء الشاشة شغالة';
+    b.textContent = on ? 'ستبقى الشاشة مضاءة' : 'إبقاء الشاشة مضاءة';
   }
   var wake = { lock: null, want: false, acquire: function () {
     return navigator.wakeLock.request('screen').then(function (l) {

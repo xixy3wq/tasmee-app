@@ -24,7 +24,7 @@ export async function checkLate(force = false) {
     const missing = studs.filter((s) => !joined.has(s.id) && !["p", "l", "e"].includes(att[s.id]));
     if (!missing.length) continue;
     const names = missing.map((s) => s.name.split(" ")[0]).join("، ");
-    n += await notify([tid], { title: `${missing.length} ما دخلوا ${halqa?.name || "الحصة"}`, body: names, url: "/", tag: "late-" + l.id });
+    n += await notify([tid], { title: `${missing.length} لم يدخلوا ${halqa?.name || "الحصة"}`, body: names, url: "/", tag: "late-" + l.id });
   }
   return n;
 }

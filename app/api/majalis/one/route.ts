@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const me = await requireAdmin();
     const id = new URL(req.url).searchParams.get("id") || "";
     const m = await prisma.majlis.findFirst({ where: { id, userId: me.id }, include: { questions: true } });
-    if (!m) fail("ما لقيت هذا المجلس", 404);
+    if (!m) fail("لم يُعثر على هذا المجلس", 404);
     const { questions, ...meta } = m!;
     return {
       majlis: { ...meta, createdAt: meta.createdAt.getTime(), updatedAt: meta.updatedAt.getTime() },

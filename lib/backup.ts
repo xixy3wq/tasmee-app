@@ -25,7 +25,7 @@ export function backupUrl(): string {
 export function backupState(): { on: boolean; host: string; err?: string } {
   const url = backupUrl(); if (!url) return { on: false, host: "" };
   const h = hostOf(url);
-  if (h && h === hostOf(process.env.DATABASE_URL || "")) return { on: false, host: h, err: "رابط النسخ هو نفس قاعدة الموقع، لازم قاعدة ثانية" };
+  if (h && h === hostOf(process.env.DATABASE_URL || "")) return { on: false, host: h, err: "رابط النسخ هو قاعدة الموقع نفسها، ويجب أن تكون قاعدة أخرى" };
   return { on: true, host: h };
 }
 async function withBackupDb<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
