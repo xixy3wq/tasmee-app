@@ -40,6 +40,13 @@ bash .claude/scripts/arabic-fonts.sh
 ```
 
 - **الأدوات المتوفرة:** Chromium مع Playwright (تصميم HTML ← صورة PNG أو PDF)، `ffmpeg` (مونتاج، دمج، صوت، نص على الفيديو)، ImageMagick، Pillow، LibreOffice. وFigma مربوط (تصميم، تحريك وتصدير فيديو، توليد صور يخصم من رصيد Figma AI).
+- **مهارات التصميم** في `.claude/skills/` (نسخ ثابتة من مصادرها، مع رخصها):
+  - `impeccable`: تدقيق الواجهة وتحسينها (`/impeccable audit`، `polish`، `critique`، `typeset`، `layout`…). الأنسب لتعديل شاشات الموقع.
+  - `ui-ux-pro-max`: قواعد الاستخدام وإمكانية الوصول وقاعدة بحث للألوان والخطوط والأنماط (`python3 .claude/skills/ui-ux-pro-max/scripts/search.py`).
+  - `design-taste-frontend` (Taste Skill): للصفحات التعريفية والتسويقية فقط، لا لشاشات المعلّم والطالب.
+  - `awesome-design-md` و`open-design-systems`: مكتبات مراجع `DESIGN.md` لعلامات معروفة وأنماط عامة.
+  - `apple-design-skill`: إرشادات Apple للواجهات (مرجع للجوال واللمس).
+  - **هوية المشروع تتقدّم على أي مهارة:** الألوان والخطوط أعلاه، والاتجاه من اليمين لليسار، والنصوص بالفصحى. خذ من المهارات القواعد لا الشكل.
 - **هوية البنين:** كحلي `#1f2a5a`، فيروزي `#14a39a`، خلفية `#f5f7fb`، ذهبي `#9a6a0c`.
 - **هوية البنات («سكينة — ورد»):** برقوقي `#5b1f4f`، وردي `#d6457f`، خلفية `#fbf6f9`.
 - **خطوط الموقع:** IBM Plex Sans Arabic للنصوص والعناوين، Amiri للنسخ، Amiri Quran للآيات.
