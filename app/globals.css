@@ -1273,3 +1273,27 @@ html[data-fem] .top::after{background:linear-gradient(90deg,transparent,var(--te
 html[data-fem] .btn.pri{background:var(--btn-grad);border-color:transparent}
 .sec-sw button.on{color:var(--accent-ink)}
 html[data-fem] .sec-sw button.f.on,.sec-sw button.f.on{background:linear-gradient(135deg,#8a2d6b,#c2457d);color:#fff}
+
+/* ---------- تقارير الإنجاز، الهدف اليومي، رابط ولي الأمر، شاشة الجامع ---------- */
+.seg.pick button.on{background:var(--accent-soft);color:var(--accent);font-weight:800}
+.rp-ctl{align-items:center}
+.ptabs .rp-n{font-weight:800;font-variant-numeric:tabular-nums;opacity:.85}
+.ptabs.wk-tabs button{min-width:38px;justify-content:center;padding:6px 10px}
+td.rng{font-family:var(--f-naskh);font-size:1.02rem}
+.daily{display:grid;gap:8px;padding:10px;border-radius:8px;background:var(--sunk)}
+.dl-r{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:.86rem}
+.dl-r > span:first-child{min-width:84px}
+.linkbox{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.84rem;word-break:break-all;text-align:left;user-select:all}
+.item .linkbox{margin-top:4px}
+.smap{list-style:none;margin:0;padding:0;display:grid}
+.smap li{display:grid;grid-template-columns:14px 110px 1fr;align-items:center;gap:10px;padding:5px 0;position:relative}
+.smap li::before{content:"";position:absolute;inset-inline-start:6px;top:0;bottom:0;width:2px;background:var(--line)}
+.smap .sm-d{width:10px;height:10px;border-radius:50%;background:var(--line-2);position:relative;z-index:1;justify-self:center}
+.smap li.on .sm-d{width:14px;height:14px;background:var(--teal);box-shadow:0 0 0 4px var(--teal-soft)}
+.smap .sm-s{font-family:var(--f-naskh);font-weight:700;font-size:1.08rem;color:var(--muted)}
+.smap li.on .sm-s{color:var(--ink)}
+.smap li:not(.on){padding:1px 0}
+.smap li:not(.on) .sm-s{font-size:.92rem;font-weight:400}
+.sm-p{display:flex;flex-wrap:wrap;gap:6px}
+.sm-st{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:3px 12px;font:inherit;font-size:.86rem;cursor:pointer}
+.sm-st:hover{border-color:var(--teal)}

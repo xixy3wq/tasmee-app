@@ -722,12 +722,12 @@ function profileV(u) {
   const wa = st.parentPhone ? waLink(st.parentPhone, 'السلام عليكم ورحمة الله، ') : '';
   return `<button class="back" data-act="tab" data-v="students">→ ${u.role === 'admin' ? 'الطلاب' : 'طلابي'}</button>
   <div class="sec-head"><div><h1>${esc(st.name)}</h1><div class="muted">${esc(halqaName(st.halqaId))} · <span dir="ltr">${esc(st.username)}</span>${st.status === 'disabled' ? ' · <span class="chip bad">موقوف</span>' : ''}${st.status === 'archived' ? ' · <span class="chip">مؤرشف</span>' : ''}${streak >= absentLimit() ? ` · <span class="chip bad">غاب ${streak} متتالية</span>` : ''}</div></div>
-    <div class="row"><button class="btn pri" data-act="rec-out" data-id="${st.id}">تسجيل تسميع</button><button class="btn" data-act="open-thread" data-id="${st.id}">رسائل${dmUnreadOf(st.id) ? ` <span class="count">${dmUnreadOf(st.id)}</span>` : ''}</button>${st.parentPhone ? `<button class="btn wa" data-act="tpl-pick" data-id="${st.id}">واتساب ولي الأمر</button>` : ''}${u.role === 'admin' ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button><button class="btn" data-act="reset-pw" data-id="${st.id}">كلمة مرور جديدة</button>` : ownHalaqat(u).some(h => h.id === st.halqaId) ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button>` : ''}</div></div>
+    <div class="row"><button class="btn pri" data-act="rec-out" data-id="${st.id}">تسجيل تسميع</button><button class="btn" data-act="open-thread" data-id="${st.id}">رسائل${dmUnreadOf(st.id) ? ` <span class="count">${dmUnreadOf(st.id)}</span>` : ''}</button><button class="btn" data-act="card-link" data-id="${st.id}">رابط ولي الأمر</button>${st.parentPhone ? `<button class="btn wa" data-act="tpl-pick" data-id="${st.id}">واتساب ولي الأمر</button>` : ''}${u.role === 'admin' ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button><button class="btn" data-act="reset-pw" data-id="${st.id}">كلمة مرور جديدة</button>` : ownHalaqat(u).some(h => h.id === st.halqaId) ? `<button class="btn" data-act="edit-student" data-id="${st.id}">تعديل البيانات</button>` : ''}</div></div>
   <div class="row">${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${a.rate == null ? '—' : a.rate + '٪'}</b><span>نسبة الحضور</span></div><div class="stat"><b>${a.a}</b><span>غياب</span></div><div class="stat"><b>${inRange.length}</b><span>تسميع</span></div><div class="stat"><b>${fmtPages(pg.new)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(pg.review + pg.tath)}</b><span>أوجه مراجعة وتثبيت</span></div><div class="stat"><b>${avg}</b><span>متوسط الأخطاء</span></div></div>
   <div class="grid2">
-  <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الخطة</h2><div class="row">${canPlan(u) ? `<button class="btn sm" data-act="edit-plan" data-id="${st.id}">تعديل الخطة</button><button class="btn sm" data-act="edit-goal" data-id="${st.id}">${st.goal ? 'تعديل الهدف' : 'هدف'}</button>` : ''}<button class="btn ghost sm" data-act="plan-log" data-id="${st.id}">سجل الخطة</button></div></div>
-    ${planHtml(st)}${goalHtml(st)}
+  <section class="card" style="display:grid;gap:12px"><div class="sec-head"><h2>الخطة</h2><div class="row">${canPlan(u) ? `<button class="btn sm" data-act="edit-plan" data-id="${st.id}">تعديل الخطة</button><button class="btn sm" data-act="daily-edit" data-id="${st.id}">الهدف اليومي</button><button class="btn sm" data-act="edit-goal" data-id="${st.id}">${st.goal ? 'تعديل الهدف' : 'هدف'}</button>` : ''}<button class="btn ghost sm" data-act="plan-log" data-id="${st.id}">سجل الخطة</button></div></div>
+    ${planHtml(st)}${goalHtml(st)}${dailyHtml(st)}
 </section>
   <section class="card" style="display:grid;gap:12px"><h2>نقاط وأوسمة</h2><div class="stats"><div class="stat"><b>${ptsOf(st, weekStartC(today()), today())}</b><span>نقاط هذا الأسبوع</span></div><div class="stat"><b>${attendStreak(st)}</b><span>حصص متتالية</span></div></div>${(b => b.length ? `<div class="badges">${b.map(x => `<span class="badge"><b>${esc(x.t)}</b><span>${esc(x.d)}</span></span>`).join('')}</div>` : '')(badgesOf(st))}
     <div class="small muted" style="font-weight:600">الورد في البيت، آخر 7 أيام</div><div class="wgrid">${[...Array(7).keys()].reverse().map(i => { const d = addDays(today(), -i); const w = wirdOf(st.id, d); const n = w ? (w.items || []).filter(x => x.done).length : 0; return `<div class="wday ${w ? 'on' : ''}" title="${fmtDate(d)}"><span>${['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'][new Date(d + 'T00:00').getDay()]} ${new Date(d + 'T00:00').getDate()}</span><b>${w ? n + '/' + (w.items || []).length : '—'}</b>${w && w.read ? `<span>${w.read} و</span>` : ''}</div>`; }).join('')}</div></section>
@@ -778,9 +778,196 @@ function halaqatV() {
 }
 
 /* ---- reports ---- */
+/* التقارير: الملخص، وتقارير الإنجاز (الحفظ بالأسطر والمراجعة بالأوجه)، وسجل التحضير، وتحضير اليوم، وخريطة الحفظ.
+   حساب الإنجاز في public/ach.js، وهو نفسه في سجل الطالب لولي الأمر وشاشة الجامع */
+const RP_TABS = [['sum', 'الملخص'], ['day', 'إنجاز اليوم'], ['circles', 'إنجاز الحلقات'], ['attlog', 'سجل التحضير'], ['attday', 'تحضير اليوم'], ['map', 'خريطة الحفظ']];
 function reportsV(u) {
   const hs = myHalaqat(u);
   if (!hs.length) return `<h1>التقارير</h1><div class="empty">لا توجد حلقات.</div>`;
+  const tab = RP_TABS.some(t => t[0] === ST.rpTab) ? ST.rpTab : 'sum';
+  const tabs = `<div class="ptabs" role="tablist" aria-label="التقارير">${RP_TABS.map(([k, l]) => `<button role="tab" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}" data-act="rp-tab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if (tab === 'sum') return reportsSumV(u, hs, tabs);
+  const A = ach();
+  const body = !A ? '<section class="card"><div class="row"><div class="spin"></div><span class="muted">جاري التحميل…</span></div></section>' : ({ day: rpDayV, circles: rpCirclesV, attlog: rpAttLogV, attday: rpAttDayV, map: rpMapV })[tab](u, A, hs);
+  return `<div class="sec-head"><h1>التقارير</h1><div class="row">${A && (tab === 'day' || tab === 'circles') && canScreen(u) ? '<button class="btn" data-act="screen-link">📺 شاشة الجامع</button>' : ''}${A && tab === 'circles' && canPlan(u) ? '<button class="btn" data-act="daily-bulk-h">الهدف اليومي للطلاب</button>' : ''}</div></div>${tabs}${body}`;
+}
+/* منطق الإنجاز يُحمَّل عند أول حاجة له، ويشارك أوزان آيات المصحف نفسها */
+let ACH_LOAD = 0;
+function ach() {
+  const A = window.ACH;
+  if (A) { if (!ach.w) { A.setW(W); ach.w = 1; } return A; }
+  if (!ACH_LOAD) { ACH_LOAD = 1; const sc = document.createElement('script'); sc.src = '/ach.js?v=' + MY_V; sc.onload = () => scheduleRender(); sc.onerror = () => { ACH_LOAD = 0; toast('تعذّر تحميل التقارير، تحقق من الاتصال'); }; document.head.appendChild(sc); }
+  return null;
+}
+const joinedOf = st => { const t = st.approvedAt || st.createdAt; return t ? isoDate(new Date(t)) : ''; };
+/** فهرس مرة واحدة لكل عرض: حصص كل حلقة وتسميع كل طالب */
+function achIdx() { const ss = {}, rs = {}; L('sessions').forEach(x => (ss[x.halqaId] = ss[x.halqaId] || []).push(x)); L('recs').forEach(r => (rs[r.uid] = rs[r.uid] || []).push(r)); return { ss, rs }; }
+const achCtx = (st, ix) => ({ st: { id: st.id, plan: st.plan, joined: joinedOf(st) }, sessions: ix.ss[st.halqaId] || [], recs: ix.rs[st.id] || [], set: SET(), today: today() });
+const achZ = () => ({ tLines: 0, lines: 0, tPages: 0, pages: 0, att: 0, marked: 0, lessons: 0 });
+const achAdd = (o, x) => { o.tLines += x.tLines; o.lines += x.lines; o.tPages += x.tPages; o.pages += x.pages; o.att += x.att; o.marked += x.marked; o.lessons += x.lessons; return o; };
+const achFin = (A, o) => ({ ...o, pL: A.pct(o.lines, o.tLines), pP: A.pct(o.pages, o.tPages), pA: o.marked ? Math.round(o.att / o.marked * 100) : null });
+const pctChip = p => p == null ? '<span class="muted">—</span>' : `<span class="chip ${p >= 100 ? 'ok' : p >= 70 ? 'warn' : 'bad'}">${p}٪</span>`;
+const ofT = (A, d, t) => t > 0 ? `${A.n1(d)} / ${A.n1(t)}` : d > 0 ? A.n1(d) : '—';
+const rpKpi = (A, label, d, t, p) => `<div class="stat"><b>${p == null ? '—' : p + '٪'}</b><span>${label} · <span class="num">${ofT(A, d, t)}</span></span></div>`;
+const daysAr = n => n === 1 ? 'يوم واحد' : n === 2 ? 'يومان' : n + ' ' + (n <= 10 ? 'أيام' : 'يومًا');
+const name2 = n => String(n || '').split(' ').slice(0, 2).join(' ');
+const ATT_RANK = { a: 1, e: 2, l: 3, p: 4 };
+const rpDate = () => { const d = ST.rpDate || today(); return d > today() ? today() : d; };
+/** الحلقة المختارة في التقارير ('' = كل الحلقات) */
+function rpHid(hs) { if (ST.rpH && hs.some(h => h.id === ST.rpH)) return ST.rpH; return hs.length > 1 ? '' : (hs[0] || {}).id || ''; }
+function rpCtl(hs, o) {
+  const d = rpDate(); const hid = rpHid(hs); const per = ST.rpPer || 'd'; const step = o.step || (o.per && per === 'w' ? 7 : 1);
+  return `<div class="row rp-ctl">
+    ${o.h && hs.length > 1 ? `<select id="rp-h" data-change="rp-h" aria-label="الحلقة" style="flex:0 1 220px"><option value="">كل الحلقات</option>${hs.map(h => `<option value="${h.id}" ${hid === h.id ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>` : ''}
+    ${o.noDate ? '' : `<input type="date" id="rp-d" data-change="rp-d" value="${d}" max="${today()}" aria-label="التاريخ" style="flex:0 1 170px">
+    <button class="btn sm" data-act="rp-shift" data-n="-${step}">→ السابق</button><button class="btn sm" data-act="rp-shift" data-n="${step}" ${d >= today() ? 'disabled' : ''}>التالي ←</button>${d !== today() ? '<button class="btn sm" data-act="rp-shift" data-n="0">اليوم</button>' : ''}`}
+    ${o.per ? `<div class="seg pick" role="group" aria-label="الفترة">${[['d', 'اليوم'], ['w', 'الأسبوع'], ['t', 'الفصل']].map(([k, l]) => `<button class="${per === k ? 'on' : ''}" data-act="rp-per" data-v="${k}" aria-pressed="${per === k}">${l}</button>`).join('')}</div>` : ''}</div>`;
+}
+/** الفترة: يوم التاريخ المختار، أو أسبوعه، أو فصله الدراسي حتى ذلك اليوم */
+function rpRange(A) {
+  const d = rpDate(); const per = ST.rpPer || 'd';
+  if (per === 'w') { const s0 = A.weekStart(d); const e = A.addDays(s0, 6); const w = A.weeks(SET(), d); const inT = w && d >= w.term.from && d <= w.term.to; return { from: s0, to: e, label: (inT ? 'الأسبوع ' + w.n + ' من ' + w.term.name + ' · ' : '') + fmtDate(s0) + ' – ' + fmtDate(e < today() ? e : today()) }; }
+  if (per === 't') { const tm = A.termOf(SET(), d); return tm ? { from: tm.from, to: d < tm.to ? d : tm.to, label: tm.name + ' · من ' + fmtDate(tm.from) + ' إلى ' + fmtDate(d < tm.to ? d : tm.to) } : { from: addDays(d, -29), to: d, label: 'آخر 30 يومًا (أضف الفصول الدراسية من الإعدادات ليُحسب الفصل)' }; }
+  return { from: d, to: d, label: fmtDateH(d) };
+}
+/* إنجاز اليوم: كل الحلقات مرتبة بنسبة إنجازها */
+function rpDayV(u, A, hs) {
+  const r = rpRange(A); const ix = achIdx();
+  const rows = hs.map(h => {
+    const studs = studentsOf(h.id); const o = achZ(); let rec = 0;
+    studs.forEach(st => { const x = A.sum(A.days(achCtx(st, ix), r.from, r.to)); achAdd(o, x); if (x.lines > 0 || x.pages > 0) rec++; });
+    const f = achFin(A, o); const has = (ix.ss[h.id] || []).some(x => !x.cancelled && x.date >= r.from && x.date <= r.to && x.date <= today());
+    return { h, n: studs.length, rec, f, sc: A.score(f), has };
+  });
+  const tot = achFin(A, rows.reduce((o, x) => achAdd(o, x.f), achZ()));
+  const list = rows.filter(x => x.has || x.rec).sort((a, b) => (b.sc ?? -1) - (a.sc ?? -1) || (a.h.name || '').localeCompare(b.h.name || '', 'ar'));
+  const idle = rows.filter(x => !x.has && !x.rec);
+  return `${rpCtl(hs, { per: true })}<div class="small muted">${esc(r.label)}</div>
+  <div class="stats">${rpKpi(A, 'الحضور', tot.att, tot.marked, tot.pA)}${rpKpi(A, 'أسطر الحفظ', tot.lines, tot.tLines, tot.pL)}${rpKpi(A, 'أوجه المراجعة', tot.pages, tot.tPages, tot.pP)}<div class="stat"><b>${list.length}</b><span>حلقة لها حصص</span></div></div>
+  <section class="card">${list.length ? `<div class="tbl-wrap"><table><thead><tr><th class="num">#</th><th>الحلقة</th><th>المعلم</th><th class="num">الطلاب</th><th class="num">الحضور</th><th class="num">سمّعوا</th><th class="num">أسطر الحفظ</th><th class="num">الإنجاز</th><th class="num">أوجه المراجعة</th><th class="num">الإنجاز</th><th class="num">الإجمالي</th></tr></thead><tbody>
+  ${list.map((x, i) => `<tr class="click" style="cursor:pointer" data-act="rp-open-h" data-h="${x.h.id}"><td class="num">${x.sc == null ? '—' : i + 1}</td><td><b>${esc(x.h.name)}</b>${x.h.branch ? ` <span class="chip">${esc(x.h.branch)}</span>` : ''}</td><td>${esc(subName(x.h.teacherId) || '—')}</td><td class="num">${x.n}</td><td class="num">${pctChip(x.f.pA)}</td><td class="num">${x.rec}</td><td class="num">${ofT(A, x.f.lines, x.f.tLines)}</td><td class="num">${pctChip(x.f.pL)}</td><td class="num">${ofT(A, x.f.pages, x.f.tPages)}</td><td class="num">${pctChip(x.f.pP)}</td><td class="num"><b>${x.sc == null ? '—' : x.sc + '٪'}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">لا توجد حصص في هذه الفترة.</div>'}
+  ${idle.length ? `<div class="small muted">بلا حصص في هذه الفترة: ${idle.map(x => esc(x.h.name)).join('، ')}</div>` : ''}</section>
+  <div class="small muted">«الإجمالي» متوسط نسبتي الحفظ والمراجعة من الهدف اليومي، وبه تُرتَّب الحلقات. اضغط الحلقة لترى إنجاز طلابها.</div>`;
+}
+/* إنجاز الحلقات: إنجاز كل طالب من هدفه، مقسومًا إلى غير الحفاظ والحفاظ */
+function rpCirclesV(u, A, hs) {
+  const hid = rpHid(hs); const r = rpRange(A); const ix = achIdx(); const one = r.from === r.to; const set = SET();
+  const studs = hid ? studentsOf(hid) : hs.flatMap(h => studentsOf(h.id));
+  const rows = studs.map(st => { const ds = A.days(achCtx(st, ix), r.from, r.to); return { st, ds, o: A.sum(ds), t: A.target(st, set), dir: (planOf(st).auto || {}).dir }; });
+  const nH = rows.filter(x => x.t.hafiz).length; const nN = rows.length - nH;
+  const hz = nH && (!nN || ST.rpHz);
+  const list = rows.filter(x => !!x.t.hafiz === !!hz);
+  const tot = achFin(A, list.reduce((o, x) => achAdd(o, x.o), achZ()));
+  const attCell = x => { if (one) { const d = x.ds.find(y => y.lesson); return !d ? '<span class="muted">لا حصة</span>' : d.att ? `<span class="chip ${ATTC[d.att]}">${ATT[d.att]}</span>` : '<span class="muted">لم يُحضَّر</span>'; } return x.o.lessons ? `<span class="num">${x.o.att} / ${x.o.marked || x.o.lessons}</span>` : '—'; };
+  const rng = (x, k) => esc(A.rangeText(x.ds.flatMap(d => d[k]), x.dir)) || '—';
+  return `${rpCtl(hs, { h: true, per: true })}<div class="small muted">${esc(r.label)}${hid ? ' · ' + esc(halqaName(hid)) : ''}</div>
+  ${nH && nN ? `<div class="ptabs" role="tablist"><button role="tab" class="${hz ? '' : 'on'}" aria-selected="${!hz}" data-act="rp-hz" data-v="0">غير الحفاظ <b class="rp-n">${nN}</b></button><button role="tab" class="${hz ? 'on' : ''}" aria-selected="${!!hz}" data-act="rp-hz" data-v="1">الحفاظ <b class="rp-n">${nH}</b></button></div>` : ''}
+  <div class="stats">${rpKpi(A, 'الحضور', tot.att, tot.marked, tot.pA)}${hz ? '' : rpKpi(A, 'أسطر الحفظ', tot.lines, tot.tLines, tot.pL)}${rpKpi(A, 'أوجه المراجعة', tot.pages, tot.tPages, tot.pP)}<div class="stat"><b>${list.length}</b><span>${hz ? 'حافظ' : 'طالب'}</span></div></div>
+  <section class="card">${list.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th>${hid ? '' : '<th>الحلقة</th>'}<th class="num">الحضور</th><th>المراجعة</th><th class="num">الأوجه</th><th class="num">الإنجاز</th>${hz ? '' : '<th>الحفظ</th><th class="num">الأسطر</th><th class="num">الإنجاز</th>'}</tr></thead><tbody>
+  ${list.map(x => `<tr class="click" style="cursor:pointer" data-act="open-student" data-id="${x.st.id}"><td><b>${esc(x.st.name)}</b>${x.t.src ? '' : ' <span class="chip warn">بلا هدف</span>'}</td>${hid ? '' : `<td>${esc(halqaName(x.st.halqaId))}</td>`}<td class="num">${attCell(x)}</td><td class="rng">${rng(x, 'revR')}</td><td class="num">${ofT(A, x.o.pages, x.o.tPages)}</td><td class="num">${pctChip(x.o.pP)}</td>${hz ? '' : `<td class="rng">${rng(x, 'newR')}</td><td class="num">${ofT(A, x.o.lines, x.o.tLines)}</td><td class="num">${pctChip(x.o.pL)}</td>`}</tr>`).join('')}</tbody></table></div>` : '<div class="empty">لا يوجد طلاب.</div>'}</section>
+  <div class="small muted">الحفظ بالأسطر والمراجعة بالأوجه (الوجه ١٥ سطرًا)، ولا يُحتسب إلا التسميع الناجح. ويوم الاستئذان وأيام إيقاف الخطة بلا هدف.${rows.some(x => !x.t.src) ? ' «بلا هدف»: لم يُحدَّد له هدف يومي ولا خطة تلقائية.' : ''}</div>`;
+}
+/* سجل التحضير: الطلاب × أيام الأسبوع */
+function rpAttLogV(u, A, hs) {
+  const hid = rpHid(hs); const d = rpDate(); const ws = A.weekStart(d); const we = A.addDays(ws, 6);
+  const hids = hid ? [hid] : hs.map(h => h.id); const hset = new Set(hids);
+  const ss = L('sessions').filter(x => hset.has(x.halqaId) && !x.cancelled && x.date >= ws && x.date <= we && x.date <= today());
+  const dates = [...new Set(ss.map(x => x.date))].sort();
+  const studs = hids.flatMap(h => studentsOf(h));
+  const wk = A.weeks(SET(), d); const inT = wk && d >= wk.term.from && d <= wk.term.to;
+  const nowN = wk ? Math.min(wk.total, A.daysBetween(wk.w1, A.weekStart(today())) / 7 + 1) : 0;
+  const attOn = (st, ds) => { const vs = ss.filter(x => x.halqaId === st.halqaId && x.date === ds); if (!vs.length) return undefined; return vs.map(x => (x.att || {})[st.id]).filter(Boolean).sort((a, b) => ATT_RANK[b] - ATT_RANK[a])[0] || null; };
+  const rows = studs.map(st => { const cells = dates.map(ds => attOn(st, ds)); return { st, cells, p: cells.filter(v => v === 'p' || v === 'l').length, a: cells.filter(v => v === 'a').length }; });
+  return `${rpCtl(hs, { h: true, step: 7 })}
+  ${wk && nowN >= 1 ? `<div class="ptabs wk-tabs" aria-label="أسابيع ${esc(wk.term.name)}">${[...Array(nowN).keys()].map(i => i + 1).map(k => `<button class="${inT && wk.n === k ? 'on' : ''}" data-act="rp-week" data-d="${wk.start(k)}" aria-label="الأسبوع ${k}">${k}</button>`).join('')}</div>` : ''}
+  <div class="small muted">${inT ? 'الأسبوع ' + wk.n + ' من ' + esc(wk.term.name) + ' · ' : ''}${fmtDate(ws)} – ${fmtDate(we)}${hid ? ' · ' + esc(halqaName(hid)) : ''}</div>
+  <section class="card">${dates.length && rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>الطالب</th>${hid ? '' : '<th>الحلقة</th>'}${dates.map(ds => `<th class="num">${fmtDate(ds)}</th>`).join('')}<th class="num">حضر</th><th class="num">غاب</th></tr></thead><tbody>
+  ${rows.map(x => `<tr class="click" style="cursor:pointer" data-act="open-student" data-id="${x.st.id}"><td><b>${esc(x.st.name)}</b></td>${hid ? '' : `<td>${esc(halqaName(x.st.halqaId))}</td>`}${x.cells.map(v => `<td class="num">${v === undefined ? '<span class="muted">·</span>' : v ? `<span class="chip ${ATTC[v]}">${ATT[v]}</span>` : '<span class="muted">—</span>'}</td>`).join('')}<td class="num">${x.p}</td><td class="num">${x.a ? `<span class="chip bad">${x.a}</span>` : 0}</td></tr>`).join('')}</tbody></table></div>
+  <div class="small muted">«—» لم يُحضَّر، «·» لا توجد حصة لحلقته في ذلك اليوم.</div>` : '<div class="empty">لا توجد حصص في هذا الأسبوع.</div>'}</section>`;
+}
+/* تحضير اليوم: الحاضرون والمتأخرون والغائبون والمستأذنون ومن لم يُحضَّر */
+function rpAttDayV(u, A, hs) {
+  const hid = rpHid(hs); const d = rpDate(); const hids = hid ? [hid] : hs.map(h => h.id);
+  const ss = L('sessions').filter(x => hids.includes(x.halqaId) && x.date === d && !x.cancelled);
+  const G = { p: [], l: [], a: [], e: [], n: [] };
+  hids.forEach(h => { const sh = ss.filter(x => x.halqaId === h); if (!sh.length) return; studentsOf(h).forEach(st => { const v = sh.map(x => (x.att || {})[st.id]).filter(Boolean).sort((a, b) => ATT_RANK[b] - ATT_RANK[a])[0] || ''; const s0 = sh.find(x => v && (x.att || {})[st.id] === v) || sh[0]; G[v || 'n'].push({ st, s: s0, at: v ? (s0.arr || {})[st.id] : null }); }); });
+  const noL = hids.filter(h => !ss.some(x => x.halqaId === h));
+  const LBL = { p: 'الحضور', l: 'المتأخرون', a: 'الغياب', e: 'المستأذنون', n: 'بدون تحضير' };
+  const cur = LBL[ST.rpAt] ? ST.rpAt : 'p'; const list = G[cur];
+  return `${rpCtl(hs, { h: true })}<div class="small muted">${fmtDateH(d)}${hid ? ' · ' + esc(halqaName(hid)) : ''}</div>
+  <div class="ptabs" role="tablist">${Object.keys(LBL).map(k => `<button role="tab" class="${k === cur ? 'on' : ''}" aria-selected="${k === cur}" data-act="rp-at" data-v="${k}">${LBL[k]} <b class="rp-n">${G[k].length}</b></button>`).join('')}</div>
+  <section class="card">${list.length ? `<div class="list">${list.map(x => `<div class="item click" data-act="open-student" data-id="${x.st.id}"><div class="grow"><b>${esc(x.st.name)}</b><div class="small muted">${esc(halqaName(x.st.halqaId))}${x.s.time ? ' · ' + fmtTime(x.s.time) : ''}${x.at ? ' · وصل ' + clock(x.at) : ''}</div></div>${cur === 'n' ? '' : `<span class="chip ${ATTC[cur]}">${ATT[cur]}</span>`}</div>`).join('')}</div>` : `<div class="empty small">${ss.length ? 'لا يوجد أحد.' : 'لا توجد حصص في هذا اليوم.'}</div>`}
+  ${noL.length && ss.length ? `<div class="small muted">حلقات بلا حصة في هذا اليوم: ${noL.map(h => esc(halqaName(h))).join('، ')}</div>` : ''}</section>`;
+}
+/* خريطة الحفظ: أين يقف كل طالب في الحفظ الآن، وكم يومًا له في سورته */
+function rpMapV(u, A, hs) {
+  const hid = rpHid(hs); const ix = achIdx(); const t = today();
+  const studs = hid ? studentsOf(hid) : hs.flatMap(h => studentsOf(h.id));
+  const items = studs.map(st => ({ st, c: A.current(st, ix.rs[st.id] || []), hz: A.hafiz(st) }));
+  const at = items.filter(x => x.c); const hz = items.filter(x => x.hz); const none = items.filter(x => !x.c && !x.hz);
+  const fwd = at.filter(x => (planOf(x.st).auto || {}).dir === 'fwd').length > at.length / 2;
+  const order = []; if (at.length) { const ss = at.map(x => x.c.surah); const lo = Math.min(...ss), hi = Math.max(...ss); if (fwd) for (let k = lo; k <= hi; k++) order.push(k); else for (let k = hi; k >= lo; k--) order.push(k); }
+  return `${rpCtl(hs, { h: true, noDate: true })}
+  <section class="card">${order.length ? `<ol class="smap">${order.map(k => { const xs = at.filter(x => x.c.surah === k); return `<li class="${xs.length ? 'on' : ''}"><span class="sm-d" aria-hidden="true"></span><b class="sm-s">${esc(SN[k - 1])}</b><div class="sm-p">${xs.map(x => `<button class="sm-st" data-act="open-student" data-id="${x.st.id}">${esc(name2(x.st.name))}${x.c.since ? ` <span class="small muted">${daysAr(A.daysBetween(x.c.since, t) + 1)}</span>` : ''}</button>`).join('')}</div></li>`; }).join('')}</ol>` : '<div class="empty">لا توجد بيانات حفظ بعد.</div>'}
+  ${hz.length ? `<div class="small"><b>الحفاظ:</b> ${hz.map(x => esc(name2(x.st.name))).join('، ')}</div>` : ''}
+  ${none.length ? `<div class="small muted">لم يبدؤوا الحفظ في المنصة: ${none.map(x => esc(name2(x.st.name))).join('، ')}</div>` : ''}</section>
+  <div class="small muted">السورة التي يحفظ فيها كل طالب الآن، وكم يومًا مضى منذ أول تسميع له فيها.</div>`;
+}
+/* الهدف اليومي في صفحة الطالب: مقداره ونسبة الإنجاز هذا الأسبوع والتراكمية */
+function dailyHtml(st) {
+  const A = ach(); if (!A) return '';
+  const t = A.target(st, SET()); const c = achCtx(st, achIdx());
+  const w = A.sum(A.days(c, A.weekStart(today()), today()));
+  const wk = A.weeks(SET(), today()); const jf = joinedOf(st); let cf = wk ? wk.term.from : ''; if (!cf || (jf && jf > cf)) cf = jf || addDays(today(), -29);
+  const cum = A.sum(A.days(c, cf, today()));
+  const src = { own: 'خاص به', plan: 'من الخطة التلقائية', def: 'الهدف العام', '': 'لم يُحدَّد بعد' }[t.src];
+  const line = (lbl, o) => `<div class="dl-r"><span class="small muted">${lbl}</span>${t.hafiz ? '' : `<span>الحفظ ${pctChip(o.pL)}</span>`}<span>المراجعة ${pctChip(o.pP)}</span><span>الحضور ${pctChip(o.pA)}</span></div>`;
+  return `<div class="daily"><div class="row" style="justify-content:space-between"><b>الهدف اليومي</b><span class="small muted">${src}</span></div>
+    <div class="row">${t.hafiz ? '<span class="chip gold">حافظ للقرآن: مراجعة فقط</span>' : `<span class="chip acc">حفظ ${A.n1(t.lines)} سطر</span>`}<span class="chip acc">مراجعة ${A.n1(t.pages)} وجه</span></div>
+    ${line('هذا الأسبوع', w)}${line('منذ ' + fmtDate(cf), cum)}</div>`;
+}
+function dailyModal(ids) {
+  const A = ach(); if (!A) return toast('لحظة، جاري التحميل…');
+  if (!ids.length) return toast('لا يوجد طلاب');
+  const one = ids.length === 1 ? { ...S.users[ids[0]], id: ids[0] } : null;
+  const d = one && one.plan && one.plan.daily; const t = one ? A.target(one, SET()) : null;
+  const cur = one && !d && t.src ? ` الهدف الحالي ${t.src === 'plan' ? 'من الخطة التلقائية' : 'من الهدف العام'}: حفظ ${A.n1(t.lines)} سطر ومراجعة ${A.n1(t.pages)} وجه.` : '';
+  openModal(`${dlgHead(one ? 'الهدف اليومي: ' + esc(one.name) : 'الهدف اليومي لـ ' + ids.length + ' طالب')}<form data-form="daily" data-ids="${ids.join(',')}" style="display:grid;gap:12px">
+    <div class="small muted">يُقاس الحفظ بالأسطر والمراجعة بالأوجه (الوجه ١٥ سطرًا)، ومنه تُحسب نسبة الإنجاز اليومية والأسبوعية والتراكمية.${cur}${one ? '' : ' اترك الحقلين فارغين إذا أردت تغيير علامة الحافظ فقط.'}</div>
+    <div class="fgrid"><label class="fld"><span>الحفظ اليومي (أسطر)</span><input name="lines" type="number" min="0" max="300" step="0.5" inputmode="decimal" value="${d ? d.lines : ''}" placeholder="${cur ? A.n1(t.lines) : 'مثال: 7'}"></label>
+    <label class="fld"><span>المراجعة اليومية (أوجه)</span><input name="pages" type="number" min="0" max="60" step="0.25" inputmode="decimal" value="${d ? d.pages : ''}" placeholder="${cur ? A.n1(t.pages) : 'مثال: 3'}"></label></div>
+    ${one ? `<label class="check"><input type="checkbox" name="hafiz" ${(one.plan || {}).hafiz ? 'checked' : ''}> حافظ للقرآن (مراجعة فقط، ويظهر في قسم الحفاظ)</label>` : `<label class="fld"><span>علامة الحافظ</span><select name="hafizSel"><option value="">بدون تغيير</option><option value="1">حفاظ للقرآن (مراجعة فقط)</option><option value="0">ليسوا حفاظًا</option></select></label>`}
+    <div class="dlg-foot"><button class="btn pri" type="submit">حفظ</button>${d ? `<button type="button" class="btn" data-act="daily-clear" data-id="${one.id}">الرجوع إلى الهدف التلقائي</button>` : ''}</div></form>`);
+}
+/* رابط سجل الطالب لولي الأمر (بدون اسم مستخدم ولا كلمة مرور) */
+async function cardLinkModal(st, renew) {
+  const r = await act('card.link', { id: st.id, renew: !!renew }, renew ? 'أُنشئ رابط جديد وتوقّف القديم' : ''); if (!r || !r.path) return;
+  const url = location.origin + r.path;
+  const msg0 = `السلام عليكم ورحمة الله وبركاته\nولي أمر الطالب *${st.name}* حفظه الله\n\nهذا رابط سجل إنجاز ابنكم في ${halqaName(st.halqaId)}، فيه الحضور والحفظ والمراجعة يومًا بيوم، ونسبة الإنجاز الأسبوعية والتراكمية، والسور المحفوظة. يُفتح دون اسم مستخدم ولا كلمة مرور:\n${url}`;
+  const msg = femSt(st) ? femMsg(msg0) : msg0;
+  openModal(`${dlgHead('رابط سجل الطالب')}<div style="display:grid;gap:12px"><div class="small muted">يرى فيه ولي الأمر إنجاز ابنه يومًا بيوم ونسبة الإنجاز الأسبوعية والتراكمية والسور المحفوظة، دون اسم مستخدم ولا كلمة مرور.</div>
+    <div class="linkbox" dir="ltr">${esc(url)}</div>
+    <div class="row"><button class="btn pri" data-act="copy" data-text="${esc(url)}">نسخ الرابط</button><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">فتح</a>${st.parentPhone ? `<a class="btn wa" href="${esc(waLink(st.parentPhone, msg))}" target="_blank" rel="noopener">أرسله لولي الأمر</a>` : ''}</div>
+    <div class="note small row"><span class="grow">إذا وصل الرابط إلى غير ولي الأمر، أنشئ رابطًا جديدًا فيتوقف القديم.</span><button class="btn sm" data-act="card-renew" data-id="${st.id}">رابط جديد</button></div></div>`);
+}
+/* شاشة الجامع: رابط لكل الحلقات، ورابط لكل مجمع */
+const canScreen = u => { if (u.role !== 'admin' || !can(u, 'reports')) return false; const sp = (u.perms || []).filter(x => /^(h|b):/.test(x)); return !sp.length || sp.some(x => x.startsWith('b:')); };
+async function screenModal(renew) {
+  const u = me(); const side = inGirls() ? 'f' : 'm';
+  const own = (u.perms || []).filter(x => x.startsWith('b:')).map(x => x.slice(2));
+  const brs = [...new Set(L('halaqat').filter(h => (h.gender === 'f') === (side === 'f')).map(h => h.branch || ''))].sort((a, b) => a.localeCompare(b, 'ar'));
+  const want = own.length ? own.map(b => b || '_') : ['*', ...(brs.length > 1 ? brs.map(b => b || '_') : [])];
+  const lbl = b => b === '*' ? (side === 'f' ? 'كل حلقات البنات' : 'كل الحلقات') : b === '_' ? 'الجامع الأساسي' : b;
+  try {
+    const out = [];
+    for (let i = 0; i < want.length; i++) { const r = await api('/api/act', { t: 'screen.link', _side: SEC, side, b: want[i], renew: !!renew && i === 0 }); out.push({ b: want[i], url: location.origin + '/screen?k=' + encodeURIComponent(r.key) + '&side=' + side + '&b=' + encodeURIComponent(want[i]) }); }
+    if (renew) toast('أُنشئت روابط جديدة وتوقفت القديمة');
+    openModal(`${dlgHead('شاشة الجامع')}<div style="display:grid;gap:12px"><div class="small muted">افتح الرابط على شاشة في الجامع (تلفاز أو جهاز عرض)، فتظهر نتائج اليوم لكل حلقة فور تسجيل التسميع، وتتحدّث تلقائيًا كل نصف دقيقة. لا تحتاج الشاشة إلى تسجيل دخول.</div>
+      <div class="list">${out.map(x => `<div class="item"><div class="grow"><b>${esc(lbl(x.b))}</b><div class="linkbox small" dir="ltr">${esc(x.url)}</div></div><button class="btn sm" data-act="copy" data-text="${esc(x.url)}">نسخ</button><a class="btn sm" href="${esc(x.url)}" target="_blank" rel="noopener">فتح</a></div>`).join('')}</div>
+      ${isFullAdmin(u) ? '<div class="note small row"><span class="grow">إذا انتشر الرابط خارج الجامع، أنشئ روابط جديدة فتتوقف القديمة.</span><button class="btn sm" data-act="screen-renew">روابط جديدة</button></div>' : ''}</div>`);
+  } catch (e) { toast(e.message); }
+}
+function reportsSumV(u, hs, tabs) {
   const hid = hs.some(h => h.id === ST.halqa) ? ST.halqa : hs[0].id;
   const studs = studentsOf(hid); const from = rangeFrom(ST.range);
   const nSess = L('sessions').filter(s => s.halqaId === hid && !s.cancelled && s.date <= today() && (!from || s.date >= from)).length;
@@ -788,6 +975,7 @@ function reportsV(u) {
   const tot = rows.reduce((x, r) => ({ p: x.p + r.a.p + r.a.l, m: x.m + r.a.p + r.a.l + r.a.a + r.a.e, n: x.n + r.n, pn: x.pn + r.pg.new, pr: x.pr + r.pg.review + r.pg.tath }), { p: 0, m: 0, n: 0, pn: 0, pr: 0 });
   const wk = weekStartC(today()); const board = studs.map(st => ({ st, p: ptsOf(st, wk, today()) })).sort((a, b) => b.p - a.p).slice(0, 5);
   return `<div class="sec-head"><h1>التقارير</h1><div class="row"><button class="btn" data-act="xlsx">⬇ Excel كامل</button>${S.waOn ? `<button class="btn pri" data-act="wa-week-h" data-h="${hid}">أرسل التقرير الأسبوعي تلقائيًا</button>` : ''}<button class="btn wa" data-act="wa-week" data-h="${hid}">${S.waOn ? 'إرسال يدوي' : 'التقرير الأسبوعي لأولياء الأمور'}</button></div></div>
+  ${tabs}
   <div class="row"><select id="rp-h" data-change="filter-h" style="flex:0 1 220px">${hs.map(h => `<option value="${h.id}" ${h.id === hid ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select>
   ${[7, 30, 90, 0].map(d => `<button class="btn sm ${ST.range === d ? 'pri' : ''}" data-act="range" data-d="${d}">${d ? 'آخر ' + d + ' يوم' : 'الكل'}</button>`).join('')}${(SET().terms || []).map(tm => `<button class="btn sm ${ST.range === 'T' + tm.id ? 'pri' : ''}" data-act="range" data-d="T${tm.id}">${esc(tm.name)}</button>`).join('')}</div>
   <div class="stats"><div class="stat"><b>${nSess}</b><span>حصة</span></div><div class="stat"><b>${tot.m ? Math.round(tot.p / tot.m * 100) + '٪' : '—'}</b><span>نسبة حضور الحلقة</span></div><div class="stat"><b>${tot.n}</b><span>تسميع مسجّل</span></div><div class="stat"><b>${fmtPages(tot.pn)}</b><span>أوجه حفظ</span></div><div class="stat"><b>${fmtPages(tot.pr)}</b><span>أوجه مراجعة</span></div></div>
@@ -823,6 +1011,7 @@ function settingsV() {
     <div class="fld"><span>قوالب الخطط التلقائية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th class="num">حفظ</th><th class="num">مراجعة</th><th class="num">تثبيت</th><th></th></tr></thead><tbody>
       ${(st.planTpls || []).map((t, i) => `<tr><td><input id="pt-n-${i}" name="ptn-${i}" value="${esc(t.name)}" style="min-width:160px"></td><td><input id="pt-a-${i}" name="pta-${i}" type="number" min="0" step="0.125" value="${t.newAmt}" style="width:80px"></td><td><input id="pt-r-${i}" name="ptr-${i}" type="number" min="0" step="0.5" value="${t.revAmt}" style="width:80px"></td><td><input id="pt-t-${i}" name="ptt-${i}" type="number" min="0" step="0.5" value="${t.tathAmt}" style="width:80px"></td><td><button type="button" class="btn ghost sm" data-act="ptpl-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="ptpl-add">إضافة قالب</button></div><span class="hint">بالأوجه: 0.25 ربع، 0.5 نصف</span></div>
+    <div class="fld"><span>الهدف اليومي العام</span><div class="fgrid"><label class="fld"><span>الحفظ (أسطر)</span><input id="sg-dl-l" name="dl-lines" type="number" min="0" max="300" step="0.5" value="${(st.daily || {}).lines || 0}"></label><label class="fld"><span>المراجعة (أوجه)</span><input id="sg-dl-p" name="dl-pages" type="number" min="0" max="60" step="0.25" value="${(st.daily || {}).pages || 0}"></label></div><span class="hint">منه تُحسب نسبة الإنجاز لمن ليس له هدف خاص ولا خطة تلقائية. ولكل طالب هدف خاص من صفحته، ولطلاب الحلقة كلهم من «التقارير ← إنجاز الحلقات». الوجه ١٥ سطرًا.</span></div>
     <div class="fld"><span>النقاط التلقائية</span><div class="fgrid">${[['present', 'حضور'], ['late', 'تأخر'], ['ex', 'تسميع ممتاز'], ['vg', 'جيد جدًا'], ['gd', 'جيد'], ['page', 'لكل وجه حفظ'], ['absent', 'خصم: غياب بدون عذر'], ['bad', 'خصم: ملاحظة سلوك سلبية'], ['streak10', 'مكافأة كل 10 حصص متتالية'], ['streak30', 'مكافأة إضافية كل 30 حصة']].map(([k, l]) => `<label class="fld"><span>${l}</span><input id="sg-pt-${k}" name="pt-${k}" type="number" min="0" max="100" step="0.5" value="${(st.points || {})[k] ?? 0}"></label>`).join('')}</div></div>
     <label class="fld" style="max-width:320px"><span>وقت التسميع لكل طالب (دقائق)</span><input id="sg-recmin" name="recMin" type="number" min="0" max="60" value="${st.recMin || 0}"><span class="hint">ينبّه المعلم إذا تجاوز الطالب وقته. 0 = بدون تنبيه.</span></label>
     <label class="fld" style="max-width:320px"><span>يُحسب متأخرًا إذا وصل بعد كم دقيقة</span><input id="sg-latemin" name="lateMin" type="number" min="0" max="120" value="${st.lateMin ?? 10}"><span class="hint">في الحلقات الحضورية: عندما يضغط المعلم «حاضر» يُسجَّل وقت الوصول.</span></label>
@@ -841,7 +1030,7 @@ function settingsV() {
       <label class="fld"><span>الوقت الثابت</span><input id="sg-to-time" name="to-time" type="time" value="${esc(o.time)}"></label></div>
       ${o.mode !== 'off' && end ? `<div class="note small">اليوم: ${o.mode === 'prayer' && pr[o.prayer] ? `أذان ${PR[o.prayer]} ${fmtTime(pr[o.prayer])} ← ` : ''}الانصراف <b>${clock(end)}</b>. الأذان محسوب على موقع الجامع من «المجمعات»${Object.keys(st.places || {}).length ? '' : ' (لم يُحدَّد بعد، لذا يُحسب على الرياض)'}.</div>` : ''}
       </div>`; })()}
-    <div class="fld"><span>الفصول الدراسية</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
+    <div class="fld"><span>الفصول الدراسية (الدورات)</span><span class="hint">تُرقَّم أسابيع كل فصل في تقارير الإنجاز وسجل الطالب، ومن بدايته يُحسب الإنجاز التراكمي.</span><div class="tbl-wrap"><table class="fields-tbl"><thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th></th></tr></thead><tbody>
       ${(st.terms || []).map((t, i) => `<tr><td><input id="tm-n-${i}" name="tmn-${i}" value="${esc(t.name)}" style="min-width:140px"></td><td><input id="tm-f-${i}" name="tmf-${i}" type="date" value="${t.from}"></td><td><input id="tm-t-${i}" name="tmt-${i}" type="date" value="${t.to}"></td><td><button type="button" class="btn ghost sm" data-act="term-del" data-i="${i}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><div><button type="button" class="btn sm" data-act="term-add">إضافة فصل</button></div></div>
     </div>
@@ -1188,7 +1377,8 @@ function helpV(u) {
   const adminOn = u.role === 'admin' ? sub('المجمعات وتحضير المعلمين بالموقع', ['من «المجمعات» أضف كل جامع، وحدد موقعه: وأنت في الجامع اضغط «📍 أنا في الجامع الآن»، أو الصق رابط خرائط Google، واختر النطاق المسموح.', 'بعد ذلك لا يستطيع المعلم تسجيل وصوله إلا وهو داخل النطاق، ولوحة المدير تعرض «اليوم في الجامع»: مَن وصل ومتى وكم طالبًا حاضرًا.', 'تتنقل بين المجمعات من الشريط الذي أعلى الصفحات.', 'مدير لكل جامع: من بطاقة المجمع اضغط «إضافة مدير للمجمع»، فلا يرى إلا مجمعه.'])
     + (S.isSuper ? sub('قسم البنات', ['أعلى الصفحة زر «البنين | البنات» تتنقل به بين القسمين، وكل قسم منفصل تمامًا: حلقاته وطلابه ومعلموه وطلبات التسجيل والحصص والتقارير والمتجر والإعلانات وغرفة المعلمين.', 'عندما تكون في قسم البنات: أي حلقة أو معلمة أو مشرفة أو جائزة أو إعلان تضيفه يكون للبنات.', 'إدارة قسم البنات: أضف مشرفة من «المعلمون» وأنت في قسم البنات، فلا ترى إلا قسم البنات. ومشرفو البنين لا يرون شيئًا من قسم البنات، والعكس.', 'رابط التسجيل العام وأنت في قسم البنات يكون خاصًا بالبنات، وتصل طلباتهن إلى قسمهن.', 'الطالبات والمعلمات يرين الموقع بتصميم وردي هادئ ونصوص بصيغة المؤنث، وتصبح رسائل أولياء الأمور «ابنتكم» و«بارك الله فيها».']) : '')
     + sub('المتجر والجوائز والميزانية', ['«المتجر والنقاط ← الجوائز»: أضف وعدّل واحذف كما تشاء. الأنواع: جائزة عادية، عرض لفترة محدودة، جائزة جماعية للحلقة كاملة تبلغها بمجموع نقاطهم، ومزاد شهري.', 'ضع التكلفة الفعلية لكل جائزة، و«الميزانية» تعرض المصروف هذا الشهر.', 'قواعد النقاط والخصم: الإعدادات ← التسميع والتقدير ← النقاط التلقائية.', 'التقرير الشهري لولي الأمر: رسائل الواتساب ← التقرير الشهري، ترسله الآن أو يُرسَل تلقائيًا أول كل شهر.']) : '';
-  return `<h1>الدليل</h1>${adminOn}${admin}${onsite}${teacher}${cal}${install}${notif}`;
+  const achH = sub('الإنجاز والهدف اليومي ورابط ولي الأمر', ['لكل طالب هدف يومي: الحفظ بالأسطر والمراجعة بالأوجه (الوجه ١٥ سطرًا). حدّده من صفحة الطالب ← «الهدف اليومي»، أو لطلاب الحلقة كلهم من «التقارير ← إنجاز الحلقات ← الهدف اليومي للطلاب». ومن ليس له هدف خاص يُحسب هدفه من خطته التلقائية، وإلا من الهدف العام في الإعدادات.', 'نسبة الإنجاز = ما سمّعه الطالب ونجح فيه ÷ هدفه في أيام الحصص. ويوم الاستئذان وأيام إيقاف الخطة بلا هدف.', '«التقارير ← إنجاز اليوم»: كل الحلقات مرتبة بنسبة إنجازها، وتختار اليوم أو الأسبوع أو الفصل. اضغط الحلقة لترى طلابها.', '«إنجاز الحلقات»: إنجاز كل طالب، مقسومًا إلى «غير الحفاظ» و«الحفاظ». علّم الطالب «حافظ للقرآن» من نافذة الهدف اليومي، فيُحسب له المراجعة فقط.', '«سجل التحضير»: الطلاب وأيام الأسبوع، وتختار الأسبوع برقمه في الفصل. و«تحضير اليوم»: الحاضرون والمتأخرون والغائبون والمستأذنون ومن لم يُحضَّر.', '«خريطة الحفظ»: السورة التي يحفظ فيها كل طالب الآن، وكم يومًا له فيها.', 'الفصول الدراسية (الدورات) من الإعدادات ← الدوام والحضور: منها تُرقَّم الأسابيع ويُحسب الإنجاز التراكمي.', '«رابط ولي الأمر» في صفحة الطالب: رابط خاص يفتح سجل إنجازه دون اسم مستخدم ولا كلمة مرور، فيه الأسابيع يومًا بيوم، والسور المحفوظة، ورحلة الحفظ. وإذا وصل لغيره فأنشئ رابطًا جديدًا فيتوقف القديم.'].concat(canScreen(u) ? ['«📺 شاشة الجامع» في التقارير: افتح الرابط على شاشة في الجامع فتظهر نتائج اليوم لكل حلقة فور تسجيل التسميع، وترتيب الحلقات في الأسبوع، وتتحدّث تلقائيًا.'] : []));
+  return `<h1>الدليل</h1>${adminOn}${admin}${achH}${onsite}${teacher}${cal}${install}${notif}`;
 }
 
 /* ---- مودالات المرحلة 3 ---- */
@@ -1912,7 +2102,8 @@ function settingsData(f) {
   const points = {}; ['present', 'late', 'ex', 'vg', 'gd', 'page', 'absent', 'bad', 'streak10', 'streak30'].forEach(k => points[k] = +d.get('pt-' + k) || 0);
   const terms = (st.terms || []).map((t, i) => ({ id: t.id, name: d.get('tmn-' + i) ?? t.name, from: d.get('tmf-' + i) ?? t.from, to: d.get('tmt-' + i) ?? t.to }));
   const to0 = st.teacherOut || {}; const teacherOut = { mode: d.get('to-mode') || to0.mode || 'prayer', prayer: d.get('to-prayer') || to0.prayer || 'asr', after: d.has('to-after') ? +d.get('to-after') || 0 : (to0.after ?? 90), time: d.get('to-time') || to0.time || '17:00' };
-  return { teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, autoAll: d.has('autoAll-f') ? !!d.get('autoAll') : !!st.autoAll, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
+  const daily = d.has('dl-lines') ? { lines: +d.get('dl-lines') || 0, pages: +d.get('dl-pages') || 0 } : (st.daily || { lines: 0, pages: 0 });
+  return { daily, teacherOut, supportName: d.get('supportName') || '', supportPhone: d.get('supportPhone') || '', center: d.get('center'), days: d.getAll('day').map(Number), fields, tpls, planTpls, points, terms, board: d.get('board'), absentAlert: +d.get('absentAlert') || 3, recMin: +d.get('recMin') || 0, autoAll: d.has('autoAll-f') ? !!d.get('autoAll') : !!st.autoAll, lateMin: d.get('lateMin') === '' || d.get('lateMin') == null ? 10 : +d.get('lateMin'), branches: String(d.get('branches') || '').split('\n').map(x => x.trim()).filter(Boolean),
     grade: { ex: +d.get('ex') || 0, vg: +d.get('vg') || 0, gd: +d.get('gd') || 0, alertsPer: Math.max(1, +d.get('alertsPer') || 3) }, tpl: { absent: d.get('absent'), excellent: d.get('excellent') } };
 }
 async function saveSettingsWith(mut, msg) {
@@ -2841,7 +3032,7 @@ function navSections(u) {
   const room = I('room', inGirls() ? 'غرفة المعلمات' : 'غرفة المعلمين', msgsUnread(u));
   const liveMeet = Object.values(S.meets || {}).reduce((n, m) => n + ((m.ppl || []).some(p => p.id !== u.id) ? 1 : 0), 0);
   const meet = I('meet', 'الاجتماعات', liveMeet);
-  const reports = I('reports', 'التقارير');
+  const reports = I('reports', 'التقارير', 0, RP_TABS.map(([k, l]) => S_(l, { rpTab: k })));
   const pendOrd = L('orders').filter(o => o.status === 'pending' && S.users[o.uid]).length;
   const store = I('store', 'المتجر والنقاط', pendOrd, [S_('الطلبات', { stTab: 'orders' }), S_('الجوائز', { stTab: 'rewards' }), S_('النقاط', { stTab: 'points' }), ...(u.role === 'admin' ? [S_('الميزانية', { stTab: 'budget' })] : [])]);
   const wa = I('wa', 'رسائل الواتساب', isFullAdmin(u) ? S.waFailed || 0 : 0, waTabsFor(u).map(([k, l]) => S_(l, { waTab: k })));
@@ -2862,7 +3053,7 @@ function navSections(u) {
   ];
   return sec.map(s => ({ ...s, items: s.items.filter(i => has(i.k)) })).filter(s => s.items.length);
 }
-const subOn = x => x.set && Object.entries(x.set).every(([k, v]) => k === 'setTab' ? (ST.setTab || 'rec') === v : k === 'waTab' ? (ST.waTab || 'send') === v : k === 'stTab' ? (ST.stTab || 'orders') === v : !!ST[k] === !!v);
+const subOn = x => x.set && Object.entries(x.set).every(([k, v]) => k === 'setTab' ? (ST.setTab || 'rec') === v : k === 'rpTab' ? (ST.rpTab || 'sum') === v : k === 'waTab' ? (ST.waTab || 'send') === v : k === 'stTab' ? (ST.stTab || 'orders') === v : !!ST[k] === !!v);
 let SIDE_MINI = false; try { SIDE_MINI = localStorage.getItem('irtaq-side-mini') === '1'; } catch {}
 function sideNavHtml(u, active, mini) {
   const secs = navSections(u); ST.navOpen = ST.navOpen || {};
@@ -3802,6 +3993,38 @@ async function enablePush() {
     await api('/api/push', { sub: sub.toJSON(), test: true }); PUSH_ON = true; render(); toast('تم تفعيل الإشعارات');
   } catch (e) { toast('تعذّر تفعيل الإشعارات: ' + (e.message || '')); }
 }
+/* أزرار ونماذج تقارير الإنجاز والهدف اليومي ورابط ولي الأمر وشاشة الجامع */
+Object.assign(ACT, {
+  'rp-tab': el => { ST.rpTab = el.dataset.v; render(); },
+  'rp-per': el => { ST.rpPer = el.dataset.v; render(); },
+  'rp-shift': el => { const n = +el.dataset.n; if (!n) ST.rpDate = today(); else { const x = addDays(rpDate(), n); ST.rpDate = x > today() ? today() : x; } render(); },
+  'rp-week': el => { ST.rpDate = el.dataset.d > today() ? today() : el.dataset.d; render(); },
+  'rp-at': el => { ST.rpAt = el.dataset.v; render(); },
+  'rp-hz': el => { ST.rpHz = el.dataset.v === '1'; render(); },
+  'rp-open-h': el => { ST.rpH = el.dataset.h; ST.rpTab = 'circles'; render(); window.scrollTo(0, 0); },
+  'daily-edit': el => dailyModal([el.dataset.id]),
+  'daily-bulk-h': () => { const hs = myHalaqat(me()); const hid = rpHid(hs); dailyModal((hid ? studentsOf(hid) : hs.flatMap(h => studentsOf(h.id))).map(x => x.id)); },
+  'daily-clear': async el => { if (await act('daily.save', { ids: [el.dataset.id], daily: null }, 'رجع الهدف إلى التلقائي')) closeModal(); },
+  'card-link': el => cardLinkModal({ ...S.users[el.dataset.id], id: el.dataset.id }),
+  'card-renew': el => { const st = { ...S.users[el.dataset.id], id: el.dataset.id }; confirmBox('يتوقف الرابط القديم ولا يُفتح بعد الآن، ويُنشأ رابط جديد. هل تريد المتابعة؟', 'رابط جديد', () => cardLinkModal(st, true)); },
+  'screen-link': () => screenModal(),
+  'screen-renew': () => confirmBox('تتوقف كل روابط شاشات الجامع الحالية، وتحتاج إلى فتح الرابط الجديد على كل شاشة. هل تريد المتابعة؟', 'روابط جديدة', () => screenModal(true)),
+});
+Object.assign(CHG, {
+  'rp-h': el => { ST.rpH = el.value; delete el.dataset.dirty; render(); },
+  'rp-d': el => { ST.rpDate = el.value && el.value <= today() ? el.value : today(); delete el.dataset.dirty; render(); },
+});
+Object.assign(FORMS, {
+  async daily(f, d) {
+    const ids = (f.dataset.ids || '').split(',').filter(Boolean); const one = ids.length === 1;
+    const l0 = String(d.get('lines') ?? '').trim(), p0 = String(d.get('pages') ?? '').trim();
+    const body = { ids };
+    if (l0 !== '' || p0 !== '') body.daily = { lines: +l0 || 0, pages: +p0 || 0 };
+    if (one) body.hafiz = !!d.get('hafiz'); else if (d.get('hafizSel')) body.hafiz = d.get('hafizSel') === '1';
+    if (body.daily === undefined && body.hafiz === undefined) return toast('لم يتغير شيء');
+    if (await act('daily.save', body, 'حُفظ الهدف اليومي')) closeModal();
+  },
+});
 /* ---------------- boot ---------------- */
 load();
 loadPages();

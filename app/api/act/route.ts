@@ -14,6 +14,7 @@ import { closeAuction } from "@/lib/store";
 import { syncAutoLessons } from "@/lib/lessons";
 import { dayEndMs } from "@/lib/prayer";
 import { backupState, offsiteList, runBackup } from "@/lib/backup";
+import { cardToken, screenKey } from "@/lib/links";
 const DAYS_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const fmtD = (d: string) => { const x = new Date(d + "T00:00:00Z"); return `${DAYS_AR[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth() + 1}`; };
 const TYPE_AR: Record<string, string> = { new: "حفظ", review: "مراجعة", tath: "تثبيت" };
@@ -155,8 +156,10 @@ const A: Record<string, H> = {
     const planTpls = Array.isArray(d.planTpls) ? d.planTpls.slice(0, 20).map((t: any, i: number) => ({ id: str(t.id, 20) || "p" + i, name: str(t.name, 60) || "قالب", newAmt: AMT(t.newAmt, 5), revAmt: AMT(t.revAmt), tathAmt: AMT(t.tathAmt, 10) })) : cur.planTpls;
     const pp = d.points || {}; const cp: any = cur.points; const points = { present: AMT(pp.present ?? cp.present, 100), late: AMT(pp.late ?? cp.late, 100), ex: AMT(pp.ex ?? cp.ex, 100), vg: AMT(pp.vg ?? cp.vg, 100), gd: AMT(pp.gd ?? cp.gd, 100), page: AMT(pp.page ?? cp.page, 100), absent: AMT(pp.absent ?? cp.absent ?? 0, 100), bad: AMT(pp.bad ?? cp.bad ?? 0, 100), streak10: AMT(pp.streak10 ?? cp.streak10 ?? 5, 500), streak30: AMT(pp.streak30 ?? cp.streak30 ?? 15, 500) };
     const board = ["show", "top3", "hide"].includes(d.board) ? d.board : cur.board;
+    // الهدف اليومي العام: لمن ليس له هدف خاص ولا خطة تلقائية
+    const daily = d.daily && typeof d.daily === "object" ? { lines: Math.round(AMT(d.daily.lines, 300) * 10) / 10, pages: Math.round(AMT(d.daily.pages, 60) * 100) / 100 } : (cur as any).daily || { lines: 0, pages: 0 };
     const terms = Array.isArray(d.terms) ? d.terms.slice(0, 12).map((t: any, i: number) => ({ id: str(t.id, 20) || "tm" + i, name: str(t.name, 60) || "فصل", from: str(t.from, 10), to: str(t.to, 10) })).filter((t: any) => validDate(t.from) && validDate(t.to) && t.to >= t.from) : (cur as any).terms || [];
-    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), autoAll: d.autoAll !== undefined ? !!d.autoAll : !!(cur as any).autoAll, teacherOut: (() => { const o = d.teacherOut || (cur as any).teacherOut || {}; return { mode: ["prayer", "time", "off"].includes(o.mode) ? o.mode : "prayer", prayer: ["fajr", "dhuhr", "asr", "maghrib", "isha"].includes(o.prayer) ? o.prayer : "asr", after: Math.min(600, Math.max(0, int(o.after, 90))), time: /^\d{2}:\d{2}$/.test(str(o.time)) ? str(o.time) : "17:00" }; })(), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
+    const value = { ...cur, center: str(d.center, 80) || "حلقات ارتق", days, grade: g, absentAlert: Math.min(20, Math.max(2, int(d.absentAlert, 3))), holidays: cur.holidays || [], fields, memoRemoved, tpls, planTpls, points, board, daily, terms, supportName: str(d.supportName, 60), supportPhone: str(d.supportPhone, 20), recMin: Math.min(60, Math.max(0, int(d.recMin ?? (cur as any).recMin ?? 0))), lateMin: Math.min(120, Math.max(0, int(d.lateMin ?? (cur as any).lateMin ?? 10))), autoAll: d.autoAll !== undefined ? !!d.autoAll : !!(cur as any).autoAll, teacherOut: (() => { const o = d.teacherOut || (cur as any).teacherOut || {}; return { mode: ["prayer", "time", "off"].includes(o.mode) ? o.mode : "prayer", prayer: ["fajr", "dhuhr", "asr", "maghrib", "isha"].includes(o.prayer) ? o.prayer : "asr", after: Math.min(600, Math.max(0, int(o.after, 90))), time: /^\d{2}:\d{2}$/.test(str(o.time)) ? str(o.time) : "17:00" }; })(), branches: Array.isArray(d.branches) ? ([...new Set<string>((d.branches as any[]).map((x: any) => str(x, 60).trim()).filter(Boolean))] as string[]).slice(0, 30) : ((cur as any).branches || []), tpl: { absent: str(d.tpl?.absent, 600), excellent: str(d.tpl?.excellent, 600) } };
     await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
     await audit(u, "settings", null, "تعديل الإعدادات");
     // تشغيل أو إيقاف «الحصص التلقائية لكل الحلقات»: حصص الأسبوع تنشأ أو تنشال على طول
@@ -663,7 +666,9 @@ const A: Record<string, H> = {
     }
     const near = AMT(b.near, 10);
     const pz = b.paused && validDate(str(b.paused.from)) ? { from: str(b.paused.from), to: validDate(str(b.paused.to)) ? str(b.paused.to) : "", reason: str(b.paused.reason, 100) } : null;
-    const plan = { mode, manual, auto, near, paused: pz };
+    // الهدف اليومي وعلامة الحافظ ونسخة رابط السجل تبقى كما هي
+    const ox: any = old;
+    const plan = { mode, manual, auto, near, paused: pz, ...(ox.daily ? { daily: ox.daily } : {}), ...(ox.hafiz ? { hafiz: true } : {}), ...(ox.linkV ? { linkV: ox.linkV } : {}) };
     await prisma.user.update({ where: { id: st.id }, data: { plan } });
     const desc = (p: any) => p.mode === "auto" ? `تلقائية: حفظ ${p.auto.newAmt} ومراجعة ${p.auto.revAmt} وتثبيت ${p.auto.tathAmt} وجه` : `يدوية${Object.keys(p.manual || {}).length ? " (" + Object.entries(p.manual).map(([k, v]: any) => `${({ new: "حفظ", review: "مراجعة", tath: "تثبيت" } as any)[k]} ${v.surah}:${v.from}-${v.toSurah && v.toSurah !== v.surah ? v.toSurah + ":" : ""}${v.to}`).join("، ") + ")" : ""}`;
     await audit(u, "plan", st.id, `${st.name}: ${desc(old)} ← ${desc(plan)}${pz ? ` · موقوفة من ${pz.from}${pz.to ? " إلى " + pz.to : ""}` : ""}`, { before: old, after: plan });
@@ -689,6 +694,57 @@ const A: Record<string, H> = {
     const goal = g && AMT(g.pages, 604) > 0 ? { pages: AMT(g.pages, 604), from: validDate(str(g.from)) ? str(g.from) : localDate(), by: validDate(str(g.by)) ? str(g.by) : "", note: str(g.note, 120) } : null;
     await prisma.user.update({ where: { id: st.id }, data: { goal: goal as any } });
     await audit(u, "goal", st.id, goal ? `${st.name}: هدف ${goal.pages} وجه${goal.by ? " قبل " + goal.by : ""}` : `${st.name}: حذف الهدف`);
+  },
+  // الهدف اليومي (الحفظ بالأسطر والمراجعة بالأوجه) وعلامة «حافظ للقرآن»، لطالب أو لمجموعة طلاب
+  async "daily.save"(u, b) {
+    if (!(isAdmin(u) || (u.role === "teacher" && u.canPlan))) fail("ليست لديك صلاحية إعداد الخطط", 403);
+    const ids = [...new Set<string>((Array.isArray(b.ids) ? b.ids.map(String) : [str(b.id)]).filter(Boolean))].slice(0, 300);
+    if (!ids.length) fail("اختر الطلاب");
+    const setD = b.daily !== undefined, setH = b.hafiz !== undefined;
+    if (!setD && !setH) fail("لا يوجد تعديل");
+    const daily = setD && b.daily ? { lines: Math.round(AMT(b.daily.lines, 300) * 10) / 10, pages: Math.round(AMT(b.daily.pages, 60) * 100) / 100 } : null;
+    const names: string[] = [];
+    for (const id of ids) {
+      const st = await studentFor(u, id); const p: any = planOf(st);
+      if (setD) { if (daily) p.daily = daily; else delete p.daily; }
+      if (setH) { if (b.hafiz) p.hafiz = true; else delete p.hafiz; }
+      await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+      names.push(st.name);
+    }
+    const what = [setD ? (daily ? `الهدف اليومي: حفظ ${daily.lines} سطر ومراجعة ${daily.pages} وجه` : "إلغاء الهدف اليومي الخاص") : "", setH ? (b.hafiz ? "حافظ للقرآن" : "إلغاء علامة الحافظ") : ""].filter(Boolean).join("، ");
+    await audit(u, "plan", ids.length === 1 ? ids[0] : null, `${names.length === 1 ? names[0] : names.length + " طالب"}: ${what}`);
+    return { n: names.length };
+  },
+  // رابط سجل الطالب الخاص لولي الأمر (بدون اسم مستخدم ولا كلمة مرور). renew يلغي الرابط القديم ويعطي جديدًا
+  async "card.link"(u, b) {
+    if (u.role === "student") fail("غير مصرح", 403);
+    const st = await studentFor(u, str(b.id));
+    const p: any = planOf(st); let v = +p.linkV || 0;
+    if (b.renew) {
+      v = p.linkV = v + 1;
+      await prisma.user.update({ where: { id: st.id }, data: { plan: p } });
+      await audit(u, "card", st.id, `${st.name}: رابط سجل جديد، وأُلغي الرابط القديم`);
+    }
+    const t = cardToken(st.id, v); if (!t) fail("الرابط غير متاح حاليًا");
+    return { path: "/s/" + t };
+  },
+  // رابط شاشة الجامع (تعرض نتائج اليوم مباشرة). renew للمدير الكامل ويلغي الرابط القديم
+  async "screen.link"(u, b) {
+    needAdmin(u, "reports");
+    const side = sideVal(b.side); await needSide(u, side);
+    // b: اسم المجمع، «_» الأساسي، «*» كل المجمعات
+    const br = b.b === undefined || b.b === null || b.b === "*" ? "*" : str(b.b, 60) || "_";
+    const sp = scopeSpec(u);
+    if (sp && (br === "*" || !sp.b.includes(br === "_" ? "" : br))) fail("شاشة الجامع متاحة لمجمعك فقط", 403);
+    const cur: any = await getSettings(); let v = +cur.screenV || 0;
+    if (b.renew) {
+      if (!isFull(u)) fail("تجديد الرابط للمدير الكامل فقط", 403);
+      v++; const value = { ...cur, screenV: v };
+      await prisma.setting.upsert({ where: { key: "main" }, create: { key: "main", value }, update: { value } });
+      await audit(u, "settings", null, "روابط جديدة لشاشات الجامع، وأُلغيت الروابط القديمة");
+    }
+    const k = screenKey(v, side, br); if (!k) fail("الرابط غير متاح حاليًا");
+    return { key: k, side, b: br };
   },
   async "log.list"(u, b) {
     const target = str(b.target);

@@ -9,6 +9,9 @@
 - `app/api/act/route.ts` — كل عمليات التعديل في ملف واحد. `app/api/data/route.ts` — كل القراءة.
 - `app/globals.css` — التصميم كله (فاتح وداكن). قسم البنات له هوية مستقلة تحت `html[data-fem]`.
 - `lib/` — الجلسات والصلاحيات (`auth.ts`, `scope.ts`)، الإعدادات (`settings.ts`)، الواتساب (`wa.ts`)، غرف الحصص (`video.ts`)، المساعد الذكي (`ai.ts`)، صفحات المصحف (`quran.ts`, `mushaf.json`).
+- `public/ach.js` — حساب الإنجاز المشترك (الهدف اليومي: الحفظ بالأسطر والمراجعة بالأوجه، ونسب الإنجاز، وأسابيع الفصل، والسور المحفوظة). تستخدمه تقارير الإنجاز في `app.js` وصفحتا `card.js` و`screen.js`، فأي تعديل في الحساب يكون فيه وحده.
+- سجل الطالب لولي الأمر `/s/<رابط>` (بدون دخول: `app/s`، `app/api/card`، `public/card.js`) وشاشة الجامع `/screen` (`app/screen`، `app/api/screen`، `public/screen.js`)، والتصميم في `public/card.css`. الروابط موقّعة بـ `AUTH_SECRET` في `lib/links.ts`، ورقم النسخة (`plan.linkV` للطالب، `screenV` في الإعدادات) يلغي الرابط القديم.
+- الهدف اليومي وعلامة الحافظ داخل `User.plan` (`daily`، `hafiz`)، فأي إجراء يعيد بناء الخطة لازم يحافظ عليها.
 - `prisma/schema.prisma` — الجداول. `prisma/pre-push.mjs` — تعديلات قبل `db push`. `prisma/ensure-admin.mjs` — حساب المدير.
 
 ## قواعد لازم تنتبه لها
