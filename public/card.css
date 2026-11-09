@@ -1,0 +1,135 @@
+/* تصميم الصفحات العامة: سجل الطالب لولي الأمر وشاشة الجامع. هوية البنين، وقسم البنات تحت html[data-fem] */
+:root{
+  --brand:#1f2a5a; --brand-2:#14a39a; --brand-ink:#fff; --gold:#9a6a0c; --gold-soft:#f6ecd7;
+  --bg:#f5f7fb; --surface:#fff; --sunk:#eef1f7; --ink:#141a33; --muted:#5d6680; --line:#e2e6ef;
+  --ok:#137a56; --ok-soft:#dcf2e8; --warn:#9a5a06; --warn-soft:#fcefdc; --bad:#bf3445; --bad-soft:#fbe5e8; --info:#2b5bb0; --info-soft:#e4ecfa; --acc:#0f7f78; --acc-soft:#d9f2ef;
+  --r:12px; --f:'IBM Plex Sans Arabic',system-ui,sans-serif; --q:'Amiri',serif;
+  color-scheme:light;
+}
+html[data-fem]{ --brand:#5b1f4f; --brand-2:#d6457f; --bg:#fbf6f9; --sunk:#f6ebf1; --line:#eedfe7; --acc:#b23a6c; --acc-soft:#fbe3ee; }
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0b1020; --surface:#121a30; --sunk:#0e1528; --ink:#e8ecf7; --muted:#9aa4c0; --line:#24304d; --brand-2:#3fc9bf;
+    --ok:#5ed6a0; --ok-soft:#0f2a20; --warn:#f2b866; --warn-soft:#2d2313; --bad:#ff8a97; --bad-soft:#341823; --info:#93b4ff; --info-soft:#17223f; --acc:#5fd6cd; --acc-soft:#0f2a2a; --gold:#e3b75c; --gold-soft:#2b2410; color-scheme:dark; }
+  html[data-fem]{ --bg:#150b13; --surface:#22121e; --sunk:#1a0e17; --line:#3a2134; --brand-2:#f07aa8; --acc:#f07aa8; --acc-soft:#341627; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);-webkit-text-size-adjust:100%}
+body{min-height:100vh;line-height:1.6}
+button{font:inherit;cursor:pointer}
+.boot{padding:40px 16px;text-align:center;color:var(--muted)}
+.mut{color:var(--muted)} .small{font-size:.82rem} .num{font-variant-numeric:tabular-nums}
+.q{font-family:var(--q);font-weight:700}
+.grow{flex:1;min-width:0}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.box h2{margin:0 0 10px;font-size:1rem}
+.box.err{max-width:520px;margin:60px auto;display:grid;gap:6px;text-align:center}
+.box.err b{font-size:1.15rem;color:var(--bad)}
+.empty{color:var(--muted);text-align:center;padding:22px 8px}
+.chip{display:inline-flex;align-items:center;padding:1px 9px;border-radius:999px;font-size:.78rem;font-weight:700;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.info{background:var(--info-soft);color:var(--info)} .chip.acc{background:var(--acc-soft);color:var(--acc)}
+.pc{font-weight:800} .pc.ok{color:var(--ok)} .pc.warn{color:var(--warn)} .pc.bad{color:var(--bad)}
+
+/* ---------- سجل الطالب ---------- */
+.hd{background:var(--brand);color:var(--brand-ink);padding:22px 16px 26px}
+.hd-in{max-width:960px;margin:0 auto;display:grid;gap:2px}
+.hd .eyebrow{font-size:.82rem;opacity:.8}
+.hd h1{margin:0;font-size:1.05rem;font-weight:600;opacity:.92}
+.hd .who{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.hd .who b{font-size:1.5rem;font-weight:700}
+.hd .who span{opacity:.85}
+.hd .date{font-size:.82rem;opacity:.75}
+.tabs{max-width:960px;margin:-16px auto 0;padding:0 16px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:8px 16px;white-space:nowrap;box-shadow:0 2px 8px rgb(20 26 51 / 8%)}
+.tabs button.on{background:var(--brand-2);border-color:var(--brand-2);color:#fff;font-weight:700}
+.wrap{max-width:960px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.wrap > *,.s-main > *,.s-side > *{min-width:0}
+.wks{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.wks button{min-width:38px;height:38px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600}
+.wks button.on{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
+.wk-nav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wk-nav b{font-size:.95rem;text-align:center}
+.wk-nav button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:.85rem}
+.wk-nav button:disabled{opacity:.4;cursor:default}
+.goals{display:flex;flex-wrap:wrap;gap:8px}
+.goals .g{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 14px;font-size:.88rem}
+.goals .g b{color:var(--brand-2);font-size:1.05rem;margin:0 2px}
+.goals .g.gold{background:var(--gold-soft);color:var(--gold);border-color:transparent;font-weight:700}
+.tw{overflow-x:auto;margin:-4px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:10px 8px;text-align:start;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.76rem;color:var(--muted);font-weight:700}
+td.num,th.num{text-align:center}
+tr:last-child td{border-bottom:0}
+td.rng{font-family:var(--q);font-size:.95rem}
+.kcs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:10px}
+.kcs.three{grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr))}
+.kc{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:4px}
+.kc > span{font-size:.82rem;color:var(--muted)}
+.kc > div{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.kc > div b.num{font-size:1.25rem}
+.kc .pc{font-size:1.5rem}
+.note{margin:0;color:var(--muted);font-size:.82rem}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.84rem;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-inline-end:5px;vertical-align:-1px;border:1px solid var(--line)}
+.legend i.s2{background:var(--ok);border-color:var(--ok)} .legend i.s1{background:var(--ok-soft);border-color:var(--ok)} .legend i.s0{background:var(--surface)}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.sr{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px;font-family:var(--q);font-size:1.02rem;min-height:44px}
+.sr small{font-family:var(--f);font-size:.7rem;color:var(--muted);min-width:20px}
+.sr.s2{background:var(--ok);border-color:var(--ok);color:#fff} .sr.s2 small{color:rgb(255 255 255 / 80%)}
+.sr.s1{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.now{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;background:var(--acc-soft);color:var(--acc);border-radius:var(--r);padding:12px 16px}
+.now .q{font-size:1.35rem}
+.tl{list-style:none;margin:0;padding:0;display:grid}
+.tl li{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line);position:relative}
+.tl li:last-child{border-bottom:0}
+.tl li i{width:12px;height:12px;border-radius:50%;border:2px solid var(--brand-2);flex:none}
+.tl li.done i{background:var(--brand-2)}
+.tl li > div{flex:1;display:grid}
+.tl li .q{font-size:1.15rem}
+.tl li span{font-size:.82rem;color:var(--muted)}
+.ft{text-align:center;color:var(--muted);font-size:.78rem;padding:10px 16px 28px}
+
+/* ---------- شاشة الجامع ---------- */
+.scr{min-height:100vh;display:flex;flex-direction:column}
+.s-hd{background:var(--brand);color:var(--brand-ink);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.s-hd .eyebrow{opacity:.8;font-size:1rem}
+.s-hd h1{margin:0;font-size:2rem}
+.s-time{display:grid;justify-items:end;text-align:end}
+.s-time b{font-size:2.2rem;font-variant-numeric:tabular-nums;line-height:1.2}
+.s-time span{opacity:.85}
+.s-time .off{color:#ffd28a;font-size:.9rem}
+.s-body{flex:1;display:grid;grid-template-columns:1fr 360px;gap:18px;padding:18px 28px;align-items:start}
+.s-main{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:16px;min-width:0}
+.s-side{display:grid;gap:16px}
+.box.big{font-size:1.3rem;padding:40px}
+.circ{display:grid;gap:12px;font-size:1.05rem}
+.c-hd{display:flex;align-items:center;gap:12px}
+.c-hd h2{margin:0;font-size:1.3rem}
+.c-hd .sc{font-size:1.8rem;color:var(--brand-2);font-variant-numeric:tabular-nums}
+.rk{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--sunk);color:var(--muted);flex:none}
+.rk.r1,.rank .r1{background:#d4a72c;color:#fff} .rk.r2,.rank .r2{background:#a7b0bf;color:#fff} .rk.r3,.rank .r3{background:#c58450;color:#fff}
+.c-bars{display:grid;gap:6px}
+.c-bars > div{display:grid;grid-template-columns:70px 1fr 54px;align-items:center;gap:8px;font-size:.92rem}
+.c-bars em{font-style:normal;font-weight:700;text-align:end;font-variant-numeric:tabular-nums}
+.bar{height:10px;background:var(--sunk);border-radius:999px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brand-2);border-radius:999px;transition:width .6s}
+.bar.b2 i{background:var(--gold)}
+.c-list,.feed{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.c-list li,.feed li{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:10px;background:var(--sunk)}
+.c-list li b{flex:1}
+.feed li > div{flex:1;display:grid;min-width:0}
+.feed li > div span{font-size:.85rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-list li.new,.feed li.new{animation:flash 2.4s ease-out 2}
+@keyframes flash{0%{background:var(--acc-soft);box-shadow:0 0 0 2px var(--brand-2) inset}100%{background:var(--sunk)}}
+.rank{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rank li{display:flex;align-items:center;gap:10px}
+.rank li > span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--sunk);color:var(--muted);flex:none}
+.rank li b{flex:1}
+.rank li em{font-style:normal;font-weight:800;color:var(--brand-2);font-variant-numeric:tabular-nums}
+@media (max-width:900px){
+  .s-body{grid-template-columns:1fr;padding:12px}
+  .s-hd{padding:14px 16px} .s-hd h1{font-size:1.4rem} .s-time b{font-size:1.5rem}
+  .s-main{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){ .c-list li.new,.feed li.new{animation:none;background:var(--acc-soft)} .bar i{transition:none} }

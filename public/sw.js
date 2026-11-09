@@ -1,5 +1,5 @@
 // حلقات ارتق: العمل بدون إنترنت + الإشعارات
-const V = 'irtaq-v10';
+const V = 'irtaq-v11';
 const SHELL = ['/manifest.webmanifest', '/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -25,6 +25,8 @@ self.addEventListener('fetch', e => {
   if (u.pathname === '/api/data') { e.respondWith(netFirst(req, '/api/data')); return; }
   if (u.pathname.startsWith('/api/')) return;
   if (u.pathname.startsWith('/majalis')) return;
+  // سجل الطالب لولي الأمر وشاشة الجامع: صفحات مستقلة لا تُخزَّن مكان الواجهة
+  if (u.pathname.startsWith('/s/') || u.pathname === '/screen') return;
   if (req.mode === 'navigate') { e.respondWith(netFirst(new Request(req.url, { cache: 'no-store' }), '/')); return; }
   if (u.pathname.startsWith('/_next/static/') || /\.(png|svg|js|css|webmanifest)$/.test(u.pathname)) {
     e.respondWith(caches.open(V).then(async c => { const hit = await c.match(req); const net = fetch(req).then(r => { if (r.ok) c.put(req, r.clone()); return r; }).catch(() => hit); return hit || net; }));
